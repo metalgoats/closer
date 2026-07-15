@@ -10,9 +10,8 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "closer"
-# database_id is filled in after `wrangler d1 create closer` on the org account.
 # Local dev (`npm run dev`) uses a local simulated D1 and ignores this.
-database_id = "REPLACE_AFTER_ACCOUNT_SETUP"
+database_id = "fcd1b2c4-ded2-4a04-87ee-fac05ed5391f"
 
 [triggers]
 # Every 5 min: poll Fathom for new calls (no-op until keys are configured).
