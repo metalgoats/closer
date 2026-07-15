@@ -81,8 +81,29 @@ function renderAccountNav() {
     state.accountFilter = el.dataset.account ? +el.dataset.account : null;
     renderAccountNav();
     await refreshCalls();
-    renderCallList();
+    showCallsView(); // picking an account returns you to the calls view, not a stale workspace page
   }));
+}
+
+// Open the current call if it's still visible, else the first visible call, else the empty state.
+function openRelevantCall() {
+  const vis = visibleCalls();
+  if (vis.some(c => c.id === state.currentCallId)) openCall(state.currentCallId);
+  else if (vis.length) openCall(vis[0].id);
+  else renderEmpty();
+}
+
+// Return the detail pane to the calls context: drop any workspace-view highlight,
+// make sure a call filter is active, and open a relevant call (or the empty state).
+function showCallsView() {
+  document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
+  if (!document.querySelector(".nav-item[data-filter].active")) {
+    const allFilter = document.querySelector('.nav-item[data-filter="all"]');
+    if (allFilter) allFilter.classList.add("active");
+    state.filter = "all";
+    $("#listTitle").textContent = "All Calls";
+  }
+  openRelevantCall();
 }
 
 document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
@@ -92,6 +113,7 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
     state.filter = el.dataset.filter;
     $("#listTitle").textContent = el.textContent.replace(/\d+$/, "").trim();
     renderCallList();
+    openRelevantCall(); // also refresh the detail pane so we leave any workspace view
   });
 });
 
@@ -455,18 +477,55 @@ async function renderTemplates() {
   }));
 }
 
+// How each provider is actually connected (verified against current provider docs, 2026-07).
+const INTEGRATION_META = {
+  ghl:       { label: "GoHighLevel",          method: "login",   how: "Connect with your GoHighLevel login — OAuth, no key to copy." },
+  fathom:    { label: "Fathom",               method: "selfkey", how: "Generate a key in Fathom → Settings → Integrations → API Access (2 clicks, no dev account)." },
+  anthropic: { label: "Claude (Anthropic)",   method: "key",     how: "API key required — there is no login option for programmatic API access." },
+  openai:    { label: "ChatGPT (OpenAI)",     method: "key",     how: "API key required — there is no login option for programmatic API access." }
+};
+const METHOD_BADGE = {
+  login:   `<span class="status-chip" style="background:var(--blue-100); color:var(--blue-600);">Login (OAuth)</span>`,
+  selfkey: `<span class="status-chip" style="background:var(--violet-100); color:var(--violet-600);">Self-serve key</span>`,
+  key:     `<span class="status-chip status-off">API key</span>`
+};
+
 async function renderIntegrations() {
   const { integrations } = await api.get("/integrations");
-  const label = { fathom: "Fathom", anthropic: "Claude (Anthropic API)", openai: "ChatGPT (OpenAI API)", ghl: "GoHighLevel" };
-  viewShell("Integrations", "Per-account connections — keys live in Cloudflare secrets, never in the browser",
-    integrations.map(i => `
-      <div class="integration-row"><div>
-        <div class="integration-name">${label[i.kind] || i.kind} — ${esc(i.account_name)}</div>
-        <div class="integration-sub">secret: <code>${esc(i.secret_name || "—")}</code></div></div>
-        <span class="status-chip ${i.status === "connected" ? "status-on" : "status-off"}">${i.status}</span>
-      </div>`).join("") +
-    `<p style="margin-top:16px; font-size:12px; color:var(--ink-400);">Connecting = setting the secret via
-     <code>wrangler secret put NAME</code> after account setup, then marking it connected. A settings UI for this comes later.</p>`);
+  const byAccount = {};
+  for (const i of integrations) (byAccount[i.account_name] = byAccount[i.account_name] || []).push(i);
+
+  const rows = Object.entries(byAccount).map(([acct, items]) => `
+    <h4>${esc(acct)}</h4>
+    ${items.map(i => {
+      const m = INTEGRATION_META[i.kind] || { label: i.kind, method: "key", how: "" };
+      const cta = m.method === "login"
+        ? `<button class="regen-btn" data-connect-ghl="${i.account_id}">Connect</button>`
+        : `<span class="status-chip ${i.status === "connected" ? "status-on" : "status-off"}">${i.status}</span>`;
+      return `<div class="integration-row"><div>
+          <div class="integration-name">${m.label} ${METHOD_BADGE[m.method]}</div>
+          <div class="integration-sub">${esc(m.how)}</div></div>${cta}</div>`;
+    }).join("")}`).join("");
+
+  viewShell("Integrations", "Credentials live server-side (Cloudflare secrets / encrypted tokens) — never in the browser",
+    rows + `
+    <h4>Which of these can skip API keys?</h4>
+    <ul style="font-size:12.5px; line-height:1.7;">
+      <li><b>GoHighLevel — yes, login.</b> GHL runs on OAuth 2.0; you click Connect, log in, and it stores a
+        refreshing token. One-time setup: we register a GHL marketplace app to get a Client ID/Secret, then this
+        Connect button works for both sub-accounts.</li>
+      <li><b>Fathom — a self-serve key, not a login.</b> No developer dashboard: Gabriel generates a key inside
+        his own Fathom settings in a couple clicks. Two keys, since OSA and hypnotherapy use separate Fathom accounts.</li>
+      <li><b>Claude &amp; ChatGPT — API key, unavoidable.</b> There is no "log in with Claude/ChatGPT" for API
+        access, and the $20/mo Pro/Plus subscriptions do <i>not</i> include API usage (it's billed separately per token).
+        We set these once as server secrets with a spend cap.</li>
+    </ul>
+    <p style="font-size:12px; color:var(--ink-400);">Note: even OAuth stores a sensitive token on the server — the
+      safety model (server-side only, never in the browser) is identical to an API key. OAuth's win is the click-to-connect
+      UX and auto-expiry, not removing stored credentials.</p>`);
+
+  document.querySelectorAll("[data-connect-ghl]").forEach(btn => btn.addEventListener("click", () =>
+    toast("GHL Connect needs the marketplace app registered first — see next steps.")));
 }
 
 // ---------- utilities ----------
