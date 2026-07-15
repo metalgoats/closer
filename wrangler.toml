@@ -1,0 +1,25 @@
+name = "closer"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# Static UI (ported mockup) served from /public; the Worker handles /api/*
+[assets]
+directory = "public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "closer"
+# database_id is filled in after `wrangler d1 create closer` on the org account.
+# Local dev (`npm run dev`) uses a local simulated D1 and ignores this.
+database_id = "REPLACE_AFTER_ACCOUNT_SETUP"
+
+[triggers]
+# Every 5 min: poll Fathom for new calls (no-op until keys are configured).
+# Sunday 17:00 UTC: weekly edit-analysis -> prompt suggestions.
+crons = ["*/5 * * * *", "0 17 * * SUN"]
+
+# Secrets (set via `wrangler secret put NAME` — NEVER in git):
+#   ANTHROPIC_API_KEY, OPENAI_API_KEY
+#   FATHOM_API_KEY_OSA, FATHOM_API_KEY_HYPNO
+#   GHL_API_KEY_OSA, GHL_API_KEY_HYPNO

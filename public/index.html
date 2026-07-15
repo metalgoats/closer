@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Closer — Post-Call Assistant</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="app">
+  <!-- login / first-run setup -->
+  <div id="authView" class="auth-wrap hidden">
+    <form id="authForm" class="auth-card">
+      <div class="brand" style="justify-content:center; padding-bottom:8px;">
+        <div class="brand-mark"></div><div class="brand-name">Closer</div>
+      </div>
+      <div id="authMsg" class="auth-msg"></div>
+      <input type="email" id="authEmail" placeholder="Email" required autocomplete="username">
+      <input type="password" id="authPassword" placeholder="Password" required minlength="8" autocomplete="current-password">
+      <button type="submit" class="primary-btn" style="align-self:stretch; justify-content:center;">Sign in</button>
+      <div class="auth-hint">First run? Signing in creates the admin account.</div>
+    </form>
+  </div>
+
+  <!-- main app -->
+  <div id="mainView" class="app hidden">
+    <div class="sidebar">
+      <div class="brand"><div class="brand-mark"></div><div class="brand-name">Closer</div></div>
+      <div class="nav-group">
+        <div class="nav-label">Accounts</div>
+        <div id="accountNav"></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Calls</div>
+        <div class="nav-item active" data-filter="all">All Calls<span class="count" id="countAll"></span></div>
+        <div class="nav-item" data-filter="followup">Needs Follow-up<span class="count" id="countFollowup"></span></div>
+        <div class="nav-item" data-filter="closed">Closed<span class="count" id="countClosed"></span></div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Coaching</div>
+        <div class="nav-item" data-view="insights">Insights</div>
+        <div class="nav-item" data-view="suggestions">Suggestions</div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-label">Workspace</div>
+        <div class="nav-item" data-view="templates">Prompt Templates</div>
+        <div class="nav-item" data-view="integrations">Integrations</div>
+      </div>
+      <div class="sidebar-foot">
+        <div class="avatar" id="userAvatar">?</div>
+        <span id="userEmail"></span>
+        <button class="linklike" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <div class="call-list">
+      <div class="list-header">
+        <div class="list-title" id="listTitle">All Calls</div>
+        <button class="new-call-btn" id="newCallBtn">+ New</button>
+      </div>
+      <div class="search-row"><div class="search-box">
+        <input type="search" id="searchInput" placeholder="Search calls" aria-label="Search calls">
+      </div></div>
+      <div class="call-scroll" id="callScroll"></div>
+    </div>
+
+    <div class="detail" id="detailPane"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/app.js"></script>
+</body>
+</html>
