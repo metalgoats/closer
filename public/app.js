@@ -499,15 +499,42 @@ async function renderIntegrations() {
     <h4>${esc(acct)}</h4>
     ${items.map(i => {
       const m = INTEGRATION_META[i.kind] || { label: i.kind, method: "key", how: "" };
-      const cta = m.method === "login"
-        ? `<button class="regen-btn" data-connect-ghl="${i.account_id}">Connect</button>`
-        : `<span class="status-chip ${i.status === "connected" ? "status-on" : "status-off"}">${i.status}</span>`;
-      return `<div class="integration-row"><div>
-          <div class="integration-name">${m.label} ${METHOD_BADGE[m.method]}</div>
-          <div class="integration-sub">${esc(m.how)}</div></div>${cta}</div>`;
+
+      // GHL is OAuth — a Connect button, not a key field.
+      if (m.method === "login") {
+        return `<div class="integration-row"><div>
+            <div class="integration-name">${m.label} ${METHOD_BADGE[m.method]}</div>
+            <div class="integration-sub">${esc(m.how)}</div></div>
+            <button class="regen-btn" data-connect-ghl="${i.account_id}">Connect</button></div>`;
+      }
+
+      const state = i.has_key
+        ? `<span class="key-state on">✓ Key saved <code>${esc(i.key_preview)}</code>${i.updated_at ? ` · ${esc(i.updated_at)}` : ""}</span>`
+        : i.env_fallback
+          ? `<span class="key-state env">Using <code>${esc(i.secret_name)}</code> from Cloudflare secrets</span>`
+          : `<span class="key-state off">No key yet</span>`;
+
+      return `<div class="integration-card" data-int="${i.id}">
+        <div class="integration-card-head">
+          <div>
+            <div class="integration-name">${m.label} ${METHOD_BADGE[m.method]}</div>
+            <div class="integration-sub">${esc(m.how)}</div>
+          </div>
+          <span class="status-chip ${i.status === "connected" ? "status-on" : "status-off"}">${i.status}</span>
+        </div>
+        <div class="key-row">
+          <input type="password" class="key-input" data-int="${i.id}" autocomplete="off"
+                 placeholder="${i.has_key ? "Paste a new key to replace the saved one" : "Paste your key here"}">
+          <button class="key-reveal" data-reveal="${i.id}" title="Show what you typed">Show</button>
+          <button class="primary-btn key-save" data-save="${i.id}">Save</button>
+          <button class="regen-btn" data-test="${i.id}">Test</button>
+          ${i.has_key ? `<button class="regen-btn key-remove" data-remove="${i.id}">Remove</button>` : ""}
+        </div>
+        <div class="key-foot">${state}<span class="key-msg" data-msg="${i.id}"></span></div>
+      </div>`;
     }).join("")}`).join("");
 
-  viewShell("Integrations", "Credentials live server-side (Cloudflare secrets / encrypted tokens) — never in the browser",
+  viewShell("Integrations", "Paste a key, hit Save, hit Test. Keys are stored server-side and never sent back to your browser.",
     rows + `
     <h4>Which of these can skip API keys?</h4>
     <ul style="font-size:12.5px; line-height:1.7;">
@@ -518,14 +545,68 @@ async function renderIntegrations() {
         his own Fathom settings in a couple clicks.</li>
       <li><b>Claude &amp; ChatGPT — API key, unavoidable.</b> There is no "log in with Claude/ChatGPT" for API
         access, and the $20/mo Pro/Plus subscriptions do <i>not</i> include API usage (it's billed separately per token).
-        We set these once as server secrets with a spend cap.</li>
+        Paste the key above once and hit Save — no terminal needed.</li>
     </ul>
-    <p style="font-size:12px; color:var(--ink-400);">Note: even OAuth stores a sensitive token on the server — the
-      safety model (server-side only, never in the browser) is identical to an API key. OAuth's win is the click-to-connect
-      UX and auto-expiry, not removing stored credentials.</p>`);
+    <p style="font-size:12px; color:var(--ink-400);">Keys are stored on the server and used only from there — they are
+      never sent to your browser, which is why you see a masked preview instead of the full key after saving. Paste a new
+      key any time to replace it. Set a spend cap in your provider dashboard as a second line of defense.</p>`);
 
   document.querySelectorAll("[data-connect-ghl]").forEach(btn => btn.addEventListener("click", () =>
     toast("GHL Connect needs the marketplace app registered first — see next steps.")));
+
+  const msgFor = id => document.querySelector(`[data-msg="${id}"]`);
+  const setMsg = (id, text, ok) => {
+    const el = msgFor(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = "key-msg " + (ok === true ? "ok" : ok === false ? "bad" : "");
+  };
+
+  // Show/hide what you typed — this only reveals the field you're typing into,
+  // never a previously-saved key (the server never sends those back).
+  document.querySelectorAll("[data-reveal]").forEach(btn => btn.addEventListener("click", () => {
+    const input = document.querySelector(`.key-input[data-int="${btn.dataset.reveal}"]`);
+    const showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    btn.textContent = showing ? "Show" : "Hide";
+  }));
+
+  document.querySelectorAll("[data-save]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.save;
+    const input = document.querySelector(`.key-input[data-int="${id}"]`);
+    const val = input.value.trim();
+    if (!val) return setMsg(id, "Paste a key first.", false);
+    setMsg(id, "Saving…");
+    try {
+      await api.put(`/integrations/${id}`, { secret_value: val });
+      input.value = "";
+      setMsg(id, "Saved. Testing…");
+      const r = await api.post(`/integrations/${id}/test`);
+      setMsg(id, r.message, r.ok);
+      renderIntegrations();
+      toast(r.ok ? "Key saved and verified" : "Key saved, but the test failed");
+    } catch (err) {
+      setMsg(id, err.message, false);
+    }
+  }));
+
+  document.querySelectorAll("[data-test]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.test;
+    setMsg(id, "Testing…");
+    try {
+      const r = await api.post(`/integrations/${id}/test`);
+      setMsg(id, r.message, r.ok);
+    } catch (err) {
+      setMsg(id, err.message, false);
+    }
+  }));
+
+  document.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.remove;
+    await api.req("DELETE", `/integrations/${id}`);
+    toast("Key removed");
+    renderIntegrations();
+  }));
 }
 
 // ---------- utilities ----------

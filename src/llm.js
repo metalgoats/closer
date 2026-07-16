@@ -3,9 +3,23 @@
 
 const TONES = ["casual", "balanced", "formal"];
 
+// Resolves an API key for an account+provider. Prefers the key pasted into the
+// Integrations UI (stored in D1); falls back to a Cloudflare secret so anything
+// previously set via `wrangler secret put` keeps working. Returns null if neither
+// exists, which puts generation into labeled mock mode rather than erroring.
+export async function resolveKey(env, accountId, kind) {
+  const row = await env.DB.prepare(
+    "SELECT secret_value FROM integrations WHERE account_id = ? AND kind = ?"
+  ).bind(accountId, kind).first();
+  if (row?.secret_value) return row.secret_value;
+
+  const envKeys = { anthropic: env.ANTHROPIC_API_KEY, openai: env.OPENAI_API_KEY, fathom: env.FATHOM_API_KEY_OSA };
+  return envKeys[kind] || null;
+}
+
 export async function generateOutputs(env, { account, call, masterPrompt }) {
   const provider = account.llm_provider || "anthropic";
-  const key = provider === "openai" ? env.OPENAI_API_KEY : env.ANTHROPIC_API_KEY;
+  const key = await resolveKey(env, account.id, provider);
   if (!key) return mockOutputs(call);
 
   const debrief = await complete(env, provider, key, [

@@ -1,5 +1,5 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
-import { generateOutputs } from "./llm.js";
+import { generateOutputs, resolveKey } from "./llm.js";
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...headers } });
@@ -48,12 +48,41 @@ async function route(request, env, url) {
   }
 
   // ---- integrations ----
+  // NOTE: secret_value is deliberately NOT selected. The raw key must never reach
+  // the browser — only a masked preview derived server-side.
   if (path === "/api/integrations" && method === "GET") {
     const { results } = await env.DB.prepare(
-      "SELECT i.*, a.name AS account_name FROM integrations i JOIN accounts a ON a.id = i.account_id ORDER BY i.account_id, i.kind"
+      `SELECT i.id, i.account_id, i.kind, i.status, i.secret_name, i.updated_at,
+              a.name AS account_name,
+              CASE WHEN i.secret_value IS NULL OR i.secret_value = '' THEN 0 ELSE 1 END AS has_key,
+              CASE WHEN i.secret_value IS NULL OR i.secret_value = '' THEN NULL
+                   ELSE substr(i.secret_value, 1, 7) || '...' || substr(i.secret_value, -4) END AS key_preview
+       FROM integrations i JOIN accounts a ON a.id = i.account_id
+       ORDER BY i.account_id, i.kind`
     ).all();
-    return json({ integrations: results });
+    // Surface env-var fallbacks so the UI can show "set via wrangler" without exposing them.
+    const envFallback = { anthropic: !!env.ANTHROPIC_API_KEY, openai: !!env.OPENAI_API_KEY, fathom: !!env.FATHOM_API_KEY_OSA };
+    return json({ integrations: results.map(i => ({ ...i, env_fallback: !!envFallback[i.kind] })) });
   }
+
+  const intMatch = path.match(/^\/api\/integrations\/(\d+)$/);
+  if (intMatch && method === "PUT") {
+    const { secret_value } = await request.json();
+    if (!secret_value || !secret_value.trim()) return json({ error: "key required" }, 400);
+    await env.DB.prepare(
+      "UPDATE integrations SET secret_value = ?, status = 'connected', updated_at = datetime('now') WHERE id = ?"
+    ).bind(secret_value.trim(), +intMatch[1]).run();
+    return json({ ok: true });
+  }
+  if (intMatch && method === "DELETE") {
+    await env.DB.prepare(
+      "UPDATE integrations SET secret_value = NULL, status = 'disconnected', updated_at = datetime('now') WHERE id = ?"
+    ).bind(+intMatch[1]).run();
+    return json({ ok: true });
+  }
+
+  const intTestMatch = path.match(/^\/api\/integrations\/(\d+)\/test$/);
+  if (intTestMatch && method === "POST") return testIntegration(env, +intTestMatch[1]);
 
   // ---- calls ----
   if (path === "/api/calls" && method === "GET") {
@@ -255,6 +284,44 @@ async function patchOutput(request, env, id) {
       .bind(id, out.account_id, out.kind, out.tone, out.body, body ?? out.body)
   ]);
   return json({ ok: true });
+}
+
+// ---------- integration test ----------
+
+// Verifies a key actually authenticates, so a bad paste fails here rather than
+// silently surfacing as a failed generation later. Uses each provider's models
+// endpoint: a real auth check that costs zero tokens.
+async function testIntegration(env, id) {
+  const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
+  if (!row) return json({ error: "not found" }, 404);
+
+  const key = await resolveKey(env, row.account_id, row.kind);
+  if (!key) return json({ ok: false, message: "No key saved yet — paste one and hit Save first." });
+
+  const endpoints = {
+    anthropic: { url: "https://api.anthropic.com/v1/models", headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } },
+    openai:    { url: "https://api.openai.com/v1/models",    headers: { "Authorization": `Bearer ${key}` } }
+  };
+  const ep = endpoints[row.kind];
+  if (!ep) {
+    // Don't guess at an API we haven't verified (Fathom, GHL).
+    return json({ ok: false, message: `No connection test available for ${row.kind} yet — the key is saved.` });
+  }
+
+  try {
+    const res = await fetch(ep.url, { headers: ep.headers });
+    if (res.ok) {
+      await env.DB.prepare("UPDATE integrations SET status = 'connected' WHERE id = ?").bind(id).run();
+      return json({ ok: true, message: "Key works — connected." });
+    }
+    await env.DB.prepare("UPDATE integrations SET status = 'disconnected' WHERE id = ?").bind(id).run();
+    const hint = res.status === 401 ? "Key was rejected (401). Check for a typo or a revoked key."
+               : res.status === 403 ? "Key authenticated but lacks permission (403)."
+               : `Provider returned ${res.status}.`;
+    return json({ ok: false, message: hint });
+  } catch (err) {
+    return json({ ok: false, message: `Could not reach the provider: ${err.message}` });
+  }
 }
 
 // ---------- insights ----------

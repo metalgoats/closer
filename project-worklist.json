@@ -2,7 +2,7 @@
   "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-07-16",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 48,
+  "completion_percentage": 50,
   "tasks": [
     {
       "id": "TASK-001",
@@ -408,26 +408,28 @@
     },
     {
       "id": "TASK-014",
-      "title": "Obtain and set LLM API credentials",
-      "description": "Get an Anthropic (and optionally OpenAI) API key from Gabriel, set as Cloudflare Worker secrets, and configure a provider-side spend cap as a second line of defense against runaway cost.",
+      "title": "Obtain LLM API key from Gabriel",
+      "description": "Get an Anthropic API key from Gabriel and paste it into the Integrations screen (see TASK-032), then configure a provider-side spend cap as a second line of defense against runaway cost.",
       "dependencies": [
-        "TASK-009"
+        "TASK-009",
+        "TASK-032"
       ],
       "priority": "high",
       "estimated_complexity": "low",
       "acceptance_criteria": [
-        "ANTHROPIC_API_KEY set as a Worker secret",
-        "Provider spend cap configured",
-        "Key never committed to git",
-        "Integration status flips to connected"
+        "Anthropic API key saved via the Integrations UI",
+        "'Test connection' passes against the real Anthropic API",
+        "Provider-side spend cap configured",
+        "Integration status shows connected"
       ],
       "testing_criteria": [
-        "wrangler secret list shows the key present",
+        "Test-connection button returns success",
+        "A real call processes with model != 'mock'",
         "git log contains no key material"
       ],
       "files_expected_to_change": [],
       "status": "blocked",
-      "notes": "BLOCKED: needs a real API key from Gabriel (he offered logins/keys on the 2026-07-12 call; not yet delivered). VERIFIED 2026-07-16: `wrangler secret list` on production returns [] — zero secrets set, so the live app is mock-only. Missing info: which provider Gabriel wants to fund, and his billing setup. Note the cost correction from TASK-013 — his $20/mo Claude Pro does not cover API usage, so this needs separate API billing. Possible solutions: (a) Gabriel creates an Anthropic console account + billing, (b) Ivan funds a key initially and bills back, (c) start with a low spend cap ($20-50/mo) to prove the workflow.",
+      "notes": "RESCOPED 2026-07-16: the install mechanism changed. Was `wrangler secret put ANTHROPIC_API_KEY` (terminal + wrangler + Cloudflare token — Ivan reported he couldn't follow it, and it was the practical blocker on the whole project). Now: paste it into the Integrations screen (TASK-032). STILL BLOCKED, but only on Gabriel handing over a key — no longer on tooling. COST NOTE (unchanged, from TASK-013): Gabriel's $20/mo Claude Pro does NOT cover API usage — the API bills separately per token, so this needs its own billing setup. Suggest starting with a low spend cap ($20-50/mo) to prove the workflow. Possible funders: (a) Gabriel creates an Anthropic console account + billing, (b) Ivan funds a key initially and bills back.",
       "test_results": []
     },
     {
@@ -915,6 +917,55 @@
       "status": "incomplete",
       "notes": "VERIFIED against current Anthropic docs 2026-07-16. Mechanics: cache write = 1.25x base input (5-min TTL), read = 0.1x; Sonnet 5 minimum cacheable prefix = 1024 tokens (a typical 29-41 min transcript is ~5-8k tokens, so it clears easily). Use the 5-min TTL — the debrief-to-tone gap is seconds, and 1h TTL doubles the write cost for zero benefit. ESTIMATED SAVING (no real measurements exist yet — the app has never made a real API call): ~58% off input tokens, which at Gabriel's ~55 calls/week is roughly $8/mo now (Sonnet 5 intro pricing) or ~$12/mo after the intro rate ends 2026-08-31. Total bill is only ~$28-42/mo either way, so this is a real but SMALL absolute win — priority medium, not high. The latency win may matter more than the cost win. TRAP 1 (why this depends on TASK-015): a broken prefix and an under-length prompt both fail SILENTLY with no error. The ONLY proof it works is non-zero usage.cache_read_input_tokens, which needs a real API key. Do not mark complete on 'the code looks right'. TRAP 2: if caching is wired up wrong, it costs MORE than today — every request pays the 1.25x write premium and nothing ever reads. TRAP 3 (load-bearing ordering): this only works because the debrief is awaited before Promise.all fires the tone calls. A cache entry is only readable after the first response begins. Anyone who later 'optimizes' by firing all 4 in parallel will turn 3 cache reads into 3 cache writes and silently raise the bill. Comment this in the code. BIGGER LEVER, NOT THIS TASK: output tokens are ~half the bill and caching cannot touch them. The 9-section debrief dominates output. Trimming it would cut cost AND address Gabriel's own complaint ('it's just so much, and I don't always read all of it') — that is the deferred v2 decision in NEXT_STEPS decision #3, not this task.",
       "test_results": []
+    },
+    {
+      "id": "TASK-032",
+      "title": "Paste-an-API-key form in Integrations (replace wrangler secret put)",
+      "description": "Ivan 2026-07-16: 'I want an easy place where I can paste the API key... I don't clearly understand the method to install the API key.' Today the only way to install a key is `wrangler secret put` from a terminal with the Cloudflare token — which is the practical blocker on the entire project. Replace it with a paste-and-save field per integration in the Integrations screen, backed by D1, with a Test-connection check so a bad paste is caught immediately instead of surfacing as a failed call later.",
+      "dependencies": [
+        "TASK-008",
+        "TASK-013"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Each integration has a paste field, Save, Test connection, and Remove",
+        "Key is stored server-side in D1 and used by generateOutputs()",
+        "Key is NEVER returned to the browser — GET returns only a masked preview (e.g. sk-ant-...3f2a) plus last-updated",
+        "Test connection makes a real auth check against the provider and reports pass/fail",
+        "Saving a key flips the integration status to connected; Remove reverts it to disconnected",
+        "Existing `wrangler secret put` env vars still work as a fallback when no DB key is set (does not break the current deploy)",
+        "New migration is additive-only (ADD COLUMN), never drops or rewrites existing data",
+        "No key material is ever written to git or to logs"
+      ],
+      "testing_criteria": [
+        "Save a key via the UI; assert it persists to D1 and generateOutputs() picks it up over the env fallback",
+        "GET /api/integrations returns a masked preview and NOT the raw key (assert the raw value is absent from the response body)",
+        "Test connection with a deliberately bad key returns a clear failure, not a crash",
+        "Remove clears the value and reverts status to disconnected",
+        "With no DB key and no env var, generation still falls back to mock mode rather than erroring",
+        "Fresh migrate on an existing DB preserves all existing rows"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0002_integration_secrets.sql",
+        "closer-app/src/index.js",
+        "closer-app/src/llm.js",
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "status": "completed",
+      "notes": "DECISION FLAGGED (2026-07-16): Ivan said 'this is a private site with access for only myself and Gabriel, I don't need the API key to be hidden.' Honoring the intent (make it easy, no terminal) while keeping the key WRITE-ONLY — stored in D1, never echoed back to the browser, masked preview only. Rationale: costs zero convenience, and it means a compromised shared login lets someone burn tokens through the app rather than exfiltrate the key and spend it elsewhere at unlimited scale. This is exactly the '$100k leaked key' scenario Ivan himself raised with Gabriel on the 2026-07-12 call. If Ivan wants the raw key displayed, that's a one-line change and his call to make. STORAGE TRADEOFF: the key sits in D1 in plaintext (not encrypted). Encrypting it would need an encryption key in a Cloudflare secret — reintroducing the exact bootstrapping problem this task removes. Accepted given the threat model, BUT note the real consequence: anyone holding the Cloudflare API token can read D1 directly. That token was pasted in plaintext chat on 2026-07-15 and Ivan declined to rotate it — so the API key stored here inherits that exposure. Worth revisiting if the token is ever shared further. Test-connection uses GET /v1/models on both Anthropic and OpenAI — a real auth check that costs zero tokens. Fathom's test is not implemented (their API shape isn't verified yet — don't guess); Fathom saves without a test. UNBLOCKS TASK-014, which gates TASK-015 and nearly all remaining high-value work. DONE 2026-07-16. Also corrected now-false UI copy: the Integrations subtitle claimed 'Cloudflare secrets / encrypted tokens' — keys now live in D1 unencrypted, so the copy was rewritten to say what is actually true (stored server-side, never sent back to the browser).",
+      "test_results": [
+        "2026-07-16: fresh local migrate applies 0001+0002 cleanly; secret_value/updated_at columns present — pass",
+        "2026-07-16: PUT /api/integrations/2 saves key; GET /api/integrations returns has_key=1 + preview 'sk-ant-...3f2a' and the raw key string is ABSENT from the response body (grepped) — pass",
+        "2026-07-16: POST /api/integrations/2/test with a bad key -> real Anthropic call -> {ok:false,'Key was rejected (401). Check for a typo or a revoked key.'}, status reverted to disconnected, no crash — pass",
+        "2026-07-16: test on fathom (no test endpoint) returns a graceful message, no crash — pass",
+        "2026-07-16: RESOLVER PRECEDENCE PROVEN — with fake key in D1, processing call 4 attempted a real API call and returned Anthropic 401 (i.e. no longer mock); after DELETE, same call fell back to mock (model='mock', 7 outputs) — pass",
+        "2026-07-16: browser end-to-end — typed key, clicked Save; auto-tested, card shows '✓ Key saved sk-ant-...9z9z · <timestamp>', input cleared, Remove appeared, toast 'Key saved, but the test failed' (correct for a fake key); raw key never rendered — pass",
+        "2026-07-16: git diff --cached contains no key material — pass",
+        "2026-07-16: PRODUCTION migration 0002 applied; row counts identical before/after (users=1, accounts=1, integrations=4, templates=1) — no data loss — pass",
+        "2026-07-16: deployed (version 296ed92e); site 200, /api/integrations returns 401 unauthenticated, new key UI present in live app.js — pass"
+      ]
     }
   ]
 }
