@@ -2,7 +2,7 @@
   "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-07-16",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 50,
+  "completion_percentage": 48,
   "tasks": [
     {
       "id": "TASK-001",
@@ -882,6 +882,39 @@
         "2026-07-16: grep across repo — no functional hypnotherapy references remain (only intentional scope-change comments) — pass",
         "2026-07-16: deployed (version 13f5c00d); live app.js byte-identical to local (27883 bytes), greps 0 hypnotherapy refs. NOTE: an initial post-deploy grep returned 1 — traced to Cloudflare edge-cache propagation lag, not a stale asset; re-verified clean across multiple requests"
       ]
+    },
+    {
+      "id": "TASK-031",
+      "title": "Prompt caching: cache the transcript as a shared prefix across the 4 per-call requests",
+      "description": "Ivan asked (2026-07-16) whether prompt caching would lower API costs. VERIFIED: yes, but it requires restructuring, not just adding cache_control. Today generateOutputs() sends the transcript FOUR times per call (1 debrief + 3 tone variants) and sets no cache_control anywhere. Caching is a strict prefix match and the transcript currently sits at the END of every prompt behind differing instructions, so the 4 requests share no cacheable prefix at all. Fix: invert to transcript-first as content blocks, with cache_control on the transcript block, so the awaited debrief writes the cache and the 3 parallel tone calls read it.",
+      "dependencies": [
+        "TASK-014",
+        "TASK-015"
+      ],
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Transcript is the first content block of all 4 requests and is byte-identical across them",
+        "cache_control {type: ephemeral} sits on the transcript block (5-min TTL default, NOT 1h)",
+        "usage.cache_creation_input_tokens is non-zero on the debrief request",
+        "usage.cache_read_input_tokens is non-zero on all 3 tone requests",
+        "Measured input tokens per call drop materially vs the pre-change baseline",
+        "Debrief still completes BEFORE the tone calls fire (the awaited ordering is what makes the cache readable)",
+        "Master prompt stays OUT of the cached prefix (it is only used by the debrief; caching it into the tone calls costs more and pollutes their context)"
+      ],
+      "testing_criteria": [
+        "Process a real transcript; assert cache_creation_input_tokens > 0 on request 1 and cache_read_input_tokens > 0 on requests 2-4",
+        "Compare measured total input tokens per call before vs after the change (must go DOWN, not up)",
+        "Test a short transcript (< ~1024 tokens): confirm it silently does not cache and the run still succeeds",
+        "Confirm output quality is unchanged — reordering transcript-before-instructions must not degrade the debrief or the drafts",
+        "Measure wall-clock time before/after (cache reads should cut prefill latency — Gabriel's #1 complaint is waiting)"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js"
+      ],
+      "status": "incomplete",
+      "notes": "VERIFIED against current Anthropic docs 2026-07-16. Mechanics: cache write = 1.25x base input (5-min TTL), read = 0.1x; Sonnet 5 minimum cacheable prefix = 1024 tokens (a typical 29-41 min transcript is ~5-8k tokens, so it clears easily). Use the 5-min TTL — the debrief-to-tone gap is seconds, and 1h TTL doubles the write cost for zero benefit. ESTIMATED SAVING (no real measurements exist yet — the app has never made a real API call): ~58% off input tokens, which at Gabriel's ~55 calls/week is roughly $8/mo now (Sonnet 5 intro pricing) or ~$12/mo after the intro rate ends 2026-08-31. Total bill is only ~$28-42/mo either way, so this is a real but SMALL absolute win — priority medium, not high. The latency win may matter more than the cost win. TRAP 1 (why this depends on TASK-015): a broken prefix and an under-length prompt both fail SILENTLY with no error. The ONLY proof it works is non-zero usage.cache_read_input_tokens, which needs a real API key. Do not mark complete on 'the code looks right'. TRAP 2: if caching is wired up wrong, it costs MORE than today — every request pays the 1.25x write premium and nothing ever reads. TRAP 3 (load-bearing ordering): this only works because the debrief is awaited before Promise.all fires the tone calls. A cache entry is only readable after the first response begins. Anyone who later 'optimizes' by firing all 4 in parallel will turn 3 cache reads into 3 cache writes and silently raise the bill. Comment this in the code. BIGGER LEVER, NOT THIS TASK: output tokens are ~half the bill and caching cannot touch them. The 9-section debrief dominates output. Trimming it would cut cost AND address Gabriel's own complaint ('it's just so much, and I don't always read all of it') — that is the deferred v2 decision in NEXT_STEPS decision #3, not this task.",
+      "test_results": []
     }
   ]
 }
