@@ -20,5 +20,5 @@ crons = ["*/5 * * * *", "0 17 * * SUN"]
 
 # Secrets (set via `wrangler secret put NAME` — NEVER in git):
 #   ANTHROPIC_API_KEY, OPENAI_API_KEY
-#   FATHOM_API_KEY_OSA, FATHOM_API_KEY_HYPNO
-#   GHL_API_KEY_OSA, GHL_API_KEY_HYPNO
+#   FATHOM_API_KEY_OSA
+#   GHL_CLIENT_ID, GHL_CLIENT_SECRET  (OAuth — see TASK-018/019)

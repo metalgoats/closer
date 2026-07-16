@@ -64,5 +64,7 @@ public/          the UI (ported from the design mockup)
 - Outputs are **editable in place**; every pre-copy edit is stored in `edits`.
 - Sunday cron: once ≥10 unfolded edits exist per (account, tone), a **suggestion** is created for
   approval — the prompt is never changed automatically.
-- Each account (On Screen Authority / Hypnotherapy) has its own prompt template, Fathom
-  connection, and GHL target.
+- The app is scoped to a single account, **On Screen Authority** (hypnotherapy was removed from
+  scope 2026-07-16). The per-account architecture is retained — each account has its own prompt
+  template, Fathom connection, and GHL target — so additional channels or tenants can be added
+  without a refactor.

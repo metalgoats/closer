@@ -515,7 +515,7 @@ async function renderIntegrations() {
         refreshing token. One-time setup: we register a GHL marketplace app to get a Client ID/Secret, then this
         Connect button works for both sub-accounts.</li>
       <li><b>Fathom — a self-serve key, not a login.</b> No developer dashboard: Gabriel generates a key inside
-        his own Fathom settings in a couple clicks. Two keys, since OSA and hypnotherapy use separate Fathom accounts.</li>
+        his own Fathom settings in a couple clicks.</li>
       <li><b>Claude &amp; ChatGPT — API key, unavoidable.</b> There is no "log in with Claude/ChatGPT" for API
         access, and the $20/mo Pro/Plus subscriptions do <i>not</i> include API usage (it's billed separately per token).
         We set these once as server secrets with a spend cap.</li>

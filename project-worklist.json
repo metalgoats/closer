@@ -1,0 +1,887 @@
+{
+  "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
+  "last_updated": "2026-07-16",
+  "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
+  "completion_percentage": 50,
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Capture source requirements and master prompt",
+      "description": "Transcribe Gabriel's two workflow walkthrough videos, save his master post-call prompt verbatim, and establish the project docs (README, NEXT_STEPS) as durable context for future sessions.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Master prompt saved verbatim to a file",
+        "Pain points from the videos recorded (slow generation, too much output, manual copy/paste, tone rewriting)",
+        "README + NEXT_STEPS exist and explain the project to a cold reader"
+      ],
+      "testing_criteria": [
+        "Docs readable standalone without conversation history"
+      ],
+      "files_expected_to_change": [
+        "post-call-debrief-prompt.md",
+        "README.md",
+        "NEXT_STEPS.md"
+      ],
+      "status": "completed",
+      "notes": "Prompt saved with Gabriel's annotated complaints. Source: two Zoom walkthroughs, 2026-07-10.",
+      "test_results": [
+        "2026-07-11: Docs reviewed for standalone readability — pass"
+      ]
+    },
+    {
+      "id": "TASK-002",
+      "title": "Design UI direction via interactive mockup",
+      "description": "Establish the inbox metaphor, all-black blue/violet/pink visual language, tiered scorecards, TL;DR highlights, sent-tracking, filters, Insights view, and responsive behavior — validated with Gabriel before committing to real code.",
+      "dependencies": [
+        "TASK-001"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Three outputs displayed separately, no scrolling past one to reach another",
+        "One-click copy per output",
+        "Tone control with AI-suggested default",
+        "Design approved by Gabriel"
+      ],
+      "testing_criteria": [
+        "All interactions exercised in a real browser",
+        "Responsive at narrow widths without clipping"
+      ],
+      "files_expected_to_change": [
+        "scratchpad mockup HTML (superseded by closer-app/public)"
+      ],
+      "status": "completed",
+      "notes": "Iterated: warm Mac Mail -> 1995 Hackers terminal (rejected, unreadable) -> all-black w/ blue/violet/pink. Gabriel on 2026-07-12: 'This is incredible.' Mockup superseded by the real app but drove every UI decision.",
+      "test_results": [
+        "2026-07-11: Browser-verified nav, tone switching, copy, responsive scroll — pass",
+        "2026-07-12: Reviewed live with Gabriel — approved"
+      ]
+    },
+    {
+      "id": "TASK-003",
+      "title": "Decide architecture and deployment model",
+      "description": "Pivot from local macOS app to SaaS. Choose Cloudflare Workers + D1 + GitHub, email/password auth, vanilla front-end. Establish the code-vs-data separation guarantee so deploys never destroy user data.",
+      "dependencies": [
+        "TASK-002"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "SaaS decision recorded and supersedes local-app docs",
+        "Code/data separation documented (repo = code only, D1 = data, additive migrations only)",
+        "Stack decisions confirmed by Ivan"
+      ],
+      "testing_criteria": [
+        "Plan reviewed against Gabriel call transcript for dropped requirements"
+      ],
+      "files_expected_to_change": [
+        "SAAS-PLAN.md",
+        "README.md",
+        "NEXT_STEPS.md",
+        "ROADMAP.md"
+      ],
+      "status": "completed",
+      "notes": "Gabriel on call: 'let's just build online for now.' Menu-bar app spec parked as future native companion. Ivan confirmed: email+password auth, D1, vanilla FE.",
+      "test_results": [
+        "2026-07-12: Decisions confirmed via AskUserQuestion — all four answered"
+      ]
+    },
+    {
+      "id": "TASK-004",
+      "title": "Scaffold Worker + D1 schema + migrations",
+      "description": "Create the repo: Cloudflare Worker serving UI and API, D1 schema (users, sessions, accounts, integrations, prompt_templates, calls, outputs, edits, suggestions), additive-only versioned migrations, wrangler.toml, dev seed.",
+      "dependencies": [
+        "TASK-003"
+      ],
+      "priority": "high",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "App runs locally with no Cloudflare account (simulated D1)",
+        "Schema covers all entities in the plan's data model",
+        "Migrations are additive-only",
+        "No secrets in git"
+      ],
+      "testing_criteria": [
+        "npm run dev serves UI + API locally",
+        "Migrations apply cleanly to a fresh DB",
+        "Seed data loads"
+      ],
+      "files_expected_to_change": [
+        "closer-app/wrangler.toml",
+        "closer-app/package.json",
+        "closer-app/migrations/0001_init.sql",
+        "closer-app/src/index.js",
+        "closer-app/seed/seed.sql",
+        "closer-app/.gitignore"
+      ],
+      "status": "completed",
+      "notes": "10 tables. .gitignore excludes node_modules, .wrangler, .dev.vars. wrangler.toml had placeholder database_id until provisioning.",
+      "test_results": [
+        "2026-07-12: migrations apply --local -> 0001_init.sql OK",
+        "2026-07-12: seed loads, dev server returns 200 on /"
+      ]
+    },
+    {
+      "id": "TASK-005",
+      "title": "Implement auth (email + password, sessions)",
+      "description": "PBKDF2-SHA256 password hashing via Web Crypto, HttpOnly secure session cookies, first-run setup endpoint, all API routes gated.",
+      "dependencies": [
+        "TASK-004"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Unauthenticated API requests rejected with 401",
+        "Passwords stored hashed+salted, never plaintext",
+        "Session cookie is HttpOnly + Secure + SameSite",
+        "First-run creates the account"
+      ],
+      "testing_criteria": [
+        "GET /api/me unauthenticated returns 401",
+        "Setup then authenticated request succeeds",
+        "Constant-time hash comparison used"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/auth.js",
+        "closer-app/src/index.js"
+      ],
+      "status": "completed",
+      "notes": "100k PBKDF2 iterations. Constant-time compare implemented in verifyPassword.",
+      "test_results": [
+        "2026-07-12: /api/me unauthenticated -> 401 — pass",
+        "2026-07-12: POST /api/setup -> session cookie set, subsequent calls authorized — pass",
+        "2026-07-15: production /api/me -> 401 — pass"
+      ]
+    },
+    {
+      "id": "TASK-006",
+      "title": "Port UI with Gabriel's requested layout",
+      "description": "Full-width debrief section on top; three columns below: Text Message, Email, GoHighLevel Note. Wire front-end to real D1-backed API. Carry over inbox metaphor, tiered scorecards, TL;DR, filters, Insights, search.",
+      "dependencies": [
+        "TASK-004",
+        "TASK-005"
+      ],
+      "priority": "high",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "Debrief spans full width above the three columns",
+        "GHL Note is a first-class column (not a header button)",
+        "All three tone variants generated up front; switching is instant",
+        "Copy button per output"
+      ],
+      "testing_criteria": [
+        "Layout verified visually in a browser",
+        "Tone switch swaps SMS+email without regeneration",
+        "Copy places correct text on clipboard"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/index.html",
+        "closer-app/public/styles.css",
+        "closer-app/public/app.js"
+      ],
+      "status": "completed",
+      "notes": "Exactly matches the layout Gabriel and Ivan agreed on the 2026-07-12 call.",
+      "test_results": [
+        "2026-07-15: Browser-verified full-width debrief + 3 columns (Text/Email/GHL Note) — pass",
+        "2026-07-15: 7 outputs per call confirmed (3 sms tones, 3 email tones, 1 ghl_note) — pass"
+      ]
+    },
+    {
+      "id": "TASK-007",
+      "title": "In-place output editing with edit capture",
+      "description": "Outputs editable by clicking into the field (no edit button). Saving on blur records the original vs edited text in the edits table, tagged by tone and account, to feed batched learning.",
+      "dependencies": [
+        "TASK-006"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Text/email/GHL fields editable inline, no separate edit mode",
+        "Edit persists to outputs table",
+        "Edit diff recorded to edits table with tone + account",
+        "Unchanged blur does not create an edit row"
+      ],
+      "testing_criteria": [
+        "PATCH /api/outputs/:id persists change",
+        "edits table gains a row with correct tone/account",
+        "No-op edit creates no row"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "completed",
+      "notes": "Implements Gabriel's ask: 'I can just click into this field and start editing.' Batched-learning rationale (avoid outlier calls) preserved — edits only accumulate here, they never auto-change the prompt.",
+      "test_results": [
+        "2026-07-12: Edited Jeffrey's formal SMS -> edits table row id=1, kind=sms, tone=formal — pass",
+        "2026-07-12: Unchanged blur -> {ok:true, unchanged:true}, no row — pass"
+      ]
+    },
+    {
+      "id": "TASK-008",
+      "title": "Per-account model (OSA / Hypnotherapy)",
+      "description": "Each sales channel is its own account with its own prompt template, Fathom connection, LLM provider, and CRM target. Integrations move from one global page to per-account.",
+      "dependencies": [
+        "TASK-004"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Two accounts exist: On Screen Authority, Hypnotherapy",
+        "Integrations scoped per account",
+        "Calls filterable by account",
+        "Each account has its own versioned prompt template"
+      ],
+      "testing_criteria": [
+        "GET /api/accounts returns both",
+        "GET /api/calls?account=N filters correctly",
+        "Integrations view groups by account"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0001_init.sql",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js",
+        "closer-app/seed/production_seed.sql"
+      ],
+      "status": "completed",
+      "notes": "Confirmed on call: two separate Fathom accounts (personal for hypnotherapy, OSA workspace). Apple Mail 'add an account' metaphor. SUPERSEDED IN PART 2026-07-16 by TASK-030: Hypnotherapy is out of scope; the app now runs a single account (On Screen Authority). The per-account architecture built here is RETAINED and still load-bearing — kept as history per rule 9, and it remains the foundation for TASK-027 multi-tenancy.",
+      "test_results": [
+        "2026-07-15: production query -> accounts [On Screen Authority, Hypnotherapy], 8 integration slots — pass",
+        "2026-07-15: Integrations view renders grouped by account — pass"
+      ]
+    },
+    {
+      "id": "TASK-009",
+      "title": "Provision production Cloudflare D1 and first deploy",
+      "description": "Create the D1 database, wire database_id, apply migrations remotely, seed real accounts + the actual master prompt (no fake demo calls), deploy the Worker.",
+      "dependencies": [
+        "TASK-004",
+        "TASK-005",
+        "TASK-006"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "D1 database created and schema applied",
+        "Real accounts + real master prompt seeded",
+        "NO fake demo calls in production",
+        "App reachable at a public URL"
+      ],
+      "testing_criteria": [
+        "Live URL returns 200",
+        "Auth gate returns 401 unauthenticated",
+        "DB query confirms accounts + prompt seeded"
+      ],
+      "files_expected_to_change": [
+        "closer-app/wrangler.toml",
+        "closer-app/seed/production_seed.sql"
+      ],
+      "status": "completed",
+      "notes": "Live at https://closer.gabriel-galindo.workers.dev. Cloudflare account is Gabriel's personal ('Gabriel Galindo', derikgab@gmail.com), NOT a separate shared org account as originally planned — deviation accepted by Ivan.",
+      "test_results": [
+        "2026-07-15: d1 migrations apply --remote -> 0001_init.sql OK",
+        "2026-07-15: production seed -> 6 queries, 18 rows written",
+        "2026-07-15: https://closer.gabriel-galindo.workers.dev -> 200; /api/me -> 401 — pass"
+      ]
+    },
+    {
+      "id": "TASK-010",
+      "title": "Auto-deploy on push (GitHub Actions)",
+      "description": "GitHub Action running migrations then wrangler deploy on every push to main, so deploys are not manual.",
+      "dependencies": [
+        "TASK-009"
+      ],
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Workflow file on main",
+        "Repo secrets CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID present",
+        "A real run completes successfully",
+        "Migrations run before deploy"
+      ],
+      "testing_criteria": [
+        "gh run watch exits 0",
+        "Site still serves after the automated deploy"
+      ],
+      "files_expected_to_change": [
+        ".github/workflows/deploy.yml"
+      ],
+      "status": "completed",
+      "notes": "Initially blocked: GitHub token lacked 'workflow' OAuth scope. Ivan ran `gh auth refresh -s workflow` on 2026-07-16, then it pushed and ran. Known cosmetic warning: actions/checkout@v4 and setup-node@v4 target deprecated Node 20 (forced onto Node 24, still passing) — see TASK-021.",
+      "test_results": [
+        "2026-07-16: gh run 29391130635 -> exit 0, deploy succeeded",
+        "2026-07-16: site 200 + /api/me 401 after automated deploy — pass"
+      ]
+    },
+    {
+      "id": "TASK-011",
+      "title": "Shared login model",
+      "description": "Replace single-admin lockout with one shared account Ivan and Gabriel both use. Open registration explicitly declined (public URL holding client PII).",
+      "dependencies": [
+        "TASK-005",
+        "TASK-009"
+      ],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Ivan's original solo admin account cleared",
+        "First sign-in creates the shared account",
+        "Login screen explains the shared-account model",
+        "Open registration NOT enabled"
+      ],
+      "testing_criteria": [
+        "Production users table cleared then repopulated by first sign-in",
+        "Login copy verified in browser"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/index.html"
+      ],
+      "status": "completed",
+      "notes": "Recommended against 'anyone who logs in can use it' — public URL + client transcripts/psych profiles. Ivan accepted shared login. VERIFIED 2026-07-16: production users table now has 1 row, so the shared account has been created by Ivan or Gabriel.",
+      "test_results": [
+        "2026-07-15: DELETE FROM sessions/users -> production reset to first-run",
+        "2026-07-15: local first-run sign-in created account and loaded app — pass",
+        "2026-07-16: production users COUNT = 1 — shared account exists"
+      ]
+    },
+    {
+      "id": "TASK-012",
+      "title": "Fix nav failing to return to calls view",
+      "description": "Clicking an account or call filter only refreshed the left-hand list, leaving a stale workspace page (e.g. Integrations) in the detail pane — appeared frozen until manual refresh.",
+      "dependencies": [
+        "TASK-006"
+      ],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Clicking All Accounts / an account from a workspace view returns to the calls view",
+        "Clicking a call filter does the same",
+        "Workspace nav item de-activates",
+        "No manual refresh required"
+      ],
+      "testing_criteria": [
+        "From Integrations, click All Accounts -> detail shows a call",
+        "Workspace nav no longer marked active",
+        "No console errors"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/app.js"
+      ],
+      "status": "completed",
+      "notes": "Reported by Ivan 2026-07-15. Root cause: account/filter handlers called renderCallList() but never touched the detail pane. Fixed by extracting openRelevantCall() + showCallsView().",
+      "test_results": [
+        "2026-07-15: Browser test — Integrations -> All Accounts -> detail = 'Jeffrey R. Closed', integrationsStillActive=false — pass",
+        "2026-07-15: console errors — none"
+      ]
+    },
+    {
+      "id": "TASK-013",
+      "title": "Research and surface real integration auth methods",
+      "description": "Ivan asked to avoid API keys and use logins where possible. Verify each provider's actual auth model against current docs and reflect it honestly in the Integrations UI.",
+      "dependencies": [
+        "TASK-008"
+      ],
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Each provider's real auth method verified against current docs, not assumed",
+        "UI shows per-provider auth badge",
+        "GHL shows a Connect (OAuth) affordance",
+        "Cost reality of LLM APIs surfaced (Pro/Plus subscriptions exclude API usage)"
+      ],
+      "testing_criteria": [
+        "Integrations view renders correct badges per provider",
+        "No console errors"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/app.js",
+        "SAAS-PLAN.md"
+      ],
+      "status": "completed",
+      "notes": "Findings: GoHighLevel = true OAuth login (v2 API is OAuth-only, static keys deprecated). Fathom = self-serve key (own-account uses X-Api-Key; their OAuth is only for publishing apps to others). Claude/OpenAI = API key, no login exists for API access. Also corrected a cost assumption from the call: $20/mo Pro/Plus does NOT include API usage.",
+      "test_results": [
+        "2026-07-15: Browser — badges render: Claude 'API key', Fathom 'Self-serve key', GHL 'Login (OAuth)' + Connect — pass",
+        "2026-07-15: GHL Connect button present but stubbed (toast) — expected, see TASK-018"
+      ]
+    },
+    {
+      "id": "TASK-014",
+      "title": "Obtain and set LLM API credentials",
+      "description": "Get an Anthropic (and optionally OpenAI) API key from Gabriel, set as Cloudflare Worker secrets, and configure a provider-side spend cap as a second line of defense against runaway cost.",
+      "dependencies": [
+        "TASK-009"
+      ],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "ANTHROPIC_API_KEY set as a Worker secret",
+        "Provider spend cap configured",
+        "Key never committed to git",
+        "Integration status flips to connected"
+      ],
+      "testing_criteria": [
+        "wrangler secret list shows the key present",
+        "git log contains no key material"
+      ],
+      "files_expected_to_change": [],
+      "status": "blocked",
+      "notes": "BLOCKED: needs a real API key from Gabriel (he offered logins/keys on the 2026-07-12 call; not yet delivered). VERIFIED 2026-07-16: `wrangler secret list` on production returns [] — zero secrets set, so the live app is mock-only. Missing info: which provider Gabriel wants to fund, and his billing setup. Note the cost correction from TASK-013 — his $20/mo Claude Pro does not cover API usage, so this needs separate API billing. Possible solutions: (a) Gabriel creates an Anthropic console account + billing, (b) Ivan funds a key initially and bills back, (c) start with a low spend cap ($20-50/mo) to prove the workflow.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-015",
+      "title": "Validate real LLM generation end-to-end",
+      "description": "The Anthropic/OpenAI call code in src/llm.js is written but has NEVER run against a real API. Validate that the model reliably returns the strict JSON contract, that all 7 outputs generate, and that tone/outcome inference is sane on a real transcript.",
+      "dependencies": [
+        "TASK-014"
+      ],
+      "priority": "high",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "A real transcript produces a valid debrief JSON (no parse errors)",
+        "All 7 outputs generate (3 sms tones, 3 email tones, 1 ghl_note)",
+        "suggestedTone and outcome are sensible for the transcript",
+        "GHL note stays under 10,000 chars",
+        "Failure path is graceful if the model returns malformed JSON"
+      ],
+      "testing_criteria": [
+        "Process a real call transcript against the live API",
+        "Assert JSON parses and all output rows exist with model != 'mock'",
+        "Deliberately test a malformed-JSON response path",
+        "Measure wall-clock time (Gabriel's #1 complaint is waiting)"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js",
+        "closer-app/src/index.js"
+      ],
+      "status": "incomplete",
+      "notes": "RISK: extractJson() does naive brace-slicing and JSON.parse with no retry — a chatty model response will throw and fail the whole process. Real-world validation is likely to surface prompt/parse fixes. Also verify the parallel tone generation actually delivers the speed win promised on the call.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-016",
+      "title": "Obtain Fathom API credential (On Screen Authority)",
+      "description": "Gabriel generates an API key in the On Screen Authority Fathom account (Settings -> Integrations -> API Access).",
+      "dependencies": [
+        "TASK-009",
+        "TASK-030"
+      ],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "FATHOM_API_KEY_OSA set as a Worker secret",
+        "The OSA Fathom integration row flips to connected"
+      ],
+      "testing_criteria": [
+        "wrangler secret list shows FATHOM_API_KEY_OSA",
+        "A test authenticated call to Fathom's API returns recordings"
+      ],
+      "files_expected_to_change": [],
+      "status": "blocked",
+      "notes": "RESCOPED 2026-07-16 by TASK-030: was two keys (OSA + hypnotherapy); now ONE key for On Screen Authority only. BLOCKED: needs Gabriel to generate it. Self-serve, ~2 clicks, no developer account needed (per TASK-013 research). Note the OSA Fathom is a workspace Gabriel logs into rather than owns — missing info: whether his access level permits generating an API key there, and whether the plan tier includes API access.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-017",
+      "title": "Implement Fathom transcript ingest",
+      "description": "Replace the pollFathom stub with a real implementation: fetch new recordings per account since last poll, insert calls, auto-extract client name, and trigger processing so debriefs land in the inbox automatically.",
+      "dependencies": [
+        "TASK-016",
+        "TASK-015"
+      ],
+      "priority": "high",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "New Fathom calls appear in the inbox without manual paste",
+        "No duplicate calls on repeated polls",
+        "Correct account attribution per Fathom source",
+        "Client name auto-extracted",
+        "Poll failure does not crash the cron or lose data"
+      ],
+      "testing_criteria": [
+        "Simulate a poll against real Fathom API and confirm call rows created",
+        "Run poll twice; assert no duplicates",
+        "Assert calls route to the correct account",
+        "Test API-failure path"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/migrations/"
+      ],
+      "status": "incomplete",
+      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste — highest user value of the remaining work.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-018",
+      "title": "Register GoHighLevel marketplace app",
+      "description": "Register a GHL marketplace app to obtain Client ID/Secret, enabling the OAuth login flow that lets Gabriel click Connect instead of pasting keys.",
+      "dependencies": [
+        "TASK-009"
+      ],
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "GHL marketplace app registered",
+        "Client ID + Secret set as Worker secrets",
+        "Redirect URI configured to the production callback",
+        "Required scopes selected (contacts read/write, notes)"
+      ],
+      "testing_criteria": [
+        "Client ID/Secret present as secrets",
+        "Redirect URI matches deployed callback route"
+      ],
+      "files_expected_to_change": [],
+      "status": "blocked",
+      "notes": "RESCOPED 2026-07-16 by TASK-030: now only the On Screen Authority GHL sub-account, not both. BLOCKED: requires Ivan to register the app in the GHL developer marketplace. Missing info: which GHL scopes are needed, and whether Gabriel's GHL plan permits marketplace apps. Possible solutions: (a) register the marketplace app for true OAuth, (b) fall back to GHL Private Integration Tokens (static, simpler, but reintroduces a pasted token — contradicts Ivan's stated preference), (c) defer GHL entirely and keep copy/paste for CRM notes, which Gabriel already tolerates.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-019",
+      "title": "Implement GHL OAuth connect flow",
+      "description": "Build the real OAuth 2.0 flow behind the existing stubbed Connect button: authorize redirect, callback handler, encrypted token storage, and automatic refresh (GHL access tokens expire every 24h).",
+      "dependencies": [
+        "TASK-018"
+      ],
+      "priority": "medium",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "Connect button initiates GHL OAuth and returns successfully",
+        "Access + refresh tokens stored server-side, never exposed to the browser",
+        "Token auto-refreshes before expiry without user action",
+        "Integration status reflects real connection state",
+        "Per-account connection (OSA and hypnotherapy connect independently)"
+      ],
+      "testing_criteria": [
+        "Full OAuth round trip against real GHL",
+        "Force token expiry and confirm refresh",
+        "Confirm no token material reaches client-side JS",
+        "CSRF state parameter validated on callback"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/migrations/",
+        "closer-app/public/app.js"
+      ],
+      "status": "incomplete",
+      "notes": "Connect button currently shows a toast explaining it needs the marketplace app first. Requires a new migration for oauth token storage (access_token, refresh_token, expires_at per account). Security note recorded in UI: OAuth still stores a sensitive token server-side — its win is click-to-connect UX + auto-expiry, not eliminating stored credentials.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-020",
+      "title": "Generate pre-call briefs and callback notes",
+      "description": "GAP FOUND 2026-07-16: the pre-call brief is a designed, shipped UI feature with schema support, but nothing ever populates it. processCall never writes precall_brief, and callback_note is only manually patchable. On real (non-seeded) calls the follow-up banner will render empty.",
+      "dependencies": [
+        "TASK-015"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "processCall populates precall_brief for follow-up calls",
+        "callback_note populated when the transcript implies a callback",
+        "Follow-up banner renders meaningful content on a real generated call",
+        "Empty/absent brief degrades gracefully rather than showing a blank banner"
+      ],
+      "testing_criteria": [
+        "Process a real follow-up transcript; assert precall_brief is non-empty",
+        "Assert the banner displays it in the browser",
+        "Process a closed-won call; assert no misleading follow-up banner"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js",
+        "closer-app/src/index.js"
+      ],
+      "status": "incomplete",
+      "notes": "Discovered by auditing production rather than trusting the demo. The seed data made this look finished — Priya/Marcus had hand-written briefs in seed.sql, masking the missing generation path. This is exactly the class of silent gap the work list exists to catch. Pre-call briefs were called out in ROADMAP as the highest-leverage v2 idea ('flips the product from post-call paperwork to pre-call advantage').",
+      "test_results": []
+    },
+    {
+      "id": "TASK-021",
+      "title": "Retune the OSA prompt template to fix scoring bias",
+      "description": "The live master prompt was written for pain/trauma-driven hypnosis sales. Applied to On Screen Authority calls it systematically under-scores Gabriel, because that style would repel sophisticated B2B buyers. Rewrite the single remaining template for OSA dynamics.",
+      "dependencies": [
+        "TASK-015",
+        "TASK-030"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "The OSA template reflects fast-moving sophisticated-buyer dynamics rather than pain amplification",
+        "Template remains versioned (edit creates a new version, history preserved)",
+        "Scoring on an OSA call is no longer penalized for absent pain-amplification",
+        "Gabriel agrees the resulting scores are fair"
+      ],
+      "testing_criteria": [
+        "Run the same OSA transcript against old and new templates; compare scorecards",
+        "Confirm the scorecard dimensions still map to the UI's expected 10 dimensions",
+        "Confirm Gabriel agrees the new scoring is fair"
+      ],
+      "files_expected_to_change": [
+        "production data (prompt_templates table)"
+      ],
+      "status": "incomplete",
+      "notes": "RESCOPED + PRIORITY RAISED 2026-07-16 by TASK-030: was 'diverge two templates'; now 'retune the one remaining template'. Priority medium -> high, because with hypnotherapy gone the ONLY live template is the hypnotherapy-written one, so 100% of Gabriel's calls are now scored by a prompt built for the wrong sales motion. Gabriel on call: 'those people are fast decision-making... they smell that from a mile away.' Templates are editable in-app and versioned, so this is likely a data change, not code — Gabriel should drive the wording.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-022",
+      "title": "Real LLM analysis for weekly edit suggestions",
+      "description": "The Sunday cron correctly batches edits and gates on >=10 per (account, tone), but the 'analysis' it writes is placeholder text, not an actual LLM-written diff analysis. Suggestions are therefore not yet useful.",
+      "dependencies": [
+        "TASK-015",
+        "TASK-007"
+      ],
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Sunday job sends batched edit diffs to the LLM for style analysis",
+        "Produces a concrete proposed template body, not just prose",
+        "Only fires at >=10 unfolded edits per (account, tone)",
+        "Accepting a suggestion creates a new template version; rejecting changes nothing",
+        "Accepted edits marked folded_into_version so they are not re-analyzed"
+      ],
+      "testing_criteria": [
+        "Seed 10+ edits; trigger the job; assert a suggestion with proposed_body appears",
+        "Accept -> new active template version created",
+        "Reject -> template unchanged",
+        "Assert edits are not double-counted next run"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js"
+      ],
+      "status": "incomplete",
+      "notes": "Batching rule and approval gate (never auto-apply) already implemented per the call decision — the missing piece is the actual analysis. NOTE: folded_into_version is never set by current code, so edits would be re-analyzed on every run. Must fix as part of this task.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-023",
+      "title": "Nightly D1 backup export to R2",
+      "description": "Belt-and-suspenders backup beyond D1's built-in 30-day point-in-time recovery, as specified in the architecture plan.",
+      "dependencies": [
+        "TASK-009"
+      ],
+      "priority": "low",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Nightly export of D1 to R2",
+        "Restore procedure documented and tested at least once"
+      ],
+      "testing_criteria": [
+        "Confirm an export object lands in R2",
+        "Perform a test restore into a scratch database"
+      ],
+      "files_expected_to_change": [
+        "closer-app/wrangler.toml",
+        "closer-app/src/index.js"
+      ],
+      "status": "incomplete",
+      "notes": "Specified in SAAS-PLAN but never built. D1 PITR (30 days) is the current safety net, which is genuinely adequate for now — hence low priority. Real value arrives once production holds months of irreplaceable call history.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-024",
+      "title": "Bump deprecated GitHub Action versions",
+      "description": "actions/checkout@v4 and actions/setup-node@v4 target Node 20, which GitHub is deprecating; runs are being force-migrated to Node 24.",
+      "dependencies": [
+        "TASK-010"
+      ],
+      "priority": "low",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Actions updated to non-deprecated versions",
+        "Deploy workflow still passes"
+      ],
+      "testing_criteria": [
+        "A push triggers a green run with no deprecation annotation"
+      ],
+      "files_expected_to_change": [
+        ".github/workflows/deploy.yml"
+      ],
+      "status": "incomplete",
+      "notes": "Cosmetic only — deploys currently succeed (verified run 29391130635, exit 0). Bundle into the next repo change rather than spending a deploy cycle on it alone.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-025",
+      "title": "Persistent client memory across calls",
+      "description": "ROADMAP v2: every call updates a per-client profile (objections raised, trust triggers, DISC read, personal rapport details) so the prompt stops rediscovering each client from scratch every call.",
+      "dependencies": [
+        "TASK-015",
+        "TASK-020"
+      ],
+      "priority": "low",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "A returning client's prior profile informs the new debrief",
+        "Profile accumulates across multiple calls with the same client",
+        "Client identity resolved reliably across calls"
+      ],
+      "testing_criteria": [
+        "Process two calls for the same client; assert the second references the first",
+        "Assert distinct clients do not cross-contaminate"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/",
+        "closer-app/src/llm.js",
+        "closer-app/src/index.js"
+      ],
+      "status": "incomplete",
+      "notes": "Post-v1. Identified in ROADMAP as 'the moat'. Requires client identity resolution, which is non-trivial — Fathom gives call titles/participants, not stable client IDs. Do not start until v1 proves nightly usage.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-026",
+      "title": "Audio coaching digest",
+      "description": "ROADMAP v2/v3: NotebookLM-style spoken coaching digest of the day's/week's calls via TTS, so Gabriel can listen at the gym instead of reading.",
+      "dependencies": [
+        "TASK-015"
+      ],
+      "priority": "low",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "Generates a conversational audio digest of recent calls",
+        "Playable in-app",
+        "Gabriel finds it useful enough to keep"
+      ],
+      "testing_criteria": [
+        "Generate a digest from real calls",
+        "Verify audio plays and content is accurate"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/",
+        "closer-app/public/"
+      ],
+      "status": "incomplete",
+      "notes": "Gabriel: 'that could be great actually, especially if it feels like a coaching call.' Both he and Ivan agreed this is V2/V3, explicitly not v1. NotebookLM has no API; use OpenAI/Anthropic TTS instead.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-027",
+      "title": "Multi-tenancy for productization",
+      "description": "ROADMAP v3: support selling this to other businesses (first prospect: Carlos, phone repair, Ocean Beach). Real per-user accounts replace the shared login.",
+      "dependencies": [
+        "TASK-017",
+        "TASK-019"
+      ],
+      "priority": "low",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "Multiple tenants isolated from each other",
+        "Per-user auth replaces the shared login",
+        "Tenant-scoped integrations and billing"
+      ],
+      "testing_criteria": [
+        "Verify no cross-tenant data leakage",
+        "Security review before any external customer"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/",
+        "closer-app/src/"
+      ],
+      "status": "incomplete",
+      "notes": "Deliberately deferred. Current architecture (email+password in D1, per-account model) was chosen specifically to not block this. Do NOT start before v1 proves value with Gabriel — Ivan and Gabriel both framed this as later.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-028",
+      "title": "Native menu bar companion",
+      "description": "PARKED: macOS menu bar app with completion notifications, recent-caller list, and quick-copy of text/email without opening the main window.",
+      "dependencies": [
+        "TASK-017"
+      ],
+      "priority": "low",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "Notification when a call's outputs finish",
+        "Menu lists recent callers",
+        "Quick-copy text/email straight from the menu",
+        "Click a name opens that call"
+      ],
+      "testing_criteria": [
+        "Verify notification fires on generation completion",
+        "Verify clipboard contents from menu action"
+      ],
+      "files_expected_to_change": [
+        "new native app (out of scope for the Worker repo)"
+      ],
+      "status": "incomplete",
+      "notes": "Fully specced in NEXT_STEPS.md before the SaaS pivot. Superseded as v1 scope by the web app — requires an Apple Developer account ($99/yr) and a separate native codebase. Retained because the requirement (notification + zero-click copy at 2am) is real and unmet by the web app.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-029",
+      "title": "Move work list into the versioned repo",
+      "description": "project-worklist.json was created at the project root, which is not a git repo — it survives on disk but has no version history or backup. Move it into closer-app/ so its history is preserved alongside the code.",
+      "dependencies": [],
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Work list lives inside the git repo",
+        "File is committed and pushed",
+        "README pointer updated to the new path",
+        "No copy left at the old path to drift out of sync"
+      ],
+      "testing_criteria": [
+        "git log shows the work list tracked",
+        "JSON still parses after the move",
+        "Only one copy exists on disk"
+      ],
+      "files_expected_to_change": [
+        "closer-app/project-worklist.json",
+        "README.md"
+      ],
+      "status": "completed",
+      "notes": "Requested by Ivan 2026-07-16 after flagging that the root folder is not version-controlled. DONE 2026-07-16: moved to closer-app/project-worklist.json, now versioned with the code. README pointer updated. Single copy on disk — old root path removed.",
+      "test_results": [
+        "2026-07-16: JSON parses after move — pass",
+        "2026-07-16: only one copy on disk (root path removed) — pass",
+        "2026-07-16: tracked by git and pushed — pass"
+      ]
+    },
+    {
+      "id": "TASK-030",
+      "title": "SCOPE CHANGE: remove Hypnotherapy, scope to On Screen Authority only",
+      "description": "Ivan 2026-07-16: 'we don't need any of the hypnotherapy components anymore. We just need the components for onscreen authority.' Remove the Hypnotherapy account, its integration slots, its prompt template, and all hypnotherapy references from seeds, config, and docs.",
+      "dependencies": [
+        "TASK-008"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Hypnotherapy account removed from production (verified 0 calls/outputs/edits before deletion, so no real data lost)",
+        "Its integration rows and prompt template removed",
+        "production_seed.sql seeds only On Screen Authority",
+        "Dev seed contains no hypnotherapy calls",
+        "wrangler.toml no longer references FATHOM_API_KEY_HYPNO / GHL_API_KEY_HYPNO",
+        "Integrations UI shows only On Screen Authority",
+        "The accounts ARCHITECTURE is retained (single account, not ripped out)"
+      ],
+      "testing_criteria": [
+        "Production query returns exactly one account: On Screen Authority",
+        "grep for 'ypnother' across repo returns no functional references",
+        "App loads and renders correctly in a browser with one account",
+        "Fresh migrate+seed reproduces a single-account state"
+      ],
+      "files_expected_to_change": [
+        "closer-app/seed/production_seed.sql",
+        "closer-app/seed/seed.sql",
+        "closer-app/wrangler.toml",
+        "closer-app/README.md",
+        "production data (accounts, integrations, prompt_templates)"
+      ],
+      "status": "completed",
+      "notes": "DECISION FLAGGED: removing the Hypnotherapy *instance and its data*, but RETAINING the multi-account *architecture* (accounts table, per-account scoping). Rationale: the abstraction is load-bearing (every query is account-scoped), it costs nothing to run with one row, and it is the foundation for TASK-027 productization which Gabriel explicitly wants. Ripping it out would be a large destructive refactor that buys nothing and blocks the roadmap. If Ivan wants the abstraction gone entirely, that is a separate decision. KNOCK-ON EFFECTS: TASK-016 now needs 1 Fathom key not 2; TASK-018/019 now 1 GHL sub-account; TASK-021 changes meaning entirely (no longer 'diverge two templates' — now 'retune the single template for OSA', and it becomes MORE important since the live template is hypnotherapy-written and actively mis-scores OSA calls).",
+      "test_results": [
+        "2026-07-16: pre-delete guard — hypnotherapy account had 0 calls / 0 outputs / 0 edits, confirmed twice (once at planning, once immediately before DELETE) — no user data lost",
+        "2026-07-16: production now returns exactly 1 account: On Screen Authority — pass",
+        "2026-07-16: production integrations = 4 rows, all account_id=1; prompt_templates = 1 — pass",
+        "2026-07-16: fresh local migrate+seed -> 1 account, 3 OSA calls (Jeffrey closed / Priya followup / Marcus unprocessed), 14 outputs, Dora removed — pass",
+        "2026-07-16: browser — sidebar shows only 'On Screen Authority'; Integrations renders 3 rows under one heading; mentionsHypno=false; no console errors — pass",
+        "2026-07-16: grep across repo — no functional hypnotherapy references remain (only intentional scope-change comments) — pass",
+        "2026-07-16: deployed (version 13f5c00d); live app.js byte-identical to local (27883 bytes), greps 0 hypnotherapy refs. NOTE: an initial post-deploy grep returned 1 — traced to Cloudflare edge-cache propagation lag, not a stale asset; re-verified clean across multiple requests"
+      ]
+    }
+  ]
+}

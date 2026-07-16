@@ -282,7 +282,7 @@ async function pollFathom(env) {
   // Wired up once Fathom API keys are configured as secrets. For each account with a
   // connected fathom integration: fetch new recordings since last poll, insert calls,
   // and run processCall on each. TODO after account setup.
-  if (!env.FATHOM_API_KEY_OSA && !env.FATHOM_API_KEY_HYPNO) return;
+  if (!env.FATHOM_API_KEY_OSA) return;
   console.log("Fathom polling not yet implemented — keys detected, implement fetch here.");
 }
 

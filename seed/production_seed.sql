@@ -1,18 +1,18 @@
--- Production seed: real accounts + integration slots + the actual master prompt.
+-- Production seed: the On Screen Authority account + integration slots + the master prompt.
+-- Scoped to OSA only as of 2026-07-16 (hypnotherapy removed from scope, TASK-030).
 -- Deliberately NO fake demo calls (unlike seed/seed.sql, which is local-dev only).
 
 INSERT INTO accounts (name, llm_provider) VALUES
-  ('On Screen Authority', 'anthropic'),
-  ('Hypnotherapy', 'anthropic');
+  ('On Screen Authority', 'anthropic');
 
 INSERT INTO integrations (account_id, kind, status, secret_name)
-  SELECT id, 'fathom', 'disconnected', CASE name WHEN 'On Screen Authority' THEN 'FATHOM_API_KEY_OSA' ELSE 'FATHOM_API_KEY_HYPNO' END FROM accounts;
+  SELECT id, 'fathom', 'disconnected', 'FATHOM_API_KEY_OSA' FROM accounts;
 INSERT INTO integrations (account_id, kind, status, secret_name)
   SELECT id, 'anthropic', 'disconnected', 'ANTHROPIC_API_KEY' FROM accounts;
 INSERT INTO integrations (account_id, kind, status, secret_name)
   SELECT id, 'openai', 'disconnected', 'OPENAI_API_KEY' FROM accounts;
 INSERT INTO integrations (account_id, kind, status, secret_name)
-  SELECT id, 'ghl', 'disconnected', CASE name WHEN 'On Screen Authority' THEN 'GHL_API_KEY_OSA' ELSE 'GHL_API_KEY_HYPNO' END FROM accounts;
+  SELECT id, 'ghl', 'disconnected', 'GHL_OAUTH' FROM accounts;
 
 INSERT INTO prompt_templates (account_id, tone, version, body, active)
   SELECT id, NULL, 1, 'You are a world-class sales performance coach, elite high-ticket closer, persuasion strategist, and behavioral profiler with expertise in:
