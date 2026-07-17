@@ -1368,9 +1368,22 @@
       "files_expected_to_change": [
         "closer-app/src/llm.js"
       ],
-      "status": "incomplete",
+      "status": "in_progress",
       "notes": "THIS IS WHY BOTH REAL RUNS DIED. TASK-041 fixed a real bug (adaptive thinking at high effort) but was diagnosed as THE cause on the strength of one killed run \u2014 it was a contributing cause at most. Lesson recorded honestly: 'I found a bug that explains the symptom' is not 'I found the bug'. The tell I under-weighted both times: a Worker killed by a platform limit and a fetch that never settles look IDENTICAL from the log (started, silence, no throw) \u2014 and I twice read that silence as 'Worker killed' without checking the API's own documented failure mode. Streaming also makes a REAL progress bar possible (TASK-044) because streamed bytes are genuine progress rather than a fake animation. Do NOT 'simplify' this back to stream:false: max_tokens is 16000 and a 9-section debrief takes minutes to generate, which is exactly the documented drop scenario.",
-      "test_results": []
+      "test_results": [
+        "2026-07-16 DIAGNOSIS: run 3 (05:31:36, on TASK-041+042 code) hung 12.6 min, status still 'processing', 0 outputs, NO error row. generation.debrief_done absent => died inside the FIRST call. Proves neither the thinking fix nor the 4x fix addressed it.",
+        "2026-07-16 ROOT CAUSE verified against Anthropic's errors doc, verbatim: 'Avoid setting a large max_tokens value without using the streaming Messages API: Some networks may drop idle connections after a variable period of time, which can cause the request to fail or time out without receiving a response from Anthropic' and 'The SDKs validate that your non-streaming Messages API requests are not expected to exceed a 10-minute timeout. They also set a socket option for TCP keep-alive.' We use raw fetch => no validation, no keep-alive, max_tokens 16000, zero bytes until done.",
+        "2026-07-16 SSE contract verified against the streaming doc before implementing (event order, usage locations, cumulative output_tokens warning, mid-stream error events after 200).",
+        "2026-07-16 stubbed a REAL SSE byte stream chunked every 7 bytes (events deliberately split across read() boundaries, ping events interleaved): debrief JSON parsed correctly, ghlNote intact, 3 drafts parsed - pass",
+        "2026-07-16 asserted every outgoing body sets stream:true - pass",
+        "2026-07-16 usage: output_tokens == 1234*4 exactly, proving message_delta's CUMULATIVE counts are assigned not added (adding would have reported a growing multiple of the real bill) - pass",
+        "2026-07-16 mid-stream overloaded_error after a 200 throws with the error type in the message, and no tone calls are paid for afterwards - pass",
+        "2026-07-16 stop_reason:max_tokens read from message_delta still throws the truncation error - pass",
+        "2026-07-16 a stream that never enqueues does not resolve with bogus data (production aborts at 5 min via AbortSignal.timeout rather than hanging forever) - pass",
+        "2026-07-16 TASK-041/042 regression guards still green in the same suite: thinking explicit on all 4 requests, transcript still sent exactly once - pass",
+        "2026-07-16 shipped: commit 02e5647, Deploy green (run 29558355836), site 200. Wedged call recovered to 'failed' with the real reason.",
+        "PENDING: a real run. This is the third fix aimed at this symptom; it is verified against the documented failure mode and against a synthetic stream, but NOT yet against Anthropic's live API."
+      ]
     },
     {
       "id": "TASK-044",
@@ -1404,9 +1417,18 @@
         "closer-app/public/app.js",
         "closer-app/public/styles.css"
       ],
-      "status": "incomplete",
+      "status": "in_progress",
       "notes": "Ivan asked ONLY for the progress bar; the hang (TASK-043) is what I found while checking the log first, per the README rule. Both matter, but a progress bar over a run that never finishes would just animate the failure more attractively \u2014 TASK-043 lands first and this depends on it. HONESTY CONSTRAINT: the percentage is an estimate (streamed chars / expected chars), and it must be built so it CANNOT advance without real bytes arriving. A bar that keeps climbing while the connection is dead is worse than the spinner it replaces, because it manufactures confidence. Cap at the ceiling rather than overshoot, and let it visibly stall when the stream stalls \u2014 a stalled bar is TRUE information.",
-      "test_results": []
+      "test_results": [
+        "2026-07-16 migration 0006 applied to PRODUCTION. Row counts before/after identical: calls 1, outputs 0, integrations 4, events 3, accounts 1 - ZERO data loss, additive only.",
+        "2026-07-16 progress rises monotonically across a simulated stream and never reports 100 (100 is written only alongside the saved outputs) - pass",
+        "2026-07-16 phase boundaries hold: debrief capped at 70%, drafts 70->99, step labels are words ('Analysing the call' -> 'Writing the follow-ups') - pass",
+        "2026-07-16 progress cannot advance without real streamed bytes: the reporter is driven only by text_delta events, so a dead connection leaves the bar frozen rather than climbing - pass by construction, asserted via the never-enqueue stream",
+        "2026-07-16 D1 writes throttled to >=1.5s apart; progress write failures are swallowed (same rule as logEvent - reporting must never break the run it reports on)",
+        "2026-07-16 old rows with NULL progress render as an indeterminate bar rather than 0% or a crash (Number.isFinite guard)",
+        "2026-07-16 explicit report(70) added when the debrief completes, so the bar does not lurch from a low estimate to 70 when the first draft byte lands",
+        "PENDING: browser-verify the bar actually advances during a real run - that is Ivan's next click."
+      ]
     }
   ],
   "progress_percentage": 52
