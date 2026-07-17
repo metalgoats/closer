@@ -597,10 +597,15 @@ async function insights(env, accountId) {
 // 12h covers "Gabriel records early, Ivan looks at midday" with room to spare.
 const POLL_LOOKBACK_MS = 12 * 3600_000;
 
-// Hard cap on paid runs launched per tick. The cron fires every 5 minutes, so this is the
-// blast radius if anything upstream goes wrong (Fathom replays history, dedupe breaks, a
-// key is repointed at a different workspace). Overflow is NOT dropped — it is imported and
-// logged, and the next tick picks it up, so the cap delays spend rather than losing calls.
+// MASTER SWITCH for the cron (TASK-058). false = import-only: new Fathom meetings land in the
+// inbox as 'new' and a human clicks Generate. This is the safe default because Fathom captures
+// EVERY meeting on the account — internal ones included — and we cannot reliably tell a sales
+// call from an internal meeting without paying for an LLM. Set true to auto-process every
+// imported meeting (spends money on non-sales calls too).
+const AUTO_PROCESS_IMPORTS = false;
+
+// Hard cap on paid runs launched per tick, used ONLY when AUTO_PROCESS_IMPORTS is true. The
+// cron fires every 5 minutes, so this bounds the blast radius if anything upstream goes wrong.
 const MAX_AUTO_PROCESS_PER_TICK = 3;
 
 // The "like Gmail" behaviour (TASK-017): new calls arrive and are processed with nobody
@@ -626,12 +631,21 @@ async function pollFathom(env) {
     if (!fetched.items.length) continue;      // nothing new — stay quiet, this runs every 5 min
 
     let imported = 0, launched = 0, deferred = 0;
-    // Oldest first, so if the cap bites, the EARLIEST calls generate first — Gabriel reads
-    // them in the order he made them.
+    // Oldest first, so if auto-processing is on and the cap bites, the EARLIEST calls generate
+    // first — Gabriel reads them in the order he made them.
     for (const m of newestFirst(fetched.items).reverse()) {
       const r = await importMeeting(env, row.account_id, m);
       if (!r.imported) continue;              // already have it, or no transcript yet
       imported++;
+
+      // AUTO_PROCESS_IMPORTS is OFF (TASK-058). Fathom sends every meeting on the account,
+      // including internal ones that are NOT sales calls (the three "Nathan Macias" meetings).
+      // Auto-generating them spends API money and would feed non-sales data into the learning
+      // cycle. We cannot tell sales from internal without an LLM reliably enough to gate spend
+      // — an internal meeting here was even tagged with an external-looking name. So imports
+      // land as 'new' in the inbox and a human clicks Generate. Flip this to true only if you
+      // accept paying for every meeting Fathom captures.
+      if (!AUTO_PROCESS_IMPORTS) continue;
 
       if (launched >= MAX_AUTO_PROCESS_PER_TICK) { deferred++; continue; }
       const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(r.callId).first();
@@ -641,7 +655,9 @@ async function pollFathom(env) {
 
     if (imported) {
       await logEvent(env, { kind: "fathom.poll", account_id: row.account_id,
-        detail: `Imported ${imported}, started ${launched}${deferred ? `, deferred ${deferred} to the next tick (cap ${MAX_AUTO_PROCESS_PER_TICK})` : ""}`,
+        detail: AUTO_PROCESS_IMPORTS
+          ? `Imported ${imported}, started ${launched}${deferred ? `, deferred ${deferred} (cap ${MAX_AUTO_PROCESS_PER_TICK})` : ""}`
+          : `Imported ${imported} — waiting in the inbox for manual Generate (auto-process off)`,
         meta: { imported, launched, deferred } });
     }
   }

@@ -524,7 +524,8 @@
       ],
       "status": "completed",
       "notes": [
-        "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste \u2014 highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and \u2014 because createCall() auto-processes \u2014 fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033). RESCOPED 2026-07-16 to Ivan's 'Gmail' requirement. NOTE the sequencing: auto-generation must NOT be switched on before TASK-015 \u2014 not one real LLM generation has ever succeeded, and turning on an unattended cron that fires 4 paid calls per arriving call, with an unproven generation path, would fail silently on every call and could burn money doing it. Prove one manual generation first. Now also depends on TASK-040 so cron activity is observable \u2014 an unattended job with no log is undebuggable by definition. REASSESSED 2026-07-16: this task assumed waitUntil already gave us background processing. It never did (30s cap, TASK-045). The Gmail behaviour depends on TASK-045's Workflow, not on the cron alone. IMPLEMENTED 2026-07-17, unblocked by TASK-015's first successful run. Ivan's need: Gabriel records early tomorrow, Ivan checks midday, and he wanted calls already processed. Clarified a misconception worth keeping: closing the laptop was NEVER the issue - the app is server-side on Cloudflare. The reason nothing arrived is that pollFathom was a literal stub (console.log('not yet implemented')). DESIGN: bounded 12h lookback window + the unique (account_id, external_id) index, rather than a stored cursor - a corrupt/reset cursor could replay history, a 12h window structurally cannot. MAX_AUTO_PROCESS_PER_TICK=3 bounds the blast radius; overflow is imported and logged, NOT dropped, so the cap delays spend rather than losing calls. Transcript-less meetings are SKIPPED not imported - importing one would let external_id dedupe permanently strand it empty once Fathom finished transcribing. The cron only generates calls IT imported this tick, so a manually-pasted call left 'new' on purpose is never auto-spent. scheduled() now awaits instead of ctx.waitUntil (30s cap, TASK-045)."
+        "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste \u2014 highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and \u2014 because createCall() auto-processes \u2014 fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033). RESCOPED 2026-07-16 to Ivan's 'Gmail' requirement. NOTE the sequencing: auto-generation must NOT be switched on before TASK-015 \u2014 not one real LLM generation has ever succeeded, and turning on an unattended cron that fires 4 paid calls per arriving call, with an unproven generation path, would fail silently on every call and could burn money doing it. Prove one manual generation first. Now also depends on TASK-040 so cron activity is observable \u2014 an unattended job with no log is undebuggable by definition. REASSESSED 2026-07-16: this task assumed waitUntil already gave us background processing. It never did (30s cap, TASK-045). The Gmail behaviour depends on TASK-045's Workflow, not on the cron alone. IMPLEMENTED 2026-07-17, unblocked by TASK-015's first successful run. Ivan's need: Gabriel records early tomorrow, Ivan checks midday, and he wanted calls already processed. Clarified a misconception worth keeping: closing the laptop was NEVER the issue - the app is server-side on Cloudflare. The reason nothing arrived is that pollFathom was a literal stub (console.log('not yet implemented')). DESIGN: bounded 12h lookback window + the unique (account_id, external_id) index, rather than a stored cursor - a corrupt/reset cursor could replay history, a 12h window structurally cannot. MAX_AUTO_PROCESS_PER_TICK=3 bounds the blast radius; overflow is imported and logged, NOT dropped, so the cap delays spend rather than losing calls. Transcript-less meetings are SKIPPED not imported - importing one would let external_id dedupe permanently strand it empty once Fathom finished transcribing. The cron only generates calls IT imported this tick, so a manually-pasted call left 'new' on purpose is never auto-spent. scheduled() now awaits instead of ctx.waitUntil (30s cap, TASK-045).",
+        "SUPERSEDED-IN-PART 2026-07-17 by TASK-058: the cron still imports, but auto-PROCESSING is OFF by default (Fathom captures internal meetings too). Import half stands; auto-generate half is gated behind AUTO_PROCESS_IMPORTS=false."
       ],
       "test_results": [
         "2026-07-17 19/19 against the REAL pollFathom source (eval'd from src/index.js, not a copy) with a fake D1 + fake Fathom, no network, no LLM spend.",
@@ -1894,6 +1895,64 @@
         "2026-07-17 deployed: commit d4df800.",
         "PENDING: regenerate the John Vachalek call against the live API to confirm end-to-end."
       ]
+    },
+    {
+      "id": "TASK-058",
+      "title": "Cron auto-processed a non-sales internal meeting \u2014 switch to import-only (manual confirm)",
+      "description": "Ivan 2026-07-17: three 'Nathan Macias' calls came in via Fathom and auto-processed (paying for the debrief API calls) \u2014 but Nathan is unknown and the transcript reads as an INTERNAL meeting on the same Fathom account, not a sales call. Ivan doesn't want internal meetings processed: API money + non-sales data in the learning cycle. He asked if we can pre-check sales-vs-internal WITHOUT an API call, and proposed manual confirmation as the fallback. RESOLUTION: manual confirmation. Fathom captures EVERY meeting; a no-API heuristic cannot reliably gate spending (this internal meeting was tagged with an external-looking participant name 'Nathan Macias' \u2014 exactly the signal a heuristic would use to call it a sale). AUTO_PROCESS_IMPORTS defaults false: cron imports new meetings as 'new'; a human clicks Generate.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Cron imports but launches NO generation by default",
+        "Imported calls land 'new' awaiting manual Generate",
+        "A single switch re-enables auto-processing",
+        "The three Nathan calls reset to 'new'",
+        "Auto-process cap/dedupe still hold if the switch is on"
+      ],
+      "testing_criteria": [
+        "Import-only: imported, zero workflows, log 'waiting in the inbox'",
+        "Switch on: cap/dedupe/oldest-first hold",
+        "Nathan calls 'new', 0 outputs, no error"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "README.md"
+      ],
+      "status": "completed",
+      "notes": "Reverses the auto-process half of TASK-017 (Ivan's earlier 'like Gmail' request); he now chose safety. Restores the long-standing 'import != process' rule. PRE-CHECK ANALYSIS (Ivan's question, for the future): free no-API signals exist \u2014 external-invitee count, participant count, title, duration, transcript keyword scan \u2014 but none can gate SPEND: a false 'sales' costs money + pollutes learning; a false 'internal' costs only a click. Asymmetric => human gates spend. TASK-059 proposes a free HINT that informs without auto-processing; the Nathan case shows the hint must not gate spend (invitee-name signal misfired).",
+      "test_results": [
+        "2026-07-17 26/26 poll tests. Import-only (shipped default, read from source): both meetings imported, ZERO auto-processed, log 'waiting in the inbox for manual Generate'.",
+        "2026-07-17 switch forced on: normal-morning launches, cap (7 imported/3 launched/4 deferred), two-key own-workspace, shared-key-once, transcript-skip, oldest-first all pass.",
+        "2026-07-17 Nathan 10001/10002/10003 reset to 'new', 0 outputs, error cleared, logged call.unprocessed. They'd already FAILED with no outputs (nothing in the learning cycle), but we paid for their debrief API calls (~43k/40k input tokens) before failure \u2014 the leak this closes."
+      ]
+    },
+    {
+      "id": "TASK-059",
+      "title": "Free (no-API) 'likely sales vs internal' hint in the inbox",
+      "description": "Follow-up to TASK-058. Can't gate SPEND on a heuristic, but CAN show a free hint next to each unprocessed call to speed the Generate/skip decision. Zero-API signals: external-invitee count/names, participant count, title, duration, transcript keyword scan (price/invest/offer/close vs standup/sprint/roadmap). Never auto-processes; only informs.",
+      "dependencies": [
+        "TASK-058"
+      ],
+      "priority": "low",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Each unprocessed call shows a free heuristic hint",
+        "Computed with NO API call",
+        "Never triggers processing",
+        "Signals/weights visible, not a black box"
+      ],
+      "testing_criteria": [
+        "Nathan internal scores lower than Kyle/John",
+        "No API call to compute the hint"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "incomplete",
+      "notes": "importMeeting currently keeps only client_name/transcript \u2014 store calendar_invitees/participant count/title/duration at import. Nathan is the key test: tagged external, so invitee-only misfires; needs a transcript keyword scan too. Show WHY it thinks sales/internal.",
+      "test_results": []
     }
   ],
   "progress_percentage": 68
