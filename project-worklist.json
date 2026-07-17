@@ -2,7 +2,7 @@
   "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-07-16",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 50,
+  "completion_percentage": 47,
   "tasks": [
     {
       "id": "TASK-001",
@@ -428,8 +428,8 @@
         "git log contains no key material"
       ],
       "files_expected_to_change": [],
-      "status": "blocked",
-      "notes": "RESCOPED 2026-07-16: the install mechanism changed. Was `wrangler secret put ANTHROPIC_API_KEY` (terminal + wrangler + Cloudflare token — Ivan reported he couldn't follow it, and it was the practical blocker on the whole project). Now: paste it into the Integrations screen (TASK-032). STILL BLOCKED, but only on Gabriel handing over a key — no longer on tooling. COST NOTE (unchanged, from TASK-013): Gabriel's $20/mo Claude Pro does NOT cover API usage — the API bills separately per token, so this needs its own billing setup. Suggest starting with a low spend cap ($20-50/mo) to prove the workflow. Possible funders: (a) Gabriel creates an Anthropic console account + billing, (b) Ivan funds a key initially and bills back.",
+      "status": "in_progress",
+      "notes": "RESCOPED 2026-07-16: the install mechanism changed. Was `wrangler secret put ANTHROPIC_API_KEY` (terminal + wrangler + Cloudflare token — Ivan reported he couldn't follow it, and it was the practical blocker on the whole project). Now: paste it into the Integrations screen (TASK-032). STILL BLOCKED, but only on Gabriel handing over a key — no longer on tooling. COST NOTE (unchanged, from TASK-013): Gabriel's $20/mo Claude Pro does NOT cover API usage — the API bills separately per token, so this needs its own billing setup. Suggest starting with a low spend cap ($20-50/mo) to prove the workflow. Possible funders: (a) Gabriel creates an Anthropic console account + billing, (b) Ivan funds a key initially and bills back. UPDATE 2026-07-16: an Anthropic key IS now saved in production and the integration status reads 'connected' — which in this app means the auto-test passed against the real API. A Fathom key is also saved (note: 'connected' for Fathom only means 'a key is saved' — there is no Fathom test endpoint yet, so it is UNVERIFIED). NO LONGER BLOCKED. Left in_progress rather than completed because two acceptance criteria are unverifiable from here: (a) confirm 'Test' passes on demand, (b) the provider-side spend cap lives in Gabriel's Anthropic console and I cannot see it. Ivan/Gabriel to confirm both.",
       "test_results": []
     },
     {
@@ -500,20 +500,22 @@
         "No duplicate calls on repeated polls",
         "Correct account attribution per Fathom source",
         "Client name auto-extracted",
-        "Poll failure does not crash the cron or lose data"
+        "Poll failure does not crash the cron or lose data",
+        "First-run cursor is seeded to the moment the Fathom key is saved — the cron must NEVER implicitly backfill history"
       ],
       "testing_criteria": [
         "Simulate a poll against real Fathom API and confirm call rows created",
         "Run poll twice; assert no duplicates",
         "Assert calls route to the correct account",
-        "Test API-failure path"
+        "Test API-failure path",
+        "Simulate a first run with no prior cursor: assert it does NOT import the entire Fathom history"
       ],
       "files_expected_to_change": [
         "closer-app/src/index.js",
         "closer-app/migrations/"
       ],
       "status": "incomplete",
-      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste — highest user value of the remaining work.",
+      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste — highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and — because createCall() auto-processes — fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033).",
       "test_results": []
     },
     {
@@ -966,6 +968,66 @@
         "2026-07-16: PRODUCTION migration 0002 applied; row counts identical before/after (users=1, accounts=1, integrations=4, templates=1) — no data loss — pass",
         "2026-07-16: deployed (version 296ed92e); site 200, /api/integrations returns 401 unauthenticated, new key UI present in live app.js — pass"
       ]
+    },
+    {
+      "id": "TASK-033",
+      "title": "Explicit import of past Fathom calls (backfill)",
+      "description": "GAP FOUND 2026-07-16 by Ivan: 'I don't think we ever added a way to pull in calls from the past.' Correct — nothing imports history. TASK-017's poller only fetches calls going forward from a cursor, so on day one everything already in Fathom (including calls from earlier today) is invisible. Add a deliberate, bounded import: pick a date range, preview what would be imported, choose which ones, land them in the inbox.",
+      "dependencies": [
+        "TASK-016",
+        "TASK-017"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "An 'Import past calls' action lets the user pick a date range (e.g. today / last 7 days / custom)",
+        "Shows a PREVIEW list of matching Fathom calls with a count before importing anything",
+        "User selects which calls to import — never all-or-nothing by default",
+        "Imported calls land UNPROCESSED (status New) — import must not trigger LLM generation",
+        "occurred_at is set from Fathom's real call timestamp, not the import time",
+        "Re-importing an overlapping range creates no duplicates",
+        "Import is idempotent and safe to re-run"
+      ],
+      "testing_criteria": [
+        "Import a range; assert calls appear as unprocessed with correct original timestamps",
+        "Assert ZERO LLM calls fire during import (this is the money-bomb guard)",
+        "Re-import the same range; assert no duplicates",
+        "Import a range with 50+ calls; assert the UI stays usable and nothing auto-processes",
+        "Assert imported calls do not move the cron cursor backwards"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js",
+        "closer-app/migrations/"
+      ],
+      "status": "incomplete",
+      "notes": "CRITICAL DESIGN CONSTRAINT: import != process. createCall() currently calls processCall() immediately, so reusing that path for a backfill would fire one LLM run per imported call. A 200-call import would be a several-hundred-dollar unattended surprise. Backfill MUST land calls unprocessed and let Gabriel choose which to spend tokens on — which also matches how he actually works (he only debriefs calls that matter). Depends on the Fathom API supporting a date-ranged list endpoint — UNVERIFIED, do not assume. Confirm the real API shape before building (same caution as TASK-017).",
+      "test_results": []
+    },
+    {
+      "id": "TASK-034",
+      "title": "Manual call entry: capture the real call date, not the paste time",
+      "description": "createCall() hardcodes occurred_at = datetime('now'), so a pasted transcript is stamped with the moment it was pasted rather than when the call happened. Pasting several of today's calls in one sitting stamps them all within minutes of each other, so the inbox orders them by paste order rather than call order; pasting an older call dates it wrongly outright. The compose screen has no date field.",
+      "dependencies": [],
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Compose screen has an optional date/time field defaulting to now",
+        "occurred_at persists the supplied value",
+        "Call list orders by real call time, not paste time",
+        "Omitting the field still works (defaults to now)"
+      ],
+      "testing_criteria": [
+        "Paste a call with an explicit past timestamp; assert the list shows that time and sorts correctly",
+        "Paste with the field left alone; assert it defaults to now"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "incomplete",
+      "notes": "Surfaced by Ivan's 2026-07-16 question about 'calls from today'. Small and UNBLOCKED — does not need any API key. Matters most right now because manual paste is currently the ONLY way to get calls in, so every call Gabriel enters tonight is mis-timestamped.",
+      "test_results": []
     }
   ]
 }
