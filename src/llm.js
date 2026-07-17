@@ -60,7 +60,7 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
        onRetry: r => onStep && onStep({ step: "retry", detail: `debrief attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
        onProgress: chars => report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call") });
   tally(debriefRes.usage);
-  const parsed = JSON.parse(extractJson(debriefRes.text));
+  const parsed = parseModelJson(debriefRes.text);
   const debriefMs = Date.now() - t0;
   // The debrief is genuinely finished, so claim its full share even if the output came in
   // under the estimate. Otherwise the bar sits at whatever fraction the estimate implied
@@ -85,7 +85,7 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
         "Writing the follow-ups");
     }});
     tally(res.usage);
-    return { tone, ...JSON.parse(extractJson(res.text)) };
+    return { tone, ...parseModelJson(res.text) };
   });
   const t1 = Date.now();
   const messages = await Promise.all(msgJobs);
@@ -325,6 +325,43 @@ function extractJson(text) {
   const end = text.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error("No JSON in model response");
   return text.slice(start, end + 1);
+}
+
+// The model routinely puts LITERAL newlines and tabs inside string values — an email body is
+// the obvious case — but strict JSON forbids raw control characters in strings (they must be
+// \n, \t, etc.). JSON.parse then dies with "Bad control character in string literal", which is
+// what failed the John Vachalek call AFTER the 68s debrief had already succeeded. Rather than
+// throw away a completed, paid-for generation over an unescaped newline, escape control chars
+// that sit INSIDE strings and retry. A parser walk (not a blind regex) is required so we only
+// touch characters within string literals and respect existing backslash escapes.
+function escapeControlCharsInStrings(s) {
+  let out = "", inStr = false, esc = false;
+  const MAP = { 8: "\\b", 9: "\\t", 10: "\\n", 12: "\\f", 13: "\\r" };
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i], code = s.charCodeAt(i);
+    if (esc) { out += ch; esc = false; continue; }       // previous char was a backslash
+    if (ch === "\\") { out += ch; esc = true; continue; }
+    if (ch === '"') { inStr = !inStr; out += ch; continue; }
+    if (inStr && code < 0x20) {                            // a raw control char inside a string
+      out += MAP[code] || "\\u" + code.toString(16).padStart(4, "0");
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+// Parse a JSON object out of a model response, tolerating the one thing the model reliably gets
+// wrong (raw control chars in strings). Everything else still throws — a genuinely malformed
+// response should fail loudly, not be silently coerced.
+function parseModelJson(text) {
+  const raw = extractJson(text);
+  try {
+    return JSON.parse(raw);
+  } catch (first) {
+    if (!/control character/i.test(first.message)) throw first;   // only rescue the known case
+    return JSON.parse(escapeControlCharsInStrings(raw));          // may still throw — that's fine
+  }
 }
 
 // Deterministic placeholder output used until API keys are configured.
