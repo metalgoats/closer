@@ -43,9 +43,10 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
   // The ONLY request that carries the transcript (TASK-042). Everything downstream is built
   // from what this pass extracts.
   const t0 = Date.now();
-  const debriefRes = await complete(env, provider, key, [
+  const debriefRes = await completeWithRetry(env, provider, key, [
     { role: "user", content: `${masterPrompt}\n\nReturn ONLY valid JSON with keys: scorecard (array of [label, score1to10] pairs for rapport, authority, trust, emotional connection, pain amplification, vision building, objection handling, certainty transfer, close attempt, follow-up positioning), didWell (string[]), hurtSale (string[]), objections (array of {said, meant, felt, should, follow, loop}), profile (string[]), buyingSignals (string[]), lessons (string[]), suggestedTone ("casual"|"balanced"|"formal"), toneReason (string), outcome ("closed"|"followup"), followUp (object: {nextStep (string: the single concrete next action that was actually agreed on the call), timing (string: when the next contact or call was agreed, or "" if nothing was agreed), commitments (string[]: anything Gabriel promised to do or send), personalDetails (string[]: specifics said on the call worth referencing in a follow-up — names, dates, goals, situations, their own phrasing)}), ghlNote (string, under 10000 chars: client name, personal details for rapport, buying profile, objections, next-call guidance).\n\nTranscript:\n${call.transcript}` }
   ], { effort: "medium", think: false,
+       onRetry: r => onStep && onStep({ step: "retry", detail: `debrief attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
        onProgress: chars => report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call") });
   tally(debriefRes.usage);
   const parsed = JSON.parse(extractJson(debriefRes.text));
@@ -62,9 +63,11 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
   const ctx = draftContext(call, parsed);
   const toneChars = new Map(TONES.map(t => [t, 0]));   // shared so the 3 jobs report one combined bar
   const msgJobs = TONES.map(async tone => {
-    const res = await complete(env, provider, key, [
+    const res = await completeWithRetry(env, provider, key, [
       { role: "user", content: `You are drafting a follow-up SMS and email from Gabriel, a high-ticket sales closer, to a client he just got off a call with.\n\nYou are NOT given the transcript. The summary below was extracted from it by a prior analysis pass — treat it as the complete and authoritative record of what happened. Do NOT invent facts, commitments, prices, or dates that are not in it.\n\nTone: ${tone}.\nWrite to the actual outcome (${parsed.outcome}) — do not imply a close that did not happen.\nReference the specific details below — their situation, their own phrasing, what was agreed — so this reads like Gabriel wrote it and not like a template.\n\nCall summary:\n${ctx}\n\nReturn ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
-    ], { effort: "low", think: false, onProgress: chars => {
+    ], { effort: "low", think: false,
+         onRetry: r => onStep && onStep({ step: "retry", detail: `${tone} attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
+         onProgress: chars => {
       toneChars.set(tone, chars);
       const done = [...toneChars.values()].reduce((a, b) => a + b, 0);
       report(DEBRIEF_SHARE + Math.min(done / (EXPECTED_MESSAGE_CHARS * TONES.length), 1) * (100 - DEBRIEF_SHARE),
@@ -139,6 +142,42 @@ function assertDraftable(parsed) {
 // point: TASK-043's hangs were invisible precisely because nothing ever threw.
 const STREAM_TIMEOUT_MS = 5 * 60 * 1000;
 
+// Transient vs permanent (TASK-053). The FIRST autonomous cron run died on
+// `overloaded_error` — a 529 that Anthropic's docs say to retry with backoff, and which the
+// official SDKs retry for you. We call fetch directly, so we must do it ourselves. Without
+// this, an Anthropic hiccup at 6am fails every one of Gabriel's calls permanently, with
+// nobody awake to hit Regenerate.
+//
+// Retry ONLY what is genuinely transient. A refusal, a truncation, a bad key or malformed
+// JSON will fail identically every time — retrying those just burns money.
+const TRANSIENT_STATUS = new Set([408, 409, 429, 500, 502, 503, 504, 529]);
+const TRANSIENT_STREAM_ERRORS = new Set(["overloaded_error", "api_error", "rate_limit_error", "timeout_error"]);
+const MAX_ATTEMPTS = 4;
+
+class TransientError extends Error {
+  constructor(msg) { super(msg); this.transient = true; }
+}
+
+// Retries the whole request on transient failures with exponential backoff.
+// COST NOTE: a retry re-sends the input, so it is not free. It is worth it because the
+// failures we retry die early (an overload at 8.6s had generated almost nothing), and the
+// alternative is an unattended run failing permanently overnight.
+async function completeWithRetry(env, provider, key, messages, opts = {}) {
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await complete(env, provider, key, messages, opts);
+    } catch (err) {
+      lastErr = err;
+      if (!err.transient || attempt === MAX_ATTEMPTS) throw err;
+      const backoffMs = Math.min(1500 * 2 ** (attempt - 1), 15000);   // 1.5s, 3s, 6s
+      if (opts.onRetry) await opts.onRetry({ attempt, backoffMs, error: String(err.message).slice(0, 200) });
+      await new Promise(r => setTimeout(r, backoffMs));
+    }
+  }
+  throw lastErr;
+}
+
 // opts.effort: "low" | "medium" | "high" | "xhigh" | "max"
 // opts.think:  false disables thinking entirely.
 // opts.onProgress(charsSoFar): called as text streams in. Real bytes, real progress.
@@ -165,7 +204,11 @@ async function complete(env, provider, key, messages, opts = {}) {
       body: JSON.stringify({ model: "gpt-5.2", messages, max_completion_tokens: 16000 }),
       signal: AbortSignal.timeout(STREAM_TIMEOUT_MS)
     });
-    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+      const body = await res.text();
+      if (TRANSIENT_STATUS.has(res.status)) throw new TransientError(`OpenAI ${res.status}: ${body}`);
+      throw new Error(`OpenAI ${res.status}: ${body}`);
+    }
     const data = await res.json();
     if (data.choices[0].finish_reason === "length") {
       throw new Error("The model's response was cut off before it finished (hit the output limit). Try a shorter transcript or raise max_tokens.");
@@ -173,21 +216,34 @@ async function complete(env, provider, key, messages, opts = {}) {
     return { text: data.choices[0].message.content, usage: {
       input_tokens: data.usage?.prompt_tokens, output_tokens: data.usage?.completion_tokens } };
   }
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-5",
-      max_tokens: 16000,
-      thinking: think ? { type: "adaptive" } : { type: "disabled" },
-      output_config: { effort },
-      stream: true,
-      messages
-    }),
-    signal: AbortSignal.timeout(STREAM_TIMEOUT_MS)
-  });
-  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
-  if (!res.body) throw new Error("Anthropic returned no response body to stream.");
+  let res;
+  try {
+    res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 16000,
+        thinking: think ? { type: "adaptive" } : { type: "disabled" },
+        output_config: { effort },
+        stream: true,
+        messages
+      }),
+      signal: AbortSignal.timeout(STREAM_TIMEOUT_MS)
+    });
+  } catch (err) {
+    // Only a NETWORK failure or our own abort lands here — the request never got a verdict,
+    // so it is safe to retry. Do NOT widen this catch to cover the classification below, or a
+    // bad API key would be retried four times instead of failing immediately.
+    throw new TransientError(`Anthropic request failed: ${err.message}`);
+  }
+  if (!res.ok) {
+    const body = await res.text();
+    // 429/529/5xx are load, not a bug in our request — retry them. 400/401/403 never change.
+    if (TRANSIENT_STATUS.has(res.status)) throw new TransientError(`Anthropic ${res.status}: ${body}`);
+    throw new Error(`Anthropic ${res.status}: ${body}`);
+  }
+  if (!res.body) throw new TransientError("Anthropic returned no response body to stream.");
   return readStream(res.body, onProgress);
 }
 
@@ -232,10 +288,15 @@ async function readStream(body, onProgress) {
           // we report is wrong by a growing multiple.
           if (ev.usage) Object.assign(usage, ev.usage);
           break;
-        case "error":
+        case "error": {
           // Arrives AFTER a 200 (e.g. overloaded_error). Swallowing it would look like a
           // short-but-successful response and fail JSON parsing with a useless message.
-          throw new Error(`Anthropic stream error: ${ev.error?.type || "unknown"} — ${ev.error?.message || payload}`);
+          // This is exactly what killed the first autonomous cron run, so classify it:
+          // an overload is transient and must be retried, a refusal never will be.
+          const type = ev.error?.type || "unknown";
+          const msg = `Anthropic stream error: ${type} — ${ev.error?.message || payload}`;
+          throw TRANSIENT_STREAM_ERRORS.has(type) ? new TransientError(msg) : new Error(msg);
+        }
       }
     }
   }

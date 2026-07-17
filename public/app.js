@@ -132,10 +132,16 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
   el.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
     el.classList.add("active");
+    const prev = state.filter;
     state.filter = el.dataset.filter;
     $("#listTitle").textContent = el.textContent.replace(/\d+$/, "").trim();
-    renderCallList();
-    openRelevantCall(); // also refresh the detail pane so we leave any workspace view
+    // Crossing the archived boundary changes WHICH rows the server returns, so refetch.
+    if ((prev === "archived") !== (state.filter === "archived")) {
+      refreshCalls().then(openRelevantCall);
+    } else {
+      renderCallList();
+      openRelevantCall(); // also refresh the detail pane so we leave any workspace view
+    }
   });
 });
 
@@ -180,21 +186,20 @@ $("#newCallBtn").addEventListener("click", renderCompose);
 
 // ---------- call list ----------
 async function refreshCalls() {
-  const q = state.accountFilter ? `?account=${state.accountFilter}` : "";
-  state.calls = (await api.get(`/calls${q}`)).calls;
-  updateCounts();
+  // The archive is a separate fetch, not a client-side filter: the server excludes archived
+  // calls by default, which is the whole point (the inbox stays small as the DB grows).
+  const q = [];
+  if (state.accountFilter) q.push(`account=${state.accountFilter}`);
+  if (state.filter === "archived") q.push("archived=1");
+  state.calls = (await api.get(`/calls${q.length ? "?" + q.join("&") : ""}`)).calls;
   renderCallList();
   syncPolling();
 }
 
-function updateCounts() {
-  $("#countAll").textContent = state.calls.length;
-  $("#countFollowup").textContent = state.calls.filter(c => c.outcome === "followup").length;
-  $("#countClosed").textContent = state.calls.filter(c => c.outcome === "closed").length;
-}
-
 function visibleCalls() {
   return state.calls.filter(c => {
+    // 'archived' is applied by the server (state.calls already holds only archived rows),
+    // so it needs no outcome filter here.
     if (state.filter === "followup" && c.outcome !== "followup") return false;
     if (state.filter === "closed" && c.outcome !== "closed") return false;
     if (state.search && !`${c.client_name} ${c.account_name} ${c.outcome || ""}`.toLowerCase().includes(state.search)) return false;
@@ -271,6 +276,48 @@ function toneOf(call) { return call.selected_tone || call.suggested_tone || "bal
 const callTitle = (call, pill = "") =>
   `<div class="dh-name"><span id="callName" class="call-title" title="Double-click to rename">${esc(call.client_name)}</span>${pill ? " " + pill : ""}</div>`;
 
+// Archive lives in the inbox; DELETE lives only in the archive. Two steps means a mis-click
+// costs nothing, and the irreversible action is never next to the everyday one.
+function callActions(call, extra = "") {
+  if (call.archived_at) {
+    return `${extra}<button class="regen-btn" id="unarchiveBtn">↩ Unarchive</button>
+            <button class="regen-btn danger-btn" id="deleteBtn">Delete permanently</button>`;
+  }
+  return `${extra}<button class="regen-btn" id="archiveBtn">Archive</button>`;
+}
+
+function wireCallActions(call) {
+  const ar = $("#archiveBtn");
+  if (ar) ar.addEventListener("click", async () => {
+    await api.post(`/calls/${call.id}/archive`, { archived: true });
+    toast(`Archived "${call.client_name}" — find it under Archived.`);
+    await refreshCalls();
+    openRelevantCall();
+  });
+
+  const un = $("#unarchiveBtn");
+  if (un) un.addEventListener("click", async () => {
+    await api.post(`/calls/${call.id}/archive`, { archived: false });
+    toast("Back in your inbox.");
+    await refreshCalls();
+    openRelevantCall();
+  });
+
+  const del = $("#deleteBtn");
+  if (del) del.addEventListener("click", async () => {
+    // Name the call and say plainly that it is permanent. Archive is the undo; this is not.
+    if (!confirm(`Permanently delete "${call.client_name}"?\n\nThis erases the transcript, the debrief, and all four outputs. It cannot be undone.\n\nIf you just want it out of the way, Unarchive and leave it archived instead.`)) return;
+    try {
+      await api.req("DELETE", `/calls/${call.id}`);
+      toast(`Deleted "${call.client_name}".`);
+      await refreshCalls();
+      openRelevantCall();
+    } catch (err) {
+      toast(`Could not delete: ${err.message}`);
+    }
+  });
+}
+
 function wireRename(call) {
   const nameEl = $("#callName");
   if (!nameEl) { console.warn("rename: #callName missing — title not renameable"); return; }
@@ -325,7 +372,7 @@ function renderProcessed(call, outputs) {
           ${callTitle(call, pill)}
           <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>${call.duration_min ? call.duration_min + " min" : ""} ${fmtTime(call.occurred_at)}<span class="sep">·</span>${srcBadge}</div>
         </div>
-        <div class="dh-actions"><button class="regen-btn" id="regenBtn">↻ Regenerate</button></div>
+        <div class="dh-actions">${callActions(call, `<button class="regen-btn" id="regenBtn">↻ Regenerate</button>`)}</div>
       </div>
       <div class="tone-row">
         <span class="tone-label">Text &amp; email tone</span>
@@ -466,6 +513,7 @@ function wireDetail(call, outs) {
   }));
 
   wireRename(call);
+  wireCallActions(call);
 
   // regenerate
   $("#regenBtn").addEventListener("click", async () => {
@@ -516,7 +564,7 @@ function renderUnprocessed(call) {
     <div class="detail-header"><div class="dh-top"><div>
       ${callTitle(call, '<span class="pill pill-new">New</span>')}
       <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>transcript ready, not yet processed</div>
-    </div></div></div>
+    </div><div class="dh-actions">${callActions(call)}</div></div></div>
     <div class="compose-body">
       ${call.processing_error ? `<div class="fail-banner"><b>Last attempt failed.</b> ${esc(call.processing_error)}</div>` : ""}
       <label>Transcript</label>
@@ -524,6 +572,7 @@ function renderUnprocessed(call) {
       <button class="primary-btn" id="processBtn">✦ ${call.processing_error ? "Try again" : "Generate Debrief, Text, Email &amp; CRM Note"}</button>
     </div>`;
   wireRename(call);
+  wireCallActions(call);
   $("#processBtn").addEventListener("click", async () => {
     renderLoading(call.client_name);
     await api.post(`/calls/${call.id}/process`);

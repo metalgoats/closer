@@ -334,3 +334,7 @@ button{ font-family:inherit; }
 .call-title{ cursor:text; border-radius:4px; padding:0 3px; margin:0 -3px; }
 .call-title:hover{ background:var(--paper-100); }
 .call-title.editing{ background:var(--paper-200); outline:1.5px solid var(--blue-500); cursor:text; }
+
+/* Delete is the only irreversible control in the app — it should not look like the others. */
+.danger-btn{ color:var(--pink-500); border-color:var(--pink-100); }
+.danger-btn:hover{ background:var(--pink-100); color:var(--pink-600); }

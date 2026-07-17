@@ -106,10 +106,14 @@ async function route(request, env, url, ctx) {
   // ---- calls ----
   if (path === "/api/calls" && method === "GET") {
     const accountId = url.searchParams.get("account");
-    const q = accountId
-      ? env.DB.prepare(`${CALL_LIST_SQL} WHERE c.account_id = ? ORDER BY c.occurred_at DESC`).bind(accountId)
-      : env.DB.prepare(`${CALL_LIST_SQL} ORDER BY c.occurred_at DESC`);
-    const { results } = await q.all();
+    // Archived calls are excluded by default — that IS the feature. ?archived=1 shows only them.
+    const archived = url.searchParams.get("archived") === "1";
+    const where = [archived ? "c.archived_at IS NOT NULL" : "c.archived_at IS NULL"];
+    const binds = [];
+    if (accountId) { where.push("c.account_id = ?"); binds.push(accountId); }
+    const { results } = await env.DB.prepare(
+      `${CALL_LIST_SQL} WHERE ${where.join(" AND ")} ORDER BY c.occurred_at DESC`
+    ).bind(...binds).all();
     return json({ calls: results });
   }
 
@@ -121,6 +125,11 @@ async function route(request, env, url, ctx) {
 
   const processMatch = path.match(/^\/api\/calls\/(\d+)\/process$/);
   if (processMatch && method === "POST") return startProcessing(env, +processMatch[1], ctx);
+
+  const archiveMatch = path.match(/^\/api\/calls\/(\d+)\/archive$/);
+  if (archiveMatch && method === "POST") return setArchived(request, env, +archiveMatch[1]);
+
+  if (callMatch && method === "DELETE") return deleteCall(env, +callMatch[1]);
 
   // ---- outputs ----
   const outMatch = path.match(/^\/api\/outputs\/(\d+)$/);
@@ -206,7 +215,7 @@ async function route(request, env, url, ctx) {
 
 const CALL_LIST_SQL = `
   SELECT c.id, c.account_id, c.client_name, c.occurred_at, c.duration_min, c.source, c.outcome,
-         c.callback_note, c.processed_at, c.processing_status, c.processing_error, a.name AS account_name,
+         c.callback_note, c.processed_at, c.processing_status, c.processing_error, c.archived_at, a.name AS account_name,
          (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='sms' AND o.sent_at IS NOT NULL) AS sms_sent,
          (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='email' AND o.sent_at IS NOT NULL) AS email_sent
   FROM calls c JOIN accounts a ON a.id = c.account_id`;
@@ -266,6 +275,49 @@ async function patchCall(request, env, id) {
   if (!sets.length) return json({ error: "nothing to update" }, 400);
   await env.DB.prepare(`UPDATE calls SET ${sets.join(", ")} WHERE id = ?`).bind(...vals, id).run();
   return json({ ok: true });
+}
+
+// Archive is a VIEW change, not a data change: nothing is moved or dropped, the row simply
+// stops appearing in the working inbox. Instant and reversible.
+async function setArchived(request, env, id) {
+  const { archived } = await request.json();
+  const call = await env.DB.prepare("SELECT id, client_name FROM calls WHERE id = ?").bind(id).first();
+  if (!call) return json({ error: "not found" }, 404);
+  await env.DB.prepare("UPDATE calls SET archived_at = ? WHERE id = ?")
+    .bind(archived ? new Date().toISOString() : null, id).run();
+  await logEvent(env, { kind: archived ? "call.archived" : "call.unarchived", call_id: id, detail: call.client_name });
+  return json({ ok: true, archived: !!archived });
+}
+
+// Permanent. Archive is the reversible option; delete means delete — a soft-delete that
+// secretly keeps the row would be exactly wrong if a client asks to be removed.
+async function deleteCall(env, id) {
+  const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(id).first();
+  if (!call) return json({ error: "not found" }, 404);
+
+  // Don't delete a call out from under a running Workflow: the step would then fail on a
+  // vanished row and write a confusing error, and we would have paid for nothing.
+  if (call.processing_status === "processing") {
+    const started = call.processing_started_at ? Date.parse(call.processing_started_at + "Z") : 0;
+    if (started && Date.now() - started < STALE_PROCESSING_MS) {
+      return json({ error: "This call is generating right now — wait for it to finish, then delete." }, 409);
+    }
+  }
+
+  // Log BEFORE the row disappears, and deliberately keep the event afterwards: events.call_id
+  // has no FK precisely so the audit trail outlives what it describes.
+  await logEvent(env, { level: "warn", kind: "call.deleted", call_id: id, account_id: call.account_id,
+    detail: `${call.client_name} · ${(call.transcript || "").length.toLocaleString()} chars · permanently deleted`,
+    meta: { occurred_at: call.occurred_at, external_id: call.external_id, source: call.source } });
+
+  // No ON DELETE CASCADE exists (checked migrations/0001), so dependants must go explicitly
+  // and in FK order: edits -> outputs -> call. Skipping this leaves silent orphans.
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM edits WHERE output_id IN (SELECT id FROM outputs WHERE call_id = ?)").bind(id),
+    env.DB.prepare("DELETE FROM outputs WHERE call_id = ?").bind(id),
+    env.DB.prepare("DELETE FROM calls WHERE id = ?").bind(id)
+  ]);
+  return json({ ok: true, deleted: id });
 }
 
 async function createCall(request, env, ctx) {
