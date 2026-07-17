@@ -17,10 +17,24 @@ export async function resolveKey(env, accountId, kind) {
   return envKeys[kind] || null;
 }
 
-export async function generateOutputs(env, { account, call, masterPrompt, onStep }) {
+// Rough expected output sizes, used ONLY to turn streamed bytes into a percentage.
+// They are estimates and are treated as such: progress is capped at each step's ceiling
+// rather than allowed to overshoot, and it cannot advance unless real bytes arrive.
+const EXPECTED_DEBRIEF_CHARS = 14000;   // 9 sections + a GHL note that can reach 10k
+const EXPECTED_MESSAGE_CHARS = 1500;    // one tone's SMS + email
+const DEBRIEF_SHARE = 70;               // debrief is the long pole: 0-70%, messages 70-100%
+
+export async function generateOutputs(env, { account, call, masterPrompt, onStep, onProgress }) {
   const provider = account.llm_provider || "anthropic";
   const key = await resolveKey(env, account.id, provider);
   if (!key) return mockOutputs(call);
+
+  // Never let the bar go backwards: parallel tone jobs report independently.
+  let lastPct = 0;
+  const report = (pct, step) => {
+    const next = Math.max(lastPct, Math.min(Math.round(pct), 99));  // 100 is earned by saved outputs, not by a stream
+    if (onProgress && next > lastPct) { lastPct = next; onProgress({ percent: next, step }); }
+  };
 
   // Sum real usage across all 4 calls so cost is measured, not estimated.
   const total = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
@@ -31,20 +45,31 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
   const t0 = Date.now();
   const debriefRes = await complete(env, provider, key, [
     { role: "user", content: `${masterPrompt}\n\nReturn ONLY valid JSON with keys: scorecard (array of [label, score1to10] pairs for rapport, authority, trust, emotional connection, pain amplification, vision building, objection handling, certainty transfer, close attempt, follow-up positioning), didWell (string[]), hurtSale (string[]), objections (array of {said, meant, felt, should, follow, loop}), profile (string[]), buyingSignals (string[]), lessons (string[]), suggestedTone ("casual"|"balanced"|"formal"), toneReason (string), outcome ("closed"|"followup"), followUp (object: {nextStep (string: the single concrete next action that was actually agreed on the call), timing (string: when the next contact or call was agreed, or "" if nothing was agreed), commitments (string[]: anything Gabriel promised to do or send), personalDetails (string[]: specifics said on the call worth referencing in a follow-up — names, dates, goals, situations, their own phrasing)}), ghlNote (string, under 10000 chars: client name, personal details for rapport, buying profile, objections, next-call guidance).\n\nTranscript:\n${call.transcript}` }
-  ], { effort: "medium", think: false });
+  ], { effort: "medium", think: false,
+       onProgress: chars => report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call") });
   tally(debriefRes.usage);
   const parsed = JSON.parse(extractJson(debriefRes.text));
   const debriefMs = Date.now() - t0;
+  // The debrief is genuinely finished, so claim its full share even if the output came in
+  // under the estimate. Otherwise the bar sits at whatever fraction the estimate implied
+  // and then lurches when the first draft byte lands.
+  report(DEBRIEF_SHARE, "Writing the follow-ups");
   if (onStep) await onStep({ step: "debrief", duration_ms: debriefMs, usage: debriefRes.usage });
 
   // SMS + email in all three tones, generated in parallel so switching the tone slider is
   // instant. Each job is fed the debrief's distillation, NOT the transcript — see draftContext.
   assertDraftable(parsed);
   const ctx = draftContext(call, parsed);
+  const toneChars = new Map(TONES.map(t => [t, 0]));   // shared so the 3 jobs report one combined bar
   const msgJobs = TONES.map(async tone => {
     const res = await complete(env, provider, key, [
       { role: "user", content: `You are drafting a follow-up SMS and email from Gabriel, a high-ticket sales closer, to a client he just got off a call with.\n\nYou are NOT given the transcript. The summary below was extracted from it by a prior analysis pass — treat it as the complete and authoritative record of what happened. Do NOT invent facts, commitments, prices, or dates that are not in it.\n\nTone: ${tone}.\nWrite to the actual outcome (${parsed.outcome}) — do not imply a close that did not happen.\nReference the specific details below — their situation, their own phrasing, what was agreed — so this reads like Gabriel wrote it and not like a template.\n\nCall summary:\n${ctx}\n\nReturn ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
-    ], { effort: "low", think: false });
+    ], { effort: "low", think: false, onProgress: chars => {
+      toneChars.set(tone, chars);
+      const done = [...toneChars.values()].reduce((a, b) => a + b, 0);
+      report(DEBRIEF_SHARE + Math.min(done / (EXPECTED_MESSAGE_CHARS * TONES.length), 1) * (100 - DEBRIEF_SHARE),
+        "Writing the follow-ups");
+    }});
     tally(res.usage);
     return { tone, ...JSON.parse(extractJson(res.text)) };
   });
@@ -109,20 +134,36 @@ function assertDraftable(parsed) {
   }
 }
 
+// Abort a request that produces nothing for this long. Streaming means bytes should arrive
+// steadily, so a long silence is a dead connection, not slow work. Throwing is the whole
+// point: TASK-043's hangs were invisible precisely because nothing ever threw.
+const STREAM_TIMEOUT_MS = 5 * 60 * 1000;
+
 // opts.effort: "low" | "medium" | "high" | "xhigh" | "max"
 // opts.think:  false disables thinking entirely.
+// opts.onProgress(charsSoFar): called as text streams in. Real bytes, real progress.
 //
-// WHY THIS IS EXPLICIT: Sonnet 5 runs ADAPTIVE THINKING when `thinking` is omitted,
-// and `effort` defaults to `high`. Leaving either unset made every call reason at high
-// effort over a 19k-token transcript — 10+ minutes for 4 calls, and thinking competes
-// with the response for the max_tokens budget. Never omit these.
+// WHY thinking/effort ARE EXPLICIT (TASK-041): Sonnet 5 runs ADAPTIVE THINKING when
+// `thinking` is omitted, and `effort` defaults to `high`. Leaving either unset made every
+// call reason at high effort over a 19k-token transcript, and thinking competes with the
+// response for the max_tokens budget. Never omit these.
+//
+// WHY WE STREAM (TASK-043): this is not for looks. A non-streaming request sends ZERO bytes
+// until the whole message is generated, so with max_tokens 16000 the connection sits idle
+// for minutes. Per Anthropic's docs, "some networks may drop idle connections after a
+// variable period of time, which can cause the request to fail or time out without receiving
+// a response" — and a dropped connection never resolves OR rejects, so the catch block never
+// runs and the run vanishes with no log entry. That is exactly what happened twice, at 18 min
+// and 12.6 min. The SDKs guard against this (10-min validation + TCP keep-alive); we call
+// fetch directly, so we must stream. Do NOT set stream:false here.
 async function complete(env, provider, key, messages, opts = {}) {
-  const { effort = "medium", think = false } = opts;
+  const { effort = "medium", think = false, onProgress } = opts;
   if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gpt-5.2", messages, max_completion_tokens: 16000 })
+      body: JSON.stringify({ model: "gpt-5.2", messages, max_completion_tokens: 16000 }),
+      signal: AbortSignal.timeout(STREAM_TIMEOUT_MS)
     });
     if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
     const data = await res.json();
@@ -140,20 +181,71 @@ async function complete(env, provider, key, messages, opts = {}) {
       max_tokens: 16000,
       thinking: think ? { type: "adaptive" } : { type: "disabled" },
       output_config: { effort },
+      stream: true,
       messages
-    })
+    }),
+    signal: AbortSignal.timeout(STREAM_TIMEOUT_MS)
   });
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
-  const data = await res.json();
-  if (data.stop_reason === "max_tokens") {
+  if (!res.body) throw new Error("Anthropic returned no response body to stream.");
+  return readStream(res.body, onProgress);
+}
+
+// Accumulates an Anthropic SSE stream into the same {text, usage} shape the non-streaming
+// path used to return, so callers are unaffected.
+async function readStream(body, onProgress) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "", text = "", stopReason = null;
+  const usage = {};
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+
+    // A read() boundary can land anywhere — including mid-event. Process whole lines only
+    // and carry the remainder into the next read, or we silently corrupt split events.
+    const lines = buf.split("\n");
+    buf = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith("data:")) continue;   // skip `event:` names and blank separators
+      const payload = line.slice(5).trim();
+      if (!payload) continue;
+      let ev;
+      try { ev = JSON.parse(payload); } catch { continue; }
+
+      switch (ev.type) {
+        case "message_start":
+          Object.assign(usage, ev.message?.usage || {});
+          break;
+        case "content_block_delta":
+          if (ev.delta?.type === "text_delta") {
+            text += ev.delta.text;
+            if (onProgress) onProgress(text.length);
+          }
+          break;
+        case "message_delta":
+          if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+          // Per the docs these counts are CUMULATIVE — assign, never add, or the bill
+          // we report is wrong by a growing multiple.
+          if (ev.usage) Object.assign(usage, ev.usage);
+          break;
+        case "error":
+          // Arrives AFTER a 200 (e.g. overloaded_error). Swallowing it would look like a
+          // short-but-successful response and fail JSON parsing with a useless message.
+          throw new Error(`Anthropic stream error: ${ev.error?.type || "unknown"} — ${ev.error?.message || payload}`);
+      }
+    }
+  }
+
+  if (stopReason === "max_tokens") {
     throw new Error("The model's response was cut off before it finished (hit the output limit). Try a shorter transcript or raise max_tokens.");
   }
-  if (data.stop_reason === "refusal") {
-    throw new Error("The model declined to answer this request.");
-  }
-  const block = (data.content || []).find(b => b.type === "text");
-  if (!block) throw new Error("Model returned no text content.");
-  return { text: block.text, usage: data.usage || {} };
+  if (stopReason === "refusal") throw new Error("The model declined to answer this request.");
+  if (!text) throw new Error("Model returned no text content.");
+  return { text, usage };
 }
 
 function extractJson(text) {

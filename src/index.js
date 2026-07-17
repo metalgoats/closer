@@ -290,7 +290,8 @@ async function startProcessing(env, id, ctx) {
   }
 
   await env.DB.prepare(
-    "UPDATE calls SET processing_status = 'processing', processing_started_at = datetime('now'), processing_error = NULL WHERE id = ?"
+    `UPDATE calls SET processing_status = 'processing', processing_started_at = datetime('now'),
+            processing_error = NULL, processing_progress = 0, processing_step = 'Starting' WHERE id = ?`
   ).bind(id).run();
 
   // waitUntil keeps the work alive after we respond, and after the client disconnects.
@@ -309,6 +310,21 @@ async function runGeneration(env, id) {
       "SELECT body FROM prompt_templates WHERE account_id = ? AND tone IS NULL AND active = 1"
     ).bind(account.id).first();
 
+    // Throttle progress writes: the stream reports on every text delta, which is far too
+    // often for D1. 1.5s is frequent enough to look live and cheap enough to ignore.
+    let lastWrite = 0, pending = null;
+    const flush = async () => {
+      if (!pending) return;
+      const { percent, step } = pending; pending = null; lastWrite = Date.now();
+      try {
+        await env.DB.prepare("UPDATE calls SET processing_progress = ?, processing_step = ? WHERE id = ?")
+          .bind(percent, step, id).run();
+      } catch (e) {
+        // Same rule as logEvent: progress reporting must never break the generation it reports on.
+        console.error("progress write failed (non-fatal)", e?.message);
+      }
+    };
+
     // Log each step so there's a real baseline for how long this should take,
     // and so a run that dies shows how far it got instead of vanishing.
     const gen = await generateOutputs(env, {
@@ -316,13 +332,15 @@ async function runGeneration(env, id) {
       onStep: ({ step, duration_ms, usage }) => logEvent(env, {
         kind: `generation.${step}_done`, call_id: id, account_id: account.id,
         duration_ms, usage, detail: `${call.client_name} · ${step}`
-      })
+      }),
+      onProgress: p => { pending = p; if (Date.now() - lastWrite > 1500) return flush(); }
     });
 
     const stmts = [
       env.DB.prepare("DELETE FROM outputs WHERE call_id = ?").bind(id),
       env.DB.prepare(
         `UPDATE calls SET processing_status = 'processed', processed_at = datetime('now'), processing_error = NULL,
+                processing_progress = 100, processing_step = 'Done',
                 debrief_json = ?, suggested_tone = ?, tone_reason = ?,
                 selected_tone = COALESCE(selected_tone, ?), outcome = COALESCE(outcome, ?) WHERE id = ?`
       ).bind(JSON.stringify(gen.debrief), gen.suggestedTone, gen.toneReason, gen.suggestedTone, gen.outcome, id),
@@ -343,8 +361,9 @@ async function runGeneration(env, id) {
   } catch (err) {
     // Record the failure instead of silently reverting to a 'New'-looking call.
     console.error("generation failed", id, err);
+    // Leave processing_progress alone — how far it got before dying is diagnostic.
     await env.DB.prepare(
-      "UPDATE calls SET processing_status = 'failed', processing_error = ? WHERE id = ?"
+      "UPDATE calls SET processing_status = 'failed', processing_step = 'Failed', processing_error = ? WHERE id = ?"
     ).bind(String(err.message || err).slice(0, 500), id).run();
     await logEvent(env, { level: "error", kind: "generation.failed", call_id: id,
       duration_ms: Date.now() - t0, detail: String(err.message || err) });

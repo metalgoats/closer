@@ -440,18 +440,41 @@ function renderUnprocessed(call) {
 
 // Shown while generation runs. The work continues server-side via waitUntil, so
 // leaving this screen (or closing the tab) no longer kills it.
+// Tracks when the percentage last actually moved, so a stalled run is visibly distinct from
+// a working one. A bar that keeps climbing while the connection is dead would be worse than
+// the spinner it replaces — it would manufacture confidence. This one can only move when the
+// server reports real streamed bytes, and says so out loud when it stops moving.
+let progressSeen = { callId: null, percent: -1, atMs: 0 };
+const STALL_MS = 90 * 1000;
+
 function renderWorking(call) {
   renderSeq++;
+  const pct = Number.isFinite(call.processing_progress) ? call.processing_progress : null;
+  const step = call.processing_step || "Starting";
+
+  if (progressSeen.callId !== call.id || progressSeen.percent !== pct) {
+    progressSeen = { callId: call.id, percent: pct, atMs: Date.now() };
+  }
+
   $("#detailPane").innerHTML = `
     <div class="detail-header"><div class="dh-top"><div>
       <div class="dh-name">${esc(call.client_name)} <span class="pill pill-followup">Working</span></div>
       <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>generating debrief, text, email &amp; CRM note</div>
     </div></div></div>
     <div class="loading-state">
-      <div class="spinner"></div>
+      <div class="progress-wrap">
+        <div class="progress-track">
+          <div class="progress-fill ${pct === null ? "indeterminate" : ""}" id="progFill"
+               style="width:${pct === null ? 100 : Math.max(pct, 2)}%"></div>
+        </div>
+        <div class="progress-row">
+          <span class="progress-step" id="progStep">${esc(step)}</span>
+          <span class="progress-pct" id="progPct">${pct === null ? "" : pct + "%"}</span>
+        </div>
+      </div>
       <div id="workElapsed" class="work-elapsed">Generating…</div>
-      <div style="font-size:12px; color:var(--ink-400);">Typical run is under 2 minutes. Safe to close this tab — it keeps running.</div>
-      <div id="workStale" class="hidden" style="font-size:12px; color:var(--pink-500);">This is taking much longer than expected — the run has probably died.</div>
+      <div style="font-size:12px; color:var(--ink-400);">Safe to close this tab — it keeps running.</div>
+      <div id="workStale" class="hidden" style="font-size:12px; color:var(--pink-500);"></div>
       <button class="regen-btn" id="retryBtn" style="margin-top:6px;">Restart generation</button>
     </div>`;
 
@@ -462,7 +485,14 @@ function renderWorking(call) {
     if (!el) return clearInterval(elapsedTimer);
     const secs = Math.max(0, Math.round((Date.now() - startedMs) / 1000));
     el.textContent = `Generating… ${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, "0")}s elapsed`;
-    if (secs > 180) $("#workStale")?.classList.remove("hidden");
+    // Report the stall, not the clock: a long run that is still streaming is fine; a short
+    // run that stopped streaming is not.
+    const stalledFor = Date.now() - progressSeen.atMs;
+    const warn = $("#workStale");
+    if (warn && stalledFor > STALL_MS) {
+      warn.textContent = `No progress for ${Math.round(stalledFor / 1000)}s — the run may have died. Restarting is safe.`;
+      warn.classList.remove("hidden");
+    } else if (warn) warn.classList.add("hidden");
   };
   clearInterval(elapsedTimer);
   elapsedTimer = setInterval(tick, 1000);

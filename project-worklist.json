@@ -1286,8 +1286,8 @@
         "closer-app/src/index.js",
         "closer-app/public/app.js"
       ],
-      "status": "in_progress",
-      "notes": "THE LOG (TASK-040) PAID FOR ITSELF ON DAY ONE \u2014 without it this was indistinguishable from 'it's just slow'. Decision: disable thinking on all 4 calls FIRST and measure, rather than guessing at the right effort level. The debrief prompt is highly prescriptive (9 named sections, exact JSON keys), so the structure is supplied rather than reasoned toward; and with zero baseline the honest move is to get one successful run, read the real durations off the log, then tune quality back up deliberately. Revisit once TASK-015 has a green run: try effort medium on the debrief and compare scorecard quality. Also note this makes TASK-031 (prompt caching) more attractive \u2014 cache reads skip prefill, which is a latency win on 19k tokens x4, not just a cost win. SHIPPED 2026-07-16; left in_progress until a real run confirms the duration. The log will now show exactly where time goes.",
+      "status": "completed",
+      "notes": "THE LOG (TASK-040) PAID FOR ITSELF ON DAY ONE \u2014 without it this was indistinguishable from 'it's just slow'. Decision: disable thinking on all 4 calls FIRST and measure, rather than guessing at the right effort level. The debrief prompt is highly prescriptive (9 named sections, exact JSON keys), so the structure is supplied rather than reasoned toward; and with zero baseline the honest move is to get one successful run, read the real durations off the log, then tune quality back up deliberately. Revisit once TASK-015 has a green run: try effort medium on the debrief and compare scorecard quality. Also note this makes TASK-031 (prompt caching) more attractive \u2014 cache reads skip prefill, which is a latency win on 19k tokens x4, not just a cost win. SHIPPED 2026-07-16; left in_progress until a real run confirms the duration. The log will now show exactly where time goes. REASSESSED 2026-07-16: this fixed a REAL bug (adaptive thinking at high effort over 19k tokens) but did NOT fix the hang \u2014 a second run died the same way at 12.6 min. The true root cause is TASK-043 (non-streaming idle connection dropped). Marking completed for the thinking/effort fix and the elapsed counter, which stand on their own; the hang moves to TASK-043 rather than being left ambiguously attached here.",
       "test_results": [
         "2026-07-16 DIAGNOSIS via the activity log: generation.started 04:55:06, no succeeded/failed, 0 outputs, 18.1 min elapsed. The catch block logs any throw, so nothing threw \u2014 the Worker was killed mid-flight. waitUntil did not survive the duration.",
         "2026-07-16 ROOT CAUSE confirmed against the bundled Anthropic reference: 'On Claude Sonnet 5, [a request with no thinking field] runs with adaptive thinking' and 'effort defaults to high'. llm.js omitted both -> 4 calls x adaptive thinking at high effort over a 19k-token transcript.",
@@ -1296,7 +1296,8 @@
         "2026-07-16: working view now shows a rising elapsed counter, a 'typical run is under 2 minutes' baseline, a stale warning past 3 min, and a Restart button \u2014 pass",
         "2026-07-16: the wedged call was recovered to 'failed' with an explanatory message and a log entry, instead of spinning forever \u2014 pass",
         "2026-07-16: deployed (version 7d4eb0c4), site 200 \u2014 pass",
-        "PENDING: the actual end-to-end timing on the real 19k-token call is still unmeasured \u2014 that is the next click, and generation.debrief_done/messages_done will now record it."
+        "PENDING: the actual end-to-end timing on the real 19k-token call is still unmeasured \u2014 that is the next click, and generation.debrief_done/messages_done will now record it.",
+        "2026-07-16 SUPERSEDED: run 3 (05:31:36, on the fixed code) hung identically \u2014 12.6 min, 0 outputs, no error. Proves thinking/effort was a contributing cause, not THE cause. Root cause continues in TASK-043."
       ]
     },
     {
@@ -1339,6 +1340,73 @@
         "2026-07-16 shipped: commit 643dedf, Deploy workflow green (run 29557434409, 25s), site 200",
         "PENDING (Ivan is running it): the real end-to-end run. Two things are unverified until then - (1) real input_tokens on the live call, which generation.debrief_done/messages_done will now record, and (2) whether draft QUALITY holds when the model is given facts instead of the transcript. There is still no successful baseline run to compare against (TASK-015), so 'quality did not degrade' remains an untested claim."
       ]
+    },
+    {
+      "id": "TASK-043",
+      "title": "ROOT CAUSE of the silent 10+ min hangs: non-streaming Anthropic request holds an idle connection and gets dropped",
+      "description": "Ivan 2026-07-16, second hang: 12.6 min, still 'processing', 0 outputs, NO error logged. The per-step logging from TASK-041 localised it \u2014 generation.started fires, generation.debrief_done never does, so it dies inside the FIRST call (the debrief). TASK-041's thinking/effort fix did not cure it and TASK-042 could not (it only shrank calls 2-4). VERIFIED ROOT CAUSE in the Anthropic docs: we call fetch() directly with stream:false and max_tokens:16000. A non-streaming request sends ZERO bytes until the entire message is generated, so the connection sits completely idle for minutes. Docs, verbatim: '504 timeout_error: The request timed out while processing. Consider using the streaming Messages API for long-running requests'; 'Avoid setting a large max_tokens value without using the streaming Messages API: Some networks may drop idle connections after a VARIABLE period of time, which can cause the request to fail or time out WITHOUT RECEIVING A RESPONSE from Anthropic'; and 'The SDKs validate that your non-streaming requests are not expected to exceed a 10-minute timeout. They also set a socket option for TCP keep-alive.' We use raw fetch, so we get NONE of those protections. 'Variable period' explains 18 min the first time and 12+ the second. The dropped connection never resolves or rejects, so the catch block never runs and nothing is ever logged \u2014 the silence IS the symptom.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Every Anthropic request sets stream:true and the SSE event stream is accumulated into the same {text, usage} shape complete() returns today",
+        "Bytes flow continuously for the whole generation, so the connection is never idle long enough to be dropped",
+        "usage is captured from the stream: input_tokens/cache_* from message_start, output_tokens from message_delta (CUMULATIVE per the docs \u2014 assign, do not add)",
+        "stop_reason is read from message_delta; max_tokens and refusal still raise the same explicit errors as before",
+        "Mid-stream `event: error` (e.g. overloaded_error, which arrives AFTER a 200) is detected and raised \u2014 it must not be silently swallowed as a short response",
+        "An overall request timeout aborts and THROWS, so a hang can never again present as an unbounded spinner with no log entry",
+        "A hang or drop now produces a generation.failed row with real error text"
+      ],
+      "testing_criteria": [
+        "Stub fetch with a real SSE byte stream (chunked mid-event, ping events interleaved, split across reads) and assert the accumulated text and usage exactly match the old non-streaming result",
+        "Assert every outgoing body has stream:true",
+        "Assert a mid-stream error event throws rather than returning truncated text",
+        "Assert stop_reason:max_tokens from message_delta still throws the truncation error",
+        "Assert an SSE event split across two read() chunks is parsed correctly (buffer boundary handling)",
+        "Assert the timeout aborts and throws rather than hanging"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js"
+      ],
+      "status": "incomplete",
+      "notes": "THIS IS WHY BOTH REAL RUNS DIED. TASK-041 fixed a real bug (adaptive thinking at high effort) but was diagnosed as THE cause on the strength of one killed run \u2014 it was a contributing cause at most. Lesson recorded honestly: 'I found a bug that explains the symptom' is not 'I found the bug'. The tell I under-weighted both times: a Worker killed by a platform limit and a fetch that never settles look IDENTICAL from the log (started, silence, no throw) \u2014 and I twice read that silence as 'Worker killed' without checking the API's own documented failure mode. Streaming also makes a REAL progress bar possible (TASK-044) because streamed bytes are genuine progress rather than a fake animation. Do NOT 'simplify' this back to stream:false: max_tokens is 16000 and a 9-section debrief takes minutes to generate, which is exactly the documented drop scenario.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-044",
+      "title": "Progress bar for generation \u2014 Ivan has twice watched an unbounded spinner with no idea if it is alive",
+      "description": "Ivan 2026-07-16: 'I'm at 10+ mins again with no output. We need to add a progress bar.' TASK-041 added an elapsed counter, which tells him time is passing but not whether anything is HAPPENING. Streaming (TASK-043) makes real progress available for the first time: text arrives incrementally, so bytes received is a genuine liveness and completeness signal. Persist throttled progress to the call row; the front end already polls, so the bar renders from data it is already fetching.",
+      "dependencies": [
+        "TASK-043"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "calls carries processing_progress (0-100) and processing_step, added by an ADDITIVE migration",
+        "Progress is derived from real streamed output bytes \u2014 never a timer-driven fake that advances while the run is dead",
+        "Progress writes are throttled (>=1.5s apart) so a token-by-token stream cannot hammer D1",
+        "The bar shows the current step in words ('Analysing the call', 'Writing the follow-ups'), not just a percentage",
+        "The bar never goes backwards and never claims 100% before outputs are actually saved",
+        "A stalled run is visibly distinguishable from a working one \u2014 if progress stops advancing, say so",
+        "The estimate is capped rather than overshooting when output runs longer than expected"
+      ],
+      "testing_criteria": [
+        "Assert progress rises monotonically across a simulated stream and reaches 100 only after outputs are written",
+        "Assert the throttle collapses many rapid deltas into few D1 writes",
+        "Assert the migration is additive and existing rows survive with a sane default",
+        "Assert a call with no progress value still renders (old rows predate the column)",
+        "Browser-verify the bar advances during a real run"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0006_progress.sql",
+        "closer-app/src/llm.js",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "status": "incomplete",
+      "notes": "Ivan asked ONLY for the progress bar; the hang (TASK-043) is what I found while checking the log first, per the README rule. Both matter, but a progress bar over a run that never finishes would just animate the failure more attractively \u2014 TASK-043 lands first and this depends on it. HONESTY CONSTRAINT: the percentage is an estimate (streamed chars / expected chars), and it must be built so it CANNOT advance without real bytes arriving. A bar that keeps climbing while the connection is dead is worse than the spinner it replaces, because it manufactures confidence. Cap at the ceiling rather than overshoot, and let it visibly stall when the stream stalls \u2014 a stalled bar is TRUE information.",
+      "test_results": []
     }
   ],
   "progress_percentage": 52
