@@ -1859,6 +1859,41 @@
         "2026-07-17 desktop @1280 unchanged: 3-column grid, mobile bar display:none, sidebar visible.",
         "NOTE: the preview renderer does not paint CSS transitions (rAF throttled), so the slide ANIMATION could not be observed here; translateX(-100%)->translateX(0) is standard and animates on real iOS Safari. Added prefers-reduced-motion:reduce to make it instant for those users. Switched from transform:none to translateX(0) because some engines won't transition TO none."
       ]
+    },
+    {
+      "id": "TASK-057",
+      "title": "Generation fails on raw control chars in model JSON (John Vachalek call)",
+      "description": "Ivan 2026-07-17: John Vachalek call showed 'Last attempt failed. Bad control character in string literal in JSON at position 1547'. The log shows generation.debrief_done at 68s SUCCEEDED, then generation.failed at 76.6s \u2014 so the debrief parsed and a TONE DRAFT did not. The model emitted literal newlines inside the email body instead of escaped \\n; strict JSON.parse rejects raw control chars (0x00-0x1F) in strings. Cost: a full 76s generation thrown away over an unescaped newline, with the call left 'failed'.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "A tone/debrief response with literal newlines/tabs in a string still parses",
+        "String content is preserved (the newlines become real newlines in the output)",
+        "Valid JSON is parsed unchanged \u2014 no false 'rescue'",
+        "Genuinely malformed or truncated JSON still throws loudly",
+        "Both parse sites (debrief and tone) use the tolerant parser"
+      ],
+      "testing_criteria": [
+        "Parse a draft with raw newlines in email -> succeeds, content intact",
+        "Tabs/CR/other control chars inside strings survive",
+        "Already-escaped \\n and \\\" and numbers/arrays unchanged",
+        "Missing value / trailing garbage / no-object / truncated all still throw"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js"
+      ],
+      "status": "completed",
+      "notes": "parseModelJson: strict JSON.parse first; ONLY on a /control character/ error, walk the string (tracking in-string state and backslash escapes) escaping raw control chars, then retry. Any other error rethrows so a real breakage isn't masked. A parser walk, not a blind regex, so only chars inside string literals are touched. This is a general model-output-hygiene fix and protects every future call, not just this one. 15/15 unit tests.",
+      "test_results": [
+        "2026-07-17 15/15. Reproduced the exact failure (literal newlines in email body) -> parses, email/sms content intact.",
+        "2026-07-17 tab, carriage return, and \\u0007 inside strings all preserved; a multi-line ghlNote parses.",
+        "2026-07-17 valid JSON untouched: escaped \\n stays a newline, escaped quote/backslash intact, numbers/arrays intact.",
+        "2026-07-17 fenced ```json + control char still extracted and parsed.",
+        "2026-07-17 malformed (missing value / trailing garbage / no object) and control-char-PLUS-truncated all still THROW \u2014 the rescue does not mask real breakage.",
+        "2026-07-17 deployed: commit d4df800.",
+        "PENDING: regenerate the John Vachalek call against the live API to confirm end-to-end."
+      ]
     }
   ],
   "progress_percentage": 68
