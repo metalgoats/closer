@@ -131,7 +131,7 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
   });
 });
 
-const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations };
+const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity };
 document.querySelectorAll(".nav-item[data-view]").forEach(el => {
   el.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
@@ -575,6 +575,55 @@ const METHOD_BADGE = {
   selfkey: `<span class="status-chip" style="background:var(--violet-100); color:var(--violet-600);">Self-serve key</span>`,
   key:     `<span class="status-chip status-off">API key</span>`
 };
+
+// Activity log — what ran, what broke, what it cost, and what actually gets used.
+async function renderActivity() {
+  const { events, totals } = await api.get("/events?limit=200");
+  const money = t => t ? `$${(t / 1e6 * 2).toFixed(2)}` : "$0.00";  // Sonnet 5 intro input rate, rough
+
+  const rows = events.length ? events.map(e => {
+    const cls = e.level === "error" ? "ev-error" : e.level === "warn" ? "ev-warn" : "ev-info";
+    const bits = [];
+    if (e.duration_ms) bits.push(`${(e.duration_ms / 1000).toFixed(1)}s`);
+    if (e.input_tokens) bits.push(`${e.input_tokens.toLocaleString()} in / ${(e.output_tokens || 0).toLocaleString()} out`);
+    if (e.cache_read_tokens) bits.push(`${e.cache_read_tokens.toLocaleString()} cached`);
+    return `<tr class="${cls}">
+      <td class="ev-at">${esc(e.at)}</td>
+      <td><span class="ev-kind">${esc(e.kind)}</span></td>
+      <td>${esc(e.detail || "")}</td>
+      <td class="ev-meta">${bits.join(" · ")}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing logged yet.</td></tr>`;
+
+  viewShell("Activity", "Everything the app has done — failures, completions, token spend, and which outputs actually get used",
+    `<div class="ev-summary">
+       <div><b>${totals.runs || 0}</b><span>generations</span></div>
+       <div class="${totals.failures ? "bad" : ""}"><b>${totals.failures || 0}</b><span>failures</span></div>
+       <div><b>${(totals.input_tokens || 0).toLocaleString()}</b><span>input tokens</span></div>
+       <div><b>${(totals.output_tokens || 0).toLocaleString()}</b><span>output tokens</span></div>
+       <div><b>${totals.avg_ms ? (totals.avg_ms / 1000).toFixed(1) + "s" : "—"}</b><span>avg run</span></div>
+       <div><b>~${money(totals.input_tokens)}</b><span>input cost (est.)</span></div>
+     </div>
+     <div class="ev-filters">
+       <button class="chip" data-evfilter="">All</button>
+       <button class="chip" data-evfilter="level=error">Failures only</button>
+       <button class="chip" data-evfilter="kind=generation">Generation</button>
+       <button class="chip" data-evfilter="kind=fathom">Fathom</button>
+       <button class="chip" data-evfilter="kind=output">Copies &amp; sends</button>
+     </div>
+     <div style="overflow-x:auto;"><table class="ev-table"><tbody>${rows}</tbody></table></div>`);
+
+  document.querySelectorAll("[data-evfilter]").forEach(b => b.addEventListener("click", async () => {
+    const q = b.dataset.evfilter;
+    const { events } = await api.get(`/events?limit=200${q ? "&" + q : ""}`);
+    const tb = document.querySelector(".ev-table tbody");
+    tb.innerHTML = events.length ? events.map(e => `<tr class="${e.level === "error" ? "ev-error" : e.level === "warn" ? "ev-warn" : "ev-info"}">
+        <td class="ev-at">${esc(e.at)}</td><td><span class="ev-kind">${esc(e.kind)}</span></td>
+        <td>${esc(e.detail || "")}</td>
+        <td class="ev-meta">${e.duration_ms ? (e.duration_ms/1000).toFixed(1)+"s " : ""}${e.input_tokens ? e.input_tokens.toLocaleString()+" in" : ""}</td></tr>`).join("")
+      : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing matches.</td></tr>`;
+  }));
+}
 
 async function renderIntegrations() {
   const { integrations } = await api.get("/integrations");

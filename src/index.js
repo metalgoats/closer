@@ -1,5 +1,6 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
 import { generateOutputs, resolveKey } from "./llm.js";
+import { logEvent } from "./log.js";
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...headers } });
@@ -72,6 +73,8 @@ async function route(request, env, url, ctx) {
     await env.DB.prepare(
       "UPDATE integrations SET secret_value = ?, status = 'connected', updated_at = datetime('now') WHERE id = ?"
     ).bind(secret_value.trim(), +intMatch[1]).run();
+    // Log THAT a key changed — never the value.
+    await logEvent(env, { kind: "integration.key_saved", detail: `integration #${intMatch[1]}` });
     return json({ ok: true });
   }
   if (intMatch && method === "DELETE") {
@@ -124,6 +127,10 @@ async function route(request, env, url, ctx) {
       await env.DB.prepare("UPDATE outputs SET copied_at = ? WHERE id = ?")
         .bind(new Date().toISOString(), +id).run();
     }
+    // Which outputs actually get used — evidence for the deferred "trim the debrief" decision.
+    const o = await env.DB.prepare("SELECT call_id, kind, tone FROM outputs WHERE id = ?").bind(+id).first();
+    await logEvent(env, { kind: `output.${action}`, call_id: o?.call_id,
+      detail: `${o?.kind}${o?.tone ? " · " + o.tone : ""}` });
     return json({ ok: true });
   }
 
@@ -150,6 +157,25 @@ async function route(request, env, url, ctx) {
 
   // ---- insights ----
   if (path === "/api/insights" && method === "GET") return insights(env, url.searchParams.get("account"));
+
+  // ---- events / activity log ----
+  if (path === "/api/events" && method === "GET") {
+    const level = url.searchParams.get("level");
+    const kind = url.searchParams.get("kind");
+    const limit = Math.min(500, Math.max(1, +(url.searchParams.get("limit") || 100)));
+    const where = [], binds = [];
+    if (level) { where.push("level = ?"); binds.push(level); }
+    if (kind) { where.push("kind LIKE ?"); binds.push(kind + "%"); }
+    const sql = `SELECT * FROM events ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY at DESC, id DESC LIMIT ?`;
+    const { results } = await env.DB.prepare(sql).bind(...binds, limit).all();
+    const totals = await env.DB.prepare(
+      `SELECT COUNT(*) AS runs, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
+              SUM(cache_read_tokens) AS cache_read_tokens, AVG(duration_ms) AS avg_ms
+       FROM events WHERE kind = 'generation.succeeded'`
+    ).first();
+    const fails = await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE level = 'error'").first();
+    return json({ events: results, totals: { ...totals, failures: fails?.n || 0 } });
+  }
 
   // ---- suggestions ----
   if (path === "/api/suggestions" && method === "GET") {
@@ -268,11 +294,14 @@ async function startProcessing(env, id, ctx) {
   ).bind(id).run();
 
   // waitUntil keeps the work alive after we respond, and after the client disconnects.
+  await logEvent(env, { kind: "generation.started", call_id: id, account_id: call.account_id,
+    detail: `${call.client_name} · ${(call.transcript || "").length.toLocaleString()} chars` });
   ctx.waitUntil(runGeneration(env, id));
   return json({ ok: true, status: "processing" }, 202);
 }
 
 async function runGeneration(env, id) {
+  const t0 = Date.now();
   try {
     const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(id).first();
     const account = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(call.account_id).first();
@@ -299,12 +328,18 @@ async function runGeneration(env, id) {
         .bind(id, m.tone, m.emailSubject, m.email, gen.model));
     }
     await env.DB.batch(stmts);
+    await logEvent(env, { kind: "generation.succeeded", call_id: id, account_id: account.id,
+      duration_ms: Date.now() - t0, usage: gen.usage,
+      detail: `${call.client_name} · ${gen.model} · outcome=${gen.outcome}`,
+      meta: { model: gen.model, outputs: 1 + gen.messages.length * 2 } });
   } catch (err) {
     // Record the failure instead of silently reverting to a 'New'-looking call.
     console.error("generation failed", id, err);
     await env.DB.prepare(
       "UPDATE calls SET processing_status = 'failed', processing_error = ? WHERE id = ?"
     ).bind(String(err.message || err).slice(0, 500), id).run();
+    await logEvent(env, { level: "error", kind: "generation.failed", call_id: id,
+      duration_ms: Date.now() - t0, detail: String(err.message || err) });
   }
 }
 
@@ -381,7 +416,10 @@ async function fathomPullLatest(env, id, days = 7) {
       `Unexpected response from Fathom — no 'items' array (got: ${Object.keys(data || {}).join(", ") || "nothing"}). The API shape may have changed.` });
   }
   const items = data.items;
-  if (!items.length) return json({ ok: true, imported: false, message: `No Fathom calls in the last ${days} days.` });
+  if (!items.length) {
+    await logEvent(env, { kind: "fathom.pull", account_id: row.account_id, detail: `No calls in the last ${days} days` });
+    return json({ ok: true, imported: false, message: `No Fathom calls in the last ${days} days.` });
+  }
 
   // Fathom does NOT document sort order — never trust items[0]. Sort ourselves.
   const when = m => m.recording_start_time || m.scheduled_start_time || m.created_at || "";
@@ -410,6 +448,9 @@ async function fathomPullLatest(env, id, days = 7) {
      VALUES (?, ?, ?, ?, ?, 'fathom', ?) RETURNING id`
   ).bind(row.account_id, deriveClientName(m), start, durationMin, transcript, externalId).first();
 
+  await logEvent(env, { kind: "fathom.imported", call_id: ins.id, account_id: row.account_id,
+    detail: `${deriveClientName(m)} · ${transcript.length.toLocaleString()} chars · ${durationMin ?? "?"} min`,
+    meta: { recording_id: externalId, occurred_at: start } });
   return json({ ok: true, imported: true, call_id: ins.id, client_name: deriveClientName(m),
     occurred_at: start,
     message: `Imported "${deriveClientName(m)}" — open it and hit Generate when you're ready.` });
@@ -440,8 +481,10 @@ async function testIntegration(env, id) {
         { headers: { "X-Api-Key": key } });
       if (res.ok) {
         await env.DB.prepare("UPDATE integrations SET status = 'connected' WHERE id = ?").bind(id).run();
+        await logEvent(env, { kind: "integration.tested", account_id: row.account_id, detail: "fathom · pass" });
         return json({ ok: true, message: "Fathom key works — connected." });
       }
+      await logEvent(env, { level: "warn", kind: "integration.tested", account_id: row.account_id, detail: `fathom · fail (${res.status})` });
       await env.DB.prepare("UPDATE integrations SET status = 'disconnected' WHERE id = ?").bind(id).run();
       return json({ ok: false, message: res.status === 401 || res.status === 403
         ? `Fathom rejected the key (${res.status}). Check it was copied in full.`
@@ -461,8 +504,10 @@ async function testIntegration(env, id) {
     const res = await fetch(ep.url, { headers: ep.headers });
     if (res.ok) {
       await env.DB.prepare("UPDATE integrations SET status = 'connected' WHERE id = ?").bind(id).run();
+      await logEvent(env, { kind: "integration.tested", account_id: row.account_id, detail: `${row.kind} · pass` });
       return json({ ok: true, message: "Key works — connected." });
     }
+    await logEvent(env, { level: "warn", kind: "integration.tested", account_id: row.account_id, detail: `${row.kind} · fail (${res.status})` });
     await env.DB.prepare("UPDATE integrations SET status = 'disconnected' WHERE id = ?").bind(id).run();
     const hint = res.status === 401 ? "Key was rejected (401). Check for a typo or a revoked key."
                : res.status === 403 ? "Key authenticated but lacks permission (403)."

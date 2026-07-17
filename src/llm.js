@@ -22,22 +22,29 @@ export async function generateOutputs(env, { account, call, masterPrompt }) {
   const key = await resolveKey(env, account.id, provider);
   if (!key) return mockOutputs(call);
 
-  const debrief = await complete(env, provider, key, [
+  // Sum real usage across all 4 calls so cost is measured, not estimated.
+  const total = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+  const tally = u => { for (const k of Object.keys(total)) total[k] += (u?.[k] || 0); };
+
+  const debriefRes = await complete(env, provider, key, [
     { role: "user", content: `${masterPrompt}\n\nReturn ONLY valid JSON with keys: scorecard (array of [label, score1to10] pairs for rapport, authority, trust, emotional connection, pain amplification, vision building, objection handling, certainty transfer, close attempt, follow-up positioning), didWell (string[]), hurtSale (string[]), objections (array of {said, meant, felt, should, follow, loop}), profile (string[]), buyingSignals (string[]), lessons (string[]), suggestedTone ("casual"|"balanced"|"formal"), toneReason (string), outcome ("closed"|"followup"), ghlNote (string, under 10000 chars: client name, personal details for rapport, buying profile, objections, next-call guidance).\n\nTranscript:\n${call.transcript}` }
   ]);
-  const parsed = JSON.parse(extractJson(debrief));
+  tally(debriefRes.usage);
+  const parsed = JSON.parse(extractJson(debriefRes.text));
 
   // SMS + email in all three tones, generated in parallel (the v1.5 speed fix).
   const msgJobs = TONES.map(async tone => {
-    const text = await complete(env, provider, key, [
+    const res = await complete(env, provider, key, [
       { role: "user", content: `Based on this sales call transcript, write a follow-up SMS and a follow-up email from the closer (Gabriel) to the client. Tone: ${tone}. Match the call outcome (${parsed.outcome}). Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}\n\nTranscript:\n${call.transcript}` }
     ]);
-    return { tone, ...JSON.parse(extractJson(text)) };
+    tally(res.usage);
+    return { tone, ...JSON.parse(extractJson(res.text)) };
   });
   const messages = await Promise.all(msgJobs);
 
   return {
     model: provider,
+    usage: total,
     debrief: parsed,
     ghlNote: parsed.ghlNote,
     messages,
@@ -59,7 +66,8 @@ async function complete(env, provider, key, messages) {
     if (data.choices[0].finish_reason === "length") {
       throw new Error("The model's response was cut off before it finished (hit the output limit). Try a shorter transcript or raise max_tokens.");
     }
-    return data.choices[0].message.content;
+    return { text: data.choices[0].message.content, usage: {
+      input_tokens: data.usage?.prompt_tokens, output_tokens: data.usage?.completion_tokens } };
   }
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -76,7 +84,7 @@ async function complete(env, provider, key, messages) {
   }
   const block = (data.content || []).find(b => b.type === "text");
   if (!block) throw new Error("Model returned no text content.");
-  return block.text;
+  return { text: block.text, usage: data.usage || {} };
 }
 
 function extractJson(text) {
@@ -94,6 +102,7 @@ function mockOutputs(call) {
   const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
   return {
     model: "mock",
+    usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
     suggestedTone: "balanced",
     toneReason: "Mock generation — connect an LLM API key in Integrations for real tone analysis",
     outcome: "followup",

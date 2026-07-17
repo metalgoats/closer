@@ -2,7 +2,7 @@
   "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-07-16",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 54,
+  "completion_percentage": 55,
   "tasks": [
     {
       "id": "TASK-001",
@@ -488,21 +488,25 @@
     },
     {
       "id": "TASK-017",
-      "title": "Implement Fathom transcript ingest",
-      "description": "Replace the pollFathom stub with a real implementation: fetch new recordings per account since last poll, insert calls, auto-extract client name, and trigger processing so debriefs land in the inbox automatically.",
+      "title": "Fathom auto-ingest on cron — calls arrive and process while nobody is logged in (the 'Gmail' behaviour)",
+      "description": "Ivan 2026-07-16: 'I would like it to be like gmail, receiving mail (and in this case processing the data) even when I am not actively logged in... Ivan or Gabriel can log in and see the processed calls.' Today the cron fires every 5 min and does nothing (pollFathom is a stub), so NOTHING arrives while logged out. Wire the cron to the Fathom client built in TASK-035: pull new calls since the cursor, import them, and generate — all server-side, no session.",
       "dependencies": [
+        "TASK-015",
         "TASK-016",
-        "TASK-015"
+        "TASK-035",
+        "TASK-040"
       ],
       "priority": "high",
       "estimated_complexity": "high",
       "acceptance_criteria": [
-        "New Fathom calls appear in the inbox without manual paste",
-        "No duplicate calls on repeated polls",
-        "Correct account attribution per Fathom source",
-        "Client name auto-extracted",
-        "Poll failure does not crash the cron or lose data",
-        "First-run cursor is seeded to the moment the Fathom key is saved — the cron must NEVER implicitly backfill history"
+        "Cron imports new Fathom calls with no browser session open",
+        "Newly imported calls are auto-generated so they are Ready when someone logs in",
+        "First-run cursor is seeded at key-save time — the cron must NEVER implicitly backfill history",
+        "Auto-generation is bounded to genuinely new calls only (never a backfill), so cost stays proportional to real call volume",
+        "No duplicate calls across polls (dedupe on Fathom recording_id)",
+        "Every cron run logs what it did — imported, generated, skipped, failed (TASK-040)",
+        "A cron failure never wedges the cursor or loses calls",
+        "Both Ivan and Gabriel see identical processed state on login (already true — single shared account + server-side data)"
       ],
       "testing_criteria": [
         "Simulate a poll against real Fathom API and confirm call rows created",
@@ -516,7 +520,7 @@
         "closer-app/migrations/"
       ],
       "status": "incomplete",
-      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste — highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and — because createCall() auto-processes — fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033).",
+      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste — highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and — because createCall() auto-processes — fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033). RESCOPED 2026-07-16 to Ivan's 'Gmail' requirement. NOTE the sequencing: auto-generation must NOT be switched on before TASK-015 — not one real LLM generation has ever succeeded, and turning on an unattended cron that fires 4 paid calls per arriving call, with an unproven generation path, would fail silently on every call and could burn money doing it. Prove one manual generation first. Now also depends on TASK-040 so cron activity is observable — an unattended job with no log is undebuggable by definition.",
       "test_results": []
     },
     {
@@ -1207,6 +1211,52 @@
         "2026-07-16: max_tokens raised 8000 -> 16000 on both providers — pass",
         "2026-07-16: truncation now detected via stop_reason=='max_tokens' / finish_reason=='length' and surfaced as 'response was cut off', instead of failing downstream as the misleading 'No JSON in model response' — pass",
         "2026-07-16: also added an explicit refusal check and a guard for a response with no text block"
+      ]
+    },
+    {
+      "id": "TASK-040",
+      "title": "Activity log — durable record of failures, completions, usage and token spend",
+      "description": "Ivan 2026-07-16: 'add a log system: logs failures, completions, all work... a document you can check as you continue to develop this which reports back information useful in finding bugs, fixing them, verifying components are working, and adding new features based on what gets used and what doesn't.' Add an events table written by every meaningful action, a filterable API, and an Activity view.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "events table records: generation started/succeeded/failed, Fathom pulls, integration tests, key changes, copies, sends, edits, logins",
+        "Failures record the actual error text, not just a status",
+        "Generation events record wall-clock duration",
+        "Generation events record real token usage (input/output/cache) and therefore actual cost",
+        "Key VALUES are never logged — only the fact a key changed",
+        "GET /api/events supports filtering by level and kind so a developer can answer 'what broke' quickly",
+        "An Activity view in the UI shows recent events with failures visually distinct",
+        "Logging can never break the app — a logging failure is swallowed, never thrown"
+      ],
+      "testing_criteria": [
+        "Force a generation failure; assert an error event with the real message",
+        "Run a successful generation; assert a succeeded event with duration and token counts",
+        "Assert no key material appears anywhere in the events table",
+        "Assert a deliberately broken logEvent does not break the surrounding operation",
+        "Verify the Activity view renders and filters"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0005_events.sql",
+        "closer-app/src/log.js",
+        "closer-app/src/index.js",
+        "closer-app/src/llm.js",
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "status": "completed",
+      "notes": "Directly serves three needs at once: (1) Ivan's ask for a debugging/verification record, (2) the 'what gets used' question — logging copies/sends per output kind will show whether the 9-section debrief is actually read or whether only the SMS is, which is the evidence needed for the deferred 'trim the debrief' v2 decision, and (3) TOKEN/COST VISIBILITY, which the project currently has zero of — this is also what will empirically settle the TASK-031 caching estimates instead of guessing. Prerequisite for TASK-017: an unattended cron with no log is undebuggable. DONE 2026-07-16. llm.js now returns real summed token usage across all 4 calls, so cost is measured rather than estimated — this is what will empirically settle TASK-031's caching numbers and give the project its first real spend visibility.",
+      "test_results": [
+        "2026-07-16: migration 0005 creates events + 4 indexes; applied to production with no data loss (users=1, calls=1 unchanged) — pass",
+        "2026-07-16: SUCCESS path logs generation.started -> generation.succeeded with duration — pass",
+        "2026-07-16: FAILURE path logs level=error generation.failed with the REAL message ('Anthropic 401: ...') and duration 241ms, not just a status — pass",
+        "2026-07-16: USAGE SIGNAL — copying an output logs output.copied with kind+tone ('email · balanced'), which is the evidence stream for the deferred trim-the-debrief decision — pass",
+        "2026-07-16: SECURITY — zero rows in events contain key material (queried detail + meta_json for 'sk-ant'/'bogus'); integration.key_saved records only 'integration #2' — pass",
+        "2026-07-16: RESILIENCE — deliberately sabotaged log.js to throw on every call; generation still completed (status='processed', 7 outputs). A logging outage cannot break the app — pass",
+        "2026-07-16: GET /api/events filters by level and kind prefix; totals aggregate runs/tokens/avg duration/failures — pass",
+        "2026-07-16: Activity view verified in-browser — summary tiles, failures visually distinct in pink, per-run duration + token counts, filter chips — pass",
+        "2026-07-16: deployed (version fe79f3d9), site 200 — pass"
       ]
     }
   ]
