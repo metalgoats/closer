@@ -227,7 +227,7 @@ const CALL_LIST_SQL = `
   SELECT c.id, c.account_id, c.client_name, c.occurred_at, c.duration_min, c.source, c.outcome,
          c.callback_note, c.processed_at, c.processing_status, c.processing_error, c.archived_at, a.name AS account_name,
          (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='sms' AND o.sent_at IS NOT NULL) AS sms_sent,
-         (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='email' AND o.sent_at IS NOT NULL) AS email_sent
+         (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='email' AND o.sent_at IS NOT NULL) AS email_sent,
          si.label AS source_label
   FROM calls c JOIN accounts a ON a.id = c.account_id
   LEFT JOIN integrations si ON si.id = c.source_integration_id`;
