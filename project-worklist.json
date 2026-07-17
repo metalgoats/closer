@@ -1461,9 +1461,19 @@
         "closer-app/src/workflow.js",
         "closer-app/src/index.js"
       ],
-      "status": "incomplete",
+      "status": "in_progress",
       "notes": "FOURTH diagnosis of this symptom, and the first one supported by arithmetic rather than plausibility. The three before it: TASK-041 (adaptive thinking) - a REAL bug, not this. TASK-042 (4x transcript) - a REAL waste, not this. TASK-043 (non-streaming idle drop) - a REAL hazard, not this, BUT it is what made this diagnosable: without streamed progress there was no way to see the run die at 0:30 rather than at 10 minutes. The 10 / 12.6 / 18-minute figures were never durations. They were just when somebody happened to LOOK at a corpse that had been cold since 0:30. HONEST ACCOUNTING: I told Ivan 'fixed' three times. Each fix was real and each was necessary, but I twice let a plausible explanation stand in for a verified one, and never once checked the platform's own limit on the primitive the whole architecture rests on. The pattern to break: when a symptom survives a fix, re-derive from first principles instead of reaching for the next plausible bug. README's 'Does it work while logged out? Partly - a generation you started completes without you (ctx.waitUntil)' was FALSE and has been for the life of the project. RETRY DANGER: Workflows auto-retries steps by default. On a 19k-token call that is a silent double-spend. The LLM step must pin retries to 0; only the D1 save may retry.",
-      "test_results": []
+      "test_results": [
+        "2026-07-16 SMOKING GUN: with TASK-044's streamed progress in place, run 4 (05:58:17) advanced to 33% and then FROZE for 9.4 min straight. Crucially the 5-min AbortSignal.timeout from TASK-043 NEVER FIRED \u2014 a timer that cannot fire means the isolate is gone. Previous runs had no progress signal at all, which is why 3 diagnoses missed this.",
+        "2026-07-16 ARITHMETIC CONFIRMS EXACTLY: 33% of bar = 33/70 of debrief share = ~6,600 chars. Sonnet 5 streams ~220 chars/sec. 6,600/220 = 30.0 SECONDS. Matches Cloudflare's documented waitUntil cap to the second. The model was never slow; the 10/12.6/18-min figures were just when someone looked.",
+        "2026-07-16 ROOT CAUSE verified against Cloudflare's limits doc, verbatim: 'waitUntil() can extend execution for up to 30 seconds after the response is sent or the client disconnects.' Also confirmed the fix's suitability: Workflows per-step wall-clock is 'Unlimited - for example, waiting on network I/O calls or querying a database'; only CPU is capped (30s, raisable to 5 min). Our work is ~100% I/O wait.",
+        "2026-07-16 build verified: `wrangler deploy --dry-run` resolves `env.GENERATE (GenerateWorkflow) Workflow` - pass",
+        "2026-07-16 migration 0007 applied to PRODUCTION. Row counts before/after identical: calls 1, outputs 0, integrations 4, events 5, accounts 1 - zero data loss.",
+        "2026-07-16 deployed: commit a5f17f4, Deploy green (run 29559287086), site 200.",
+        "2026-07-16 PRODUCTION VERIFIED via the Cloudflare API (not by reading the code): workflow 'closer-generate' exists, class=GenerateWorkflow, script=closer, created 06:10:40; and the live worker's bindings include GENERATE:workflow. The resource is real, not just declared in wrangler.toml.",
+        "2026-07-16 money-bomb guard: LLM step pinned to retries:{limit:0}; only the idempotent D1 save step retries (limit 3).",
+        "PENDING - the actual proof: a real run past 33%, and generation.debrief_done appearing in the log for the first time in the project's history. Ivan's next click. I cannot trigger it myself (requires his login) and will not read his stored keys to do so."
+      ]
     }
   ],
   "progress_percentage": 51
