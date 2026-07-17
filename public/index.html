@@ -24,6 +24,14 @@
 
   <!-- main app -->
   <div id="mainView" class="app hidden">
+    <!-- Mobile-only top bar (hidden on desktop via CSS). Menu opens the sidebar as a
+         slide-over; Back returns from a call/detail to the list. -->
+    <div id="mobileBar" class="mobile-bar">
+      <button id="mNavBtn" class="mbtn" aria-label="Open menu">☰</button>
+      <button id="mBackBtn" class="mbtn" aria-label="Back to calls">‹ Calls</button>
+      <div class="mobile-title" id="mTitle">Closer</div>
+    </div>
+    <div id="navScrim" class="nav-scrim hidden"></div>
     <div class="sidebar">
       <div class="brand"><div class="brand-mark"></div><div class="brand-name">Closer</div></div>
       <!-- Accounts: hidden while there is only one (OSA). renderAccountNav() reveals this

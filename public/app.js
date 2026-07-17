@@ -104,6 +104,7 @@ function renderAccountNav() {
     renderAccountNav();
     await refreshCalls();
     showCallsView(); // picking an account returns you to the calls view, not a stale workspace page
+    showListMobile();
   }));
 }
 
@@ -132,6 +133,7 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
   el.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
     el.classList.add("active");
+    showListMobile();
     const prev = state.filter;
     state.filter = el.dataset.filter;
     $("#listTitle").textContent = el.textContent.replace(/\d+$/, "").trim();
@@ -151,6 +153,7 @@ document.querySelectorAll(".nav-item[data-view]").forEach(el => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
     el.classList.add("active");
     VIEWS[el.dataset.view]();
+    showDetailMobile(el.textContent.trim());
   });
 });
 
@@ -178,11 +181,12 @@ document.querySelectorAll(".settings-item[data-view]").forEach(el => {
     // filter looking active while a workspace view is open.
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
     VIEWS[el.dataset.view]();
+    showDetailMobile(el.textContent.trim());
   });
 });
 
 $("#searchInput").addEventListener("input", e => { state.search = e.target.value.toLowerCase(); renderCallList(); });
-$("#newCallBtn").addEventListener("click", renderCompose);
+$("#newCallBtn").addEventListener("click", () => { renderCompose(); showDetailMobile("New Call"); });
 
 // ---------- call list ----------
 async function refreshCalls() {
@@ -241,11 +245,35 @@ function renderCallList() {
     </div>`;
   }).join("") || `<div style="padding:20px 16px; font-size:12px; color:var(--ink-400);">No calls match.</div>`;
   wrap.querySelectorAll(".call-item").forEach(el => {
-    const open = () => openCall(+el.dataset.id);
+    const open = () => { const c = state.calls.find(x => x.id === +el.dataset.id); showDetailMobile(c?.client_name); openCall(+el.dataset.id); };
     el.addEventListener("click", open);
     el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
   });
 }
+
+// ---------- mobile navigation ----------
+// On phones the shell shows the list OR the detail, not both. `body.m-detail` is the switch;
+// CSS keys off it. On desktop these calls are harmless no-ops (the class controls nothing).
+function showDetailMobile(title) {
+  document.body.classList.add("m-detail");
+  if (title) $("#mTitle").textContent = title;
+  closeMobileNav();
+}
+function showListMobile() {
+  document.body.classList.remove("m-detail");
+  $("#mTitle").textContent = "Closer";
+}
+function closeMobileNav() {
+  document.querySelector(".sidebar")?.classList.remove("open");
+  $("#navScrim")?.classList.remove("show");
+}
+$("#mNavBtn")?.addEventListener("click", () => {
+  const sb = document.querySelector(".sidebar");
+  const open = sb.classList.toggle("open");
+  $("#navScrim").classList.toggle("show", open);
+});
+$("#mBackBtn")?.addEventListener("click", showListMobile);
+$("#navScrim")?.addEventListener("click", closeMobileNav);
 
 function fmtTime(iso) {
   const d = new Date(iso + (iso.includes("Z") || iso.includes("+") ? "" : "Z"));
@@ -823,11 +851,13 @@ async function renderIntegrations() {
     <h4>${esc(acct)}</h4>
     ${items.map(i => {
       const m = INTEGRATION_META[i.kind] || { label: i.kind, method: "key", how: "" };
+      // Two Fathom rows share a kind, so the per-row label is what tells them apart.
+      const displayLabel = i.label ? `${m.label} — ${esc(i.label)}` : m.label;
 
       // GHL is OAuth — a Connect button, not a key field.
       if (m.method === "login") {
         return `<div class="integration-row"><div>
-            <div class="integration-name">${m.label} ${METHOD_BADGE[m.method]}</div>
+            <div class="integration-name">${displayLabel} ${METHOD_BADGE[m.method]}</div>
             <div class="integration-sub">${esc(m.how)}</div></div>
             <button class="regen-btn" data-connect-ghl="${i.account_id}">Connect</button></div>`;
       }
@@ -841,7 +871,7 @@ async function renderIntegrations() {
       return `<div class="integration-card" data-int="${i.id}">
         <div class="integration-card-head">
           <div>
-            <div class="integration-name">${m.label} ${METHOD_BADGE[m.method]}</div>
+            <div class="integration-name">${displayLabel} ${METHOD_BADGE[m.method]}</div>
             <div class="integration-sub">${esc(m.how)}</div>
           </div>
           <span class="status-chip ${i.status === "connected" ? "status-on" : "status-off"}">${i.status}</span>

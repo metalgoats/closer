@@ -1761,7 +1761,91 @@
         "2026-07-17 retries surface via onStep so the log shows 'attempt N failed (reason) \u2014 retrying in Nms' rather than hiding them - pass",
         "2026-07-17 deployed: commit ee4114e, Deploy green (run 29563149195)"
       ]
+    },
+    {
+      "id": "TASK-054",
+      "title": "Second Fathom API key \u2014 poll one more Fathom account into the same OSA pipeline",
+      "description": "Ivan 2026-07-17: 'an additional field for a Fathom account API. Same prompt same delivery same everything, I just want you checking for transcripts from one more account.' So: a second Fathom key whose imported calls are processed identically (OSA account -> OSA prompt -> same tones/cron). Implemented as a second integrations row (kind='fathom') on account 1, distinguished by a label. The cron already loops all fathom rows; this just adds one.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "A second Fathom key can be pasted, saved, tested and pulled independently in Integrations",
+        "The cron polls BOTH Fathom keys each tick and imports from both",
+        "Each Fathom row uses its OWN key \u2014 not whichever row resolveKey happens to find first",
+        "Two rows that resolve to the same key do not double-poll the same workspace",
+        "Imported calls from either key go to OSA and get the same prompt + delivery",
+        "The two Fathom cards are visually distinguishable (label)"
+      ],
+      "testing_criteria": [
+        "Assert keyForRow returns each row's own secret_value, not a re-query by (account_id, kind)",
+        "Assert the cron dedupes by resolved key",
+        "Migration is additive; existing integration rows survive and keep their keys",
+        "Both fathom cards render with distinct labels and independent Save/Test/Pull"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0009_fathom2.sql",
+        "closer-app/src/index.js",
+        "closer-app/src/llm.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "incomplete",
+      "notes": "REAL BUG this exposes: resolveKey(env, account_id, 'fathom') does SELECT ... WHERE account_id=? AND kind=? .first() \u2014 with two fathom rows on one account BOTH resolve to the same (first) key, so the second workspace is never polled and one is polled twice. Fix: keyForRow(env, row) uses row.secret_value (the cron and manual pull both already SELECT *), env fallback only as legacy. Dedupe the cron by resolved key so an empty second row falling back to the same env key can't double-spend. Anthropic/openai stay one-per-account so resolveKey is fine for them. Seeding one extra slot (not arbitrary N) matches the literal ask; a general 'add integration' UI is a future task.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-055",
+      "title": "Debrief pane: fixed height, so it stops growing/shrinking between pill pages",
+      "description": "Ivan 2026-07-17: 'I would prefer for the debrief to not grow and shrink depending on what page is being shown. I would like the consistency of a set sizing, even if it leaves a little white space between tabs.' Currently .debrief-body has max-height only, so each pill page sizes to its own content and the pane jumps. Give it a fixed height: short pages get whitespace (explicitly accepted), long pages scroll.",
+      "dependencies": [],
+      "priority": "low",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "The debrief pane is the same height on every pill page",
+        "A short page shows whitespace rather than shrinking the pane",
+        "A long page scrolls within the fixed height",
+        "Relaxed on mobile where the whole page scrolls"
+      ],
+      "testing_criteria": [
+        "Browser: switch across all 7 pages and confirm the pane height does not change"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/styles.css"
+      ],
+      "status": "incomplete",
+      "notes": "",
+      "test_results": []
+    },
+    {
+      "id": "TASK-056",
+      "title": "iPhone / mobile layout \u2014 single-column vertical view",
+      "description": "Ivan 2026-07-17: 'incorporate an iPhone view, something that resizes itself dynamically and changes to vertical display when accessed from an iPhone.' The desktop shell is a 3-column grid (sidebar | list | detail) that is unusable at 375px. Add a phone layout (<=640px): single column, list OR detail shown one at a time with back navigation, sidebar as a slide-over, the 3 output panels stacked vertically, touch-sized targets.",
+      "dependencies": [],
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "At <=640px the app is a single vertical column, no horizontal scrolling of the shell",
+        "Tapping a call opens it full-width; a back control returns to the list",
+        "The sidebar nav is reachable via a menu control (slide-over) and closes on scrim tap",
+        "The three output panels (text/email/CRM) stack vertically instead of scrolling sideways",
+        "Tap targets are finger-sized (>=40px)",
+        "Desktop layout is unchanged"
+      ],
+      "testing_criteria": [
+        "Browser at 375x812: confirm single column, no shell h-scroll, panels stacked",
+        "Confirm open-call -> back -> list navigation works",
+        "Confirm the slide-over opens/closes and nav still works",
+        "Confirm desktop (1280) is visually unchanged"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/index.html",
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "status": "incomplete",
+      "notes": "viewport meta is already present. Reuse existing state (openCall/showCallsView); drive the phone view with a body class toggled where #detailPane is populated, so it's one choke point rather than scattered.",
+      "test_results": []
     }
   ],
-  "progress_percentage": 66
+  "progress_percentage": 62
 }

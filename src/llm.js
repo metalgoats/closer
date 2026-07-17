@@ -17,6 +17,17 @@ export async function resolveKey(env, accountId, kind) {
   return envKeys[kind] || null;
 }
 
+// Resolves the key for a SPECIFIC integration row, not a re-query by (account_id, kind).
+// This matters once an account has more than one row of a kind (a second Fathom key,
+// TASK-054): resolveKey would return whichever row it found first, so both Fathom rows would
+// use the same key — polling one workspace twice and the other never. Always use this when
+// you already hold the row.
+export function keyForRow(env, row) {
+  if (row?.secret_value) return row.secret_value;
+  const envKeys = { anthropic: env.ANTHROPIC_API_KEY, openai: env.OPENAI_API_KEY, fathom: env.FATHOM_API_KEY_OSA };
+  return envKeys[row?.kind] || null;
+}
+
 // Rough expected output sizes, used ONLY to turn streamed bytes into a percentage.
 // They are estimates and are treated as such: progress is capped at each step's ceiling
 // rather than allowed to overshoot, and it cannot advance unless real bytes arrive.

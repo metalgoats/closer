@@ -1,5 +1,5 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
-import { resolveKey } from "./llm.js";
+import { resolveKey, keyForRow } from "./llm.js";
 import { logEvent } from "./log.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
@@ -63,7 +63,7 @@ async function route(request, env, url, ctx) {
   // the browser — only a masked preview derived server-side.
   if (path === "/api/integrations" && method === "GET") {
     const { results } = await env.DB.prepare(
-      `SELECT i.id, i.account_id, i.kind, i.status, i.secret_name, i.updated_at,
+      `SELECT i.id, i.account_id, i.kind, i.status, i.secret_name, i.updated_at, i.label,
               a.name AS account_name,
               CASE WHEN i.secret_value IS NULL OR i.secret_value = '' THEN 0 ELSE 1 END AS has_key,
               CASE WHEN i.secret_value IS NULL OR i.secret_value = '' THEN NULL
@@ -486,7 +486,7 @@ async function fathomPullLatest(env, id, days = 7) {
   const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
   if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
 
-  const key = await resolveKey(env, row.account_id, "fathom");
+  const key = keyForRow(env, row);
   if (!key) return json({ ok: false, message: "No Fathom key saved yet — paste one and hit Save first." });
 
   const fetched = await fetchFathomMeetings(key, new Date(Date.now() - days * 86400_000).toISOString());
@@ -610,9 +610,11 @@ async function pollFathom(env) {
     "SELECT * FROM integrations WHERE kind = 'fathom'"
   ).all();
 
+  const seenKeys = new Set();                 // two rows resolving to the same key => poll once
   for (const row of integrations || []) {
-    const key = await resolveKey(env, row.account_id, "fathom");
-    if (!key) continue;                       // not configured — silently skip, not an error
+    const key = keyForRow(env, row);
+    if (!key || seenKeys.has(key)) continue;   // not configured, or a duplicate key — skip
+    seenKeys.add(key);
 
     const fetched = await fetchFathomMeetings(key, new Date(Date.now() - POLL_LOOKBACK_MS).toISOString());
     if (!fetched.ok) {
