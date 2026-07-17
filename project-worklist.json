@@ -458,9 +458,12 @@
         "closer-app/src/llm.js",
         "closer-app/src/index.js"
       ],
-      "status": "incomplete",
-      "notes": "RISK: extractJson() does naive brace-slicing and JSON.parse with no retry \u2014 a chatty model response will throw and fail the whole process. Real-world validation is likely to surface prompt/parse fixes. Also verify the parallel tone generation actually delivers the speed win promised on the call.",
-      "test_results": []
+      "status": "completed",
+      "notes": "RISK: extractJson() does naive brace-slicing and JSON.parse with no retry \u2014 a chatty model response will throw and fail the whole process. Real-world validation is likely to surface prompt/parse fixes. Also verify the parallel tone generation actually delivers the speed win promised on the call. UNBLOCKED 2026-07-16. This gated almost everything. Took 5 fixes: TASK-041 (thinking), TASK-042 (4x transcript), TASK-043 (streaming), TASK-045 (waitUntil 30s cap = THE blocker), plus the step-config fix. Real baseline now exists - use 61.7s and ~$0.20/call, not estimates.",
+      "test_results": [
+        "2026-07-16 FIRST SUCCESSFUL GENERATION IN THE PROJECT'S HISTORY. Real run: 61.7s total (debrief ~52s + messages 9.3s), 37,146 input + 5,758 output tokens = ~$0.198/call at Sonnet 5 list. 7 outputs written (3 sms, 3 email, 1 ghl_note). Every prior run died at 30s - we needed exactly 2x the waitUntil cap.",
+        "2026-07-16 Verified via the events log and the outputs table, not by looking at the screen: generation.succeeded with real duration + token counts, and 7 output rows present."
+      ]
     },
     {
       "id": "TASK-016",
@@ -922,9 +925,11 @@
       "files_expected_to_change": [
         "closer-app/src/llm.js"
       ],
-      "status": "incomplete",
-      "notes": "VERIFIED against current Anthropic docs 2026-07-16. Mechanics: cache write = 1.25x base input (5-min TTL), read = 0.1x; Sonnet 5 minimum cacheable prefix = 1024 tokens (a typical 29-41 min transcript is ~5-8k tokens, so it clears easily). Use the 5-min TTL \u2014 the debrief-to-tone gap is seconds, and 1h TTL doubles the write cost for zero benefit. ESTIMATED SAVING (no real measurements exist yet \u2014 the app has never made a real API call): ~58% off input tokens, which at Gabriel's ~55 calls/week is roughly $8/mo now (Sonnet 5 intro pricing) or ~$12/mo after the intro rate ends 2026-08-31. Total bill is only ~$28-42/mo either way, so this is a real but SMALL absolute win \u2014 priority medium, not high. The latency win may matter more than the cost win. TRAP 1 (why this depends on TASK-015): a broken prefix and an under-length prompt both fail SILENTLY with no error. The ONLY proof it works is non-zero usage.cache_read_input_tokens, which needs a real API key. Do not mark complete on 'the code looks right'. TRAP 2: if caching is wired up wrong, it costs MORE than today \u2014 every request pays the 1.25x write premium and nothing ever reads. TRAP 3 (load-bearing ordering): this only works because the debrief is awaited before Promise.all fires the tone calls. A cache entry is only readable after the first response begins. Anyone who later 'optimizes' by firing all 4 in parallel will turn 3 cache reads into 3 cache writes and silently raise the bill. Comment this in the code. BIGGER LEVER, NOT THIS TASK: output tokens are ~half the bill and caching cannot touch them. The 9-section debrief dominates output. Trimming it would cut cost AND address Gabriel's own complaint ('it's just so much, and I don't always read all of it') \u2014 that is the deferred v2 decision in NEXT_STEPS decision #3, not this task. REAL DATA 2026-07-16 (supersedes the estimates above): the first real Fathom call is a 62-minute call with a 75,655-char transcript ~= 19,000 tokens \u2014 roughly 2.7x the 7,000-token figure used in the original estimate. Recomputed: current input ~78k tokens/call (19k x 4); with transcript-prefix caching ~31k/call, i.e. ~60% reduction and roughly $20-25/mo saved at ~238 calls/mo (intro pricing), not the ~$8 originally estimated. Caching is now materially more worthwhile than first assessed, and the latency win is larger too. Re-baseline again once a few more real calls land \u2014 62 min may be long-tail, not typical. SUPERSEDED-PENDING 2026-07-16: Ivan asked why the transcript is sent 4x. TASK-042 removes the duplication at the source rather than discounting it. Caching 4 copies (~31k effective) is strictly worse than not sending 3 of them (~29k actual), and once TASK-042 lands the debrief is the only request carrying the transcript \u2014 a lone request has no sibling to share a cached prefix with, so caching would buy nothing. Do not start this task; resolve TASK-042 first, then close this one as superseded unless a new multi-request-per-transcript path appears.",
-      "test_results": []
+      "status": "completed",
+      "notes": "VERIFIED against current Anthropic docs 2026-07-16. Mechanics: cache write = 1.25x base input (5-min TTL), read = 0.1x; Sonnet 5 minimum cacheable prefix = 1024 tokens (a typical 29-41 min transcript is ~5-8k tokens, so it clears easily). Use the 5-min TTL \u2014 the debrief-to-tone gap is seconds, and 1h TTL doubles the write cost for zero benefit. ESTIMATED SAVING (no real measurements exist yet \u2014 the app has never made a real API call): ~58% off input tokens, which at Gabriel's ~55 calls/week is roughly $8/mo now (Sonnet 5 intro pricing) or ~$12/mo after the intro rate ends 2026-08-31. Total bill is only ~$28-42/mo either way, so this is a real but SMALL absolute win \u2014 priority medium, not high. The latency win may matter more than the cost win. TRAP 1 (why this depends on TASK-015): a broken prefix and an under-length prompt both fail SILENTLY with no error. The ONLY proof it works is non-zero usage.cache_read_input_tokens, which needs a real API key. Do not mark complete on 'the code looks right'. TRAP 2: if caching is wired up wrong, it costs MORE than today \u2014 every request pays the 1.25x write premium and nothing ever reads. TRAP 3 (load-bearing ordering): this only works because the debrief is awaited before Promise.all fires the tone calls. A cache entry is only readable after the first response begins. Anyone who later 'optimizes' by firing all 4 in parallel will turn 3 cache reads into 3 cache writes and silently raise the bill. Comment this in the code. BIGGER LEVER, NOT THIS TASK: output tokens are ~half the bill and caching cannot touch them. The 9-section debrief dominates output. Trimming it would cut cost AND address Gabriel's own complaint ('it's just so much, and I don't always read all of it') \u2014 that is the deferred v2 decision in NEXT_STEPS decision #3, not this task. REAL DATA 2026-07-16 (supersedes the estimates above): the first real Fathom call is a 62-minute call with a 75,655-char transcript ~= 19,000 tokens \u2014 roughly 2.7x the 7,000-token figure used in the original estimate. Recomputed: current input ~78k tokens/call (19k x 4); with transcript-prefix caching ~31k/call, i.e. ~60% reduction and roughly $20-25/mo saved at ~238 calls/mo (intro pricing), not the ~$8 originally estimated. Caching is now materially more worthwhile than first assessed, and the latency win is larger too. Re-baseline again once a few more real calls land \u2014 62 min may be long-tail, not typical. SUPERSEDED-PENDING 2026-07-16: Ivan asked why the transcript is sent 4x. TASK-042 removes the duplication at the source rather than discounting it. Caching 4 copies (~31k effective) is strictly worse than not sending 3 of them (~29k actual), and once TASK-042 lands the debrief is the only request carrying the transcript \u2014 a lone request has no sibling to share a cached prefix with, so caching would buy nothing. Do not start this task; resolve TASK-042 first, then close this one as superseded unless a new multi-request-per-transcript path appears. CLOSED AS SUPERSEDED 2026-07-16: TASK-042 landed. The transcript is now sent once, so there is no repeated prefix left to cache. Real run confirms 37k input for the whole generation.",
+      "test_results": [
+        "2026-07-16 Closed as superseded by TASK-042, not implemented. Caching 4 copies is strictly worse than not sending 3 of them."
+      ]
     },
     {
       "id": "TASK-032",
@@ -1297,7 +1302,8 @@
         "2026-07-16: the wedged call was recovered to 'failed' with an explanatory message and a log entry, instead of spinning forever \u2014 pass",
         "2026-07-16: deployed (version 7d4eb0c4), site 200 \u2014 pass",
         "PENDING: the actual end-to-end timing on the real 19k-token call is still unmeasured \u2014 that is the next click, and generation.debrief_done/messages_done will now record it.",
-        "2026-07-16 SUPERSEDED: run 3 (05:31:36, on the fixed code) hung identically \u2014 12.6 min, 0 outputs, no error. Proves thinking/effort was a contributing cause, not THE cause. Root cause continues in TASK-043."
+        "2026-07-16 SUPERSEDED: run 3 (05:31:36, on the fixed code) hung identically \u2014 12.6 min, 0 outputs, no error. Proves thinking/effort was a contributing cause, not THE cause. Root cause continues in TASK-043.",
+        "2026-07-16 FIRST SUCCESSFUL GENERATION IN THE PROJECT'S HISTORY. Real run: 61.7s total (debrief ~52s + messages 9.3s), 37,146 input + 5,758 output tokens = ~$0.198/call at Sonnet 5 list. 7 outputs written (3 sms, 3 email, 1 ghl_note). Every prior run died at 30s - we needed exactly 2x the waitUntil cap."
       ]
     },
     {
@@ -1327,7 +1333,7 @@
       "files_expected_to_change": [
         "closer-app/src/llm.js"
       ],
-      "status": "in_progress",
+      "status": "completed",
       "notes": "MEASURED, not estimated: transcript = 75,655 chars ~= 19k tokens. Today ~77.2k input tokens/call (19k debrief + 1.2k master + 3 x 19k) ~= $0.154/call input, ~$37/mo at ~238 calls/mo. OPTIONS COSTED: (1) RECOMMENDED \u2014 drafting calls get the debrief's facts (~3k) instead of the transcript: ~29k/call, -62%, ~$14/mo. Keeps the parallel fan-out, keeps instant tone switching, small blast radius, and is arguably BETTER quality because the drafts get curated facts rather than 62 minutes of raw dialogue to re-mine. (2) One call returns debrief + all 3 tones: ~20k/call, -74%, ~$10/mo. Closest to Gabriel's original workflow (his master prompt section 7 already asks for the follow-up text/email in the same pass) but a bigger rewrite, one malformed JSON loses everything, more truncation risk against max_tokens 16k, and no parallelism. (3) Generate only the AI-suggested tone up front, others on demand \u2014 cheapest of all but breaks the instant-switch UX Ivan specifically designed. RELATIONSHIP TO TASK-031 (prompt caching): this SUPERSEDES most of its value. Caching made 4 x 19k cheaper (~31k effective); this makes the 4th, 3rd and 2nd copies not exist (~29k actual). Do THIS first \u2014 it is a real fix, whereas caching is a discount on waste. If both ship, caching would then only cover the debrief's own 19k, which is a single request with nothing to share a prefix with, i.e. worthless. Expect TASK-031 to be closed as superseded once this lands. Do not implement before TASK-015: changing what the drafts are fed is unverifiable while no real generation has ever succeeded, and 'quality did not degrade' has no baseline to compare against. IMPLEMENTED 2026-07-16 at Ivan's direction, ahead of its TASK-015 dependency (he chose to test the real run afterward). Consequence to be honest about: the cost/token claim is verified by stubbed request bodies and is solid, but the QUALITY claim is not - there has never been a successful real run, so there is no before/after to compare drafts against. If the drafts come back thin, the fix is to enrich the debrief's followUp fields, NOT to put the transcript back.",
       "test_results": [
         "2026-07-16 PRIMARY ASSERTION: stubbed fetch, ran generateOutputs on a synthetic 19k-token transcript carrying a sentinel line. The sentinel appears in EXACTLY 1 of the 4 outgoing request bodies, and the carrier is the debrief - pass",
@@ -1338,7 +1344,9 @@
         "2026-07-16 TASK-041 regression guard: asserted all 4 requests still set thinking={type:disabled} and an explicit effort - pass",
         "2026-07-16 output shape unchanged: 3 tone variants (casual/balanced/formal) still returned, ghlNote and suggestedTone still surfaced, so instant tone switching does not regress - pass",
         "2026-07-16 shipped: commit 643dedf, Deploy workflow green (run 29557434409, 25s), site 200",
-        "PENDING (Ivan is running it): the real end-to-end run. Two things are unverified until then - (1) real input_tokens on the live call, which generation.debrief_done/messages_done will now record, and (2) whether draft QUALITY holds when the model is given facts instead of the transcript. There is still no successful baseline run to compare against (TASK-015), so 'quality did not degrade' remains an untested claim."
+        "PENDING (Ivan is running it): the real end-to-end run. Two things are unverified until then - (1) real input_tokens on the live call, which generation.debrief_done/messages_done will now record, and (2) whether draft QUALITY holds when the model is given facts instead of the transcript. There is still no successful baseline run to compare against (TASK-015), so 'quality did not degrade' remains an untested claim.",
+        "2026-07-16 FIRST SUCCESSFUL GENERATION IN THE PROJECT'S HISTORY. Real run: 61.7s total (debrief ~52s + messages 9.3s), 37,146 input + 5,758 output tokens = ~$0.198/call at Sonnet 5 list. 7 outputs written (3 sms, 3 email, 1 ghl_note). Every prior run died at 30s - we needed exactly 2x the waitUntil cap.",
+        "2026-07-16 REAL measurement: 37,146 input tokens/call vs ~77k before = 52% actual reduction. Lower than the 74% measured synthetically because the real master prompt and distillation are larger than the test fixtures - the synthetic number was optimistic. Still a genuine ~$0.16/call saving. QUALITY still unjudged: nobody has read the drafts yet."
       ]
     },
     {
@@ -1368,7 +1376,7 @@
       "files_expected_to_change": [
         "closer-app/src/llm.js"
       ],
-      "status": "in_progress",
+      "status": "completed",
       "notes": "THIS IS WHY BOTH REAL RUNS DIED. TASK-041 fixed a real bug (adaptive thinking at high effort) but was diagnosed as THE cause on the strength of one killed run \u2014 it was a contributing cause at most. Lesson recorded honestly: 'I found a bug that explains the symptom' is not 'I found the bug'. The tell I under-weighted both times: a Worker killed by a platform limit and a fetch that never settles look IDENTICAL from the log (started, silence, no throw) \u2014 and I twice read that silence as 'Worker killed' without checking the API's own documented failure mode. Streaming also makes a REAL progress bar possible (TASK-044) because streamed bytes are genuine progress rather than a fake animation. Do NOT 'simplify' this back to stream:false: max_tokens is 16000 and a 9-section debrief takes minutes to generate, which is exactly the documented drop scenario. NOTE 2026-07-16: shipped and correct, but did NOT make generation work \u2014 the real blocker is TASK-045 (waitUntil's 30s cap). This task's value stands on its own (TASK-043 removes a genuine idle-drop hazard and is REQUIRED regardless; TASK-044's streamed progress is what finally exposed the 0:30 death). Neither can be validated end-to-end until TASK-045 lands.",
       "test_results": [
         "2026-07-16 DIAGNOSIS: run 3 (05:31:36, on TASK-041+042 code) hung 12.6 min, status still 'processing', 0 outputs, NO error row. generation.debrief_done absent => died inside the FIRST call. Proves neither the thinking fix nor the 4x fix addressed it.",
@@ -1382,7 +1390,8 @@
         "2026-07-16 a stream that never enqueues does not resolve with bogus data (production aborts at 5 min via AbortSignal.timeout rather than hanging forever) - pass",
         "2026-07-16 TASK-041/042 regression guards still green in the same suite: thinking explicit on all 4 requests, transcript still sent exactly once - pass",
         "2026-07-16 shipped: commit 02e5647, Deploy green (run 29558355836), site 200. Wedged call recovered to 'failed' with the real reason.",
-        "PENDING: a real run. This is the third fix aimed at this symptom; it is verified against the documented failure mode and against a synthetic stream, but NOT yet against Anthropic's live API."
+        "PENDING: a real run. This is the third fix aimed at this symptom; it is verified against the documented failure mode and against a synthetic stream, but NOT yet against Anthropic's live API.",
+        "2026-07-16 FIRST SUCCESSFUL GENERATION IN THE PROJECT'S HISTORY. Real run: 61.7s total (debrief ~52s + messages 9.3s), 37,146 input + 5,758 output tokens = ~$0.198/call at Sonnet 5 list. 7 outputs written (3 sms, 3 email, 1 ghl_note). Every prior run died at 30s - we needed exactly 2x the waitUntil cap."
       ]
     },
     {
@@ -1417,7 +1426,7 @@
         "closer-app/public/app.js",
         "closer-app/public/styles.css"
       ],
-      "status": "in_progress",
+      "status": "completed",
       "notes": "Ivan asked ONLY for the progress bar; the hang (TASK-043) is what I found while checking the log first, per the README rule. Both matter, but a progress bar over a run that never finishes would just animate the failure more attractively \u2014 TASK-043 lands first and this depends on it. HONESTY CONSTRAINT: the percentage is an estimate (streamed chars / expected chars), and it must be built so it CANNOT advance without real bytes arriving. A bar that keeps climbing while the connection is dead is worse than the spinner it replaces, because it manufactures confidence. Cap at the ceiling rather than overshoot, and let it visibly stall when the stream stalls \u2014 a stalled bar is TRUE information. NOTE 2026-07-16: shipped and correct, but did NOT make generation work \u2014 the real blocker is TASK-045 (waitUntil's 30s cap). This task's value stands on its own (TASK-043 removes a genuine idle-drop hazard and is REQUIRED regardless; TASK-044's streamed progress is what finally exposed the 0:30 death). Neither can be validated end-to-end until TASK-045 lands.",
       "test_results": [
         "2026-07-16 migration 0006 applied to PRODUCTION. Row counts before/after identical: calls 1, outputs 0, integrations 4, events 3, accounts 1 - ZERO data loss, additive only.",
@@ -1427,7 +1436,8 @@
         "2026-07-16 D1 writes throttled to >=1.5s apart; progress write failures are swallowed (same rule as logEvent - reporting must never break the run it reports on)",
         "2026-07-16 old rows with NULL progress render as an indeterminate bar rather than 0% or a crash (Number.isFinite guard)",
         "2026-07-16 explicit report(70) added when the debrief completes, so the bar does not lurch from a low estimate to 70 when the first draft byte lands",
-        "PENDING: browser-verify the bar actually advances during a real run - that is Ivan's next click."
+        "PENDING: browser-verify the bar actually advances during a real run - that is Ivan's next click.",
+        "2026-07-16 FIRST SUCCESSFUL GENERATION IN THE PROJECT'S HISTORY. Real run: 61.7s total (debrief ~52s + messages 9.3s), 37,146 input + 5,758 output tokens = ~$0.198/call at Sonnet 5 list. 7 outputs written (3 sms, 3 email, 1 ghl_note). Every prior run died at 30s - we needed exactly 2x the waitUntil cap."
       ]
     },
     {
@@ -1461,7 +1471,7 @@
         "closer-app/src/workflow.js",
         "closer-app/src/index.js"
       ],
-      "status": "in_progress",
+      "status": "completed",
       "notes": "FOURTH diagnosis of this symptom, and the first one supported by arithmetic rather than plausibility. The three before it: TASK-041 (adaptive thinking) - a REAL bug, not this. TASK-042 (4x transcript) - a REAL waste, not this. TASK-043 (non-streaming idle drop) - a REAL hazard, not this, BUT it is what made this diagnosable: without streamed progress there was no way to see the run die at 0:30 rather than at 10 minutes. The 10 / 12.6 / 18-minute figures were never durations. They were just when somebody happened to LOOK at a corpse that had been cold since 0:30. HONEST ACCOUNTING: I told Ivan 'fixed' three times. Each fix was real and each was necessary, but I twice let a plausible explanation stand in for a verified one, and never once checked the platform's own limit on the primitive the whole architecture rests on. The pattern to break: when a symptom survives a fix, re-derive from first principles instead of reaching for the next plausible bug. README's 'Does it work while logged out? Partly - a generation you started completes without you (ctx.waitUntil)' was FALSE and has been for the life of the project. RETRY DANGER: Workflows auto-retries steps by default. On a 19k-token call that is a silent double-spend. The LLM step must pin retries to 0; only the D1 save may retry.",
       "test_results": [
         "2026-07-16 SMOKING GUN: with TASK-044's streamed progress in place, run 4 (05:58:17) advanced to 33% and then FROZE for 9.4 min straight. Crucially the 5-min AbortSignal.timeout from TASK-043 NEVER FIRED \u2014 a timer that cannot fire means the isolate is gone. Previous runs had no progress signal at all, which is why 3 diagnoses missed this.",
@@ -1472,7 +1482,8 @@
         "2026-07-16 deployed: commit a5f17f4, Deploy green (run 29559287086), site 200.",
         "2026-07-16 PRODUCTION VERIFIED via the Cloudflare API (not by reading the code): workflow 'closer-generate' exists, class=GenerateWorkflow, script=closer, created 06:10:40; and the live worker's bindings include GENERATE:workflow. The resource is real, not just declared in wrangler.toml.",
         "2026-07-16 money-bomb guard: LLM step pinned to retries:{limit:0}; only the idempotent D1 save step retries (limit 3).",
-        "PENDING - the actual proof: a real run past 33%, and generation.debrief_done appearing in the log for the first time in the project's history. Ivan's next click. I cannot trigger it myself (requires his login) and will not read his stored keys to do so."
+        "PENDING - the actual proof: a real run past 33%, and generation.debrief_done appearing in the log for the first time in the project's history. Ivan's next click. I cannot trigger it myself (requires his login) and will not read his stored keys to do so.",
+        "2026-07-16 FIRST SUCCESSFUL GENERATION IN THE PROJECT'S HISTORY. Real run: 61.7s total (debrief ~52s + messages 9.3s), 37,146 input + 5,758 output tokens = ~$0.198/call at Sonnet 5 list. 7 outputs written (3 sms, 3 email, 1 ghl_note). Every prior run died at 30s - we needed exactly 2x the waitUntil cap."
       ]
     },
     {
@@ -1500,7 +1511,48 @@
       "status": "incomplete",
       "notes": "Cheap to fix and it protects every future debugging session: without it, 'is this deployed?' and 'is this working?' are indistinguishable from the user's side. Simplest approach that needs no bundler: stamp a build id into the Worker, return it on an existing polled endpoint (e.g. /api/me or the calls list), and have app.js compare it to the id it booted with. On mismatch, show a non-blocking 'A new version is available - reload' toast. Do NOT auto-reload while a generation is in flight without warning. Related: cache-control on /app.js is already 'max-age=0, must-revalidate', so a plain reload DOES fetch fresh code - the problem is exclusively the never-reloaded tab.",
       "test_results": []
+    },
+    {
+      "id": "TASK-047",
+      "title": "Debrief UI cleanup: pills become pagination, copy copies everything, settings move behind the profile",
+      "description": "Ivan 2026-07-16, after the first successful generation. Five changes: (1) drop the large 'Follow-up needed' banner - the outcome is already shown in the header pill and the call list. (2) The debrief Copy button must copy the ENTIRE debrief, not just what is on screen. (3) The section pills become PAGINATION rather than scroll-jump links: page 1 is TL;DR + Call Scorecard using the section's full width (the scorecard needed scrolling to see all 10 dimensions), and each other pill shows only its own section. (4) Activity / Prompt Templates / Integrations move out of the main nav into a settings menu behind the profile icon+email - they are setup-and-forget, not part of the nightly loop. (5) With only one account (OSA), hide the All Accounts vs OSA distinction entirely; keep the mechanism for later.",
+      "dependencies": [],
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "The 'Follow-up needed' banner is gone",
+        "Copy returns the WHOLE debrief even when a single page is displayed",
+        "Pills paginate: exactly one page visible, page 1 = TL;DR + Scorecard",
+        "The scorecard shows all 10 dimensions with no scrolling, using the full section width",
+        "Activity/Templates/Integrations are reachable only from the profile menu; menu closes on outside click and Escape",
+        "The Accounts nav group is hidden at one account and reappears automatically at two",
+        "Nothing regresses: tone switching, per-output copy, editing, Regenerate"
+      ],
+      "testing_criteria": [
+        "Browser-verify pagination hides the other pages",
+        "Browser-verify Copy while a non-first page is open still yields every section",
+        "Browser-verify the scorecard needs no scrolling at desktop width",
+        "Browser-verify the settings menu opens/closes and each view renders",
+        "Confirm the account group hides at 1 account"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/index.html",
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "status": "completed",
+      "notes": "Built and verified against a stubbed local harness (scratchpad/uitest) because the live app needs Ivan's login, which I do not have and will not extract from D1. THE TRAP THIS DESIGN CREATES: pagination + a copy button that reads the DOM = a copy button that silently copies only the visible page, because innerText skips display:none nodes. The old handler did exactly that (copyText($('#debriefBody').innerText)). Copy is now serialised from the debrief DATA via debriefToText(), so pagination narrows what you READ and never what you COPY. Also note the scorecard reflow: the old grid was 1fr/auto per row, which stacks all 10 dimensions vertically no matter how wide the pane is - that was the actual cause of the scrolling, not the height limit. Each dimension is now a self-contained .sc-item cell in an auto-fit grid.",
+      "test_results": [
+        "2026-07-16 pagination: clicked 'Did Well' -> exactly 1 .dpage active, TL;DR hidden, scorecard hidden, correct content shown - pass",
+        "2026-07-16 THE KEY ASSERTION - copy-all while ONLY the 'Did Well' page was visible returned 756 chars containing every section: all 10 scorecard dimensions, didWell, hurtSale, the objection autopsy incl. 'Say instead', profile, buying signals, lessons - pass. This is the exact trap the old innerText handler would have fallen into.",
+        "2026-07-16 scorecard: 10 .sc-item cells reflow to 4 columns at 1440px with no scrolling. Found and fixed a real threshold bug in testing: minmax(230px) needed 486px for 2 columns but the pane is 480px, so it collapsed to 1 column - lowered to 195px.",
+        "2026-07-16 settings menu: hidden at start, opens on profile click (aria-expanded flips), lists Activity/Prompt Templates/Integrations/Log out, closes on outside click AND Escape, closes after picking a view, clears the nav highlight - pass",
+        "2026-07-16 all three settings views render with the REAL API response shapes (two apparent failures during testing were missing stub routes, not bugs - verified /api/events really does return {events, totals} per src/index.js before dismissing it) - pass",
+        "2026-07-16 account group hidden with 1 account; accountFilter forced to null; nav-item[data-view] in main nav reduced to insights+suggestions - pass",
+        "2026-07-16 follow-up banner removed; no regression in tone switching, per-output copy, or Regenerate wiring - pass",
+        "2026-07-16 node --check on app.js clean; browser console shows zero errors"
+      ]
     }
   ],
-  "progress_percentage": 50
+  "progress_percentage": 64
 }

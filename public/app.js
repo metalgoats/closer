@@ -86,6 +86,14 @@ async function boot() {
 // ---------- sidebar ----------
 function renderAccountNav() {
   const nav = $("#accountNav");
+
+  // With a single account, "All Accounts" vs "OSA" is a distinction without a difference, so
+  // the whole group is hidden. Nothing else changes: accountFilter stays null (= all), and the
+  // filtering below still works — add a second account and this reappears on its own.
+  const multi = state.accounts.length > 1;
+  $("#accountGroup").classList.toggle("hidden", !multi);
+  if (!multi) { state.accountFilter = null; nav.innerHTML = ""; return; }
+
   nav.innerHTML = [
     `<div class="nav-item ${state.accountFilter === null ? "active" : ""}" data-account="">All Accounts</div>`,
     ...state.accounts.map(a =>
@@ -136,6 +144,33 @@ document.querySelectorAll(".nav-item[data-view]").forEach(el => {
   el.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
     el.classList.add("active");
+    VIEWS[el.dataset.view]();
+  });
+});
+
+// ---------- settings menu ----------
+// Activity / Templates / Integrations are setup-and-forget, so they live behind the profile
+// rather than taking up permanent nav space in the nightly loop.
+const settingsMenu = () => $("#settingsMenu");
+function closeSettings() {
+  settingsMenu().classList.add("hidden");
+  $("#userBtn").setAttribute("aria-expanded", "false");
+}
+$("#userBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  const open = settingsMenu().classList.toggle("hidden");
+  $("#userBtn").setAttribute("aria-expanded", String(!open));
+});
+document.addEventListener("click", e => {
+  if (!settingsMenu().contains(e.target)) closeSettings();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSettings(); });
+document.querySelectorAll(".settings-item[data-view]").forEach(el => {
+  el.addEventListener("click", () => {
+    closeSettings();
+    // These are not call filters, so clear the call-nav highlight rather than leaving a
+    // filter looking active while a workspace view is open.
+    document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
     VIEWS[el.dataset.view]();
   });
 });
@@ -255,34 +290,18 @@ function renderProcessed(call, outputs) {
         <span class="applies-to">${esc(call.tone_reason || "")}</span>
       </div>
     </div>
-    ${call.outcome === "followup" ? `
-      <div class="followup-banner">
-        <div class="followup-banner-row"><b>Follow-up needed</b><span>${esc(call.callback_note || "")}</span>
-          ${call.precall_brief ? `<button class="brief-toggle" id="briefToggle">Pre-call brief</button>` : ""}</div>
-        ${call.precall_brief ? `<div class="brief-body hidden" id="briefBody">${esc(call.precall_brief)}</div>` : ""}
-      </div>` : ""}
-
-    <!-- Debrief: full-width section (per Gabriel's feedback) -->
+    <!-- Debrief: full-width, paginated by the pills. Only one page is in the DOM's flow at a
+         time, so nothing needs scrolling past to reach the next thing (Gabriel's original
+         complaint: "it's just so much, and I don't always read all of it"). -->
     <div class="debrief-section">
       <div class="debrief-head"><h3>Debrief</h3>
-        <button class="copy-btn" id="copyDebrief">⧉ Copy</button></div>
-      <div class="panel-subnav">${["Scorecard", "Did Well", "Hurt Sale", "Objections", "Client Profile", "Buying Signals", "Lessons"].map((t, i) =>
-        `<button class="chip" data-jump="dsec${i}">${t}</button>`).join("")}</div>
+        <button class="copy-btn" id="copyDebrief">⧉ Copy all</button></div>
+      <div class="panel-subnav" role="tablist">${DEBRIEF_PAGES.map((p, i) =>
+        `<button class="chip ${i === 0 ? "active" : ""}" data-page="${i}" role="tab"
+                 aria-selected="${i === 0}">${p.label}</button>`).join("")}</div>
       <div class="debrief-body" id="debriefBody">
-        ${highlights(d)}
-        <div class="debrief-cols">
-          <h4 id="dsec0">Call Scorecard</h4>${scorecard(d.scorecard)}
-          <h4 id="dsec1">What You Did Well</h4><ul>${(d.didWell || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-          <h4 id="dsec2">What Hurt The Sale</h4><ul>${(d.hurtSale || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-          <h4 id="dsec3">Objection Autopsy</h4>${(d.objections || []).map(o => `
-            <div class="objection"><div class="said">"${esc(o.said)}"</div>
-            <dl><dt>Meant</dt><dd>${esc(o.meant)}</dd><dt>Felt</dt><dd>${esc(o.felt)}</dd>
-            <dt>Say instead</dt><dd>${esc(o.should)}</dd><dt>Follow-up</dt><dd>${esc(o.follow)}</dd>
-            <dt>Loop back</dt><dd>${esc(o.loop)}</dd></dl></div>`).join("")}
-          <h4 id="dsec4">Client Profile</h4><ul>${(d.profile || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-          <h4 id="dsec5">Buying Signals + Red Flags</h4><ul>${(d.buyingSignals || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-          <h4 id="dsec6">Coaching Lessons</h4><ul>${(d.lessons || []).map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-        </div>
+        ${DEBRIEF_PAGES.map((p, i) =>
+          `<div class="dpage ${i === 0 ? "active" : ""}" data-page="${i}">${p.render(d) || `<div class="dpage-empty">Nothing recorded for this section.</div>`}</div>`).join("")}
       </div>
     </div>
 
@@ -293,7 +312,51 @@ function renderProcessed(call, outputs) {
       ${outputPanel("GoHighLevel Note", ghl, {})}
     </div>`;
 
-  wireDetail(call, { sms, email, ghl });
+  wireDetail(call, { sms, email, ghl, debrief: d });
+}
+
+// The debrief pills are pagination, not jump links: each shows exactly one page and hides the
+// rest. Page 0 pairs the TL;DR with the scorecard because that is the "did I do well?" glance;
+// everything else is a section you go looking for deliberately.
+const bullets = xs => (xs || []).length
+  ? `<ul>${xs.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+
+const DEBRIEF_PAGES = [
+  { label: "TL;DR & Scorecard", key: "tldr",
+    render: d => (highlights(d) + (d.scorecard?.length ? `<h4>Call Scorecard</h4>${scorecard(d.scorecard)}` : "")) },
+  { label: "Did Well", key: "didWell", render: d => bullets(d.didWell) },
+  { label: "Hurt Sale", key: "hurtSale", render: d => bullets(d.hurtSale) },
+  { label: "Objections", key: "objections", render: d => (d.objections || []).map(o => `
+      <div class="objection"><div class="said">"${esc(o.said)}"</div>
+      <dl><dt>Meant</dt><dd>${esc(o.meant)}</dd><dt>Felt</dt><dd>${esc(o.felt)}</dd>
+      <dt>Say instead</dt><dd>${esc(o.should)}</dd><dt>Follow-up</dt><dd>${esc(o.follow)}</dd>
+      <dt>Loop back</dt><dd>${esc(o.loop)}</dd></dl></div>`).join("") },
+  { label: "Client Profile", key: "profile", render: d => bullets(d.profile) },
+  { label: "Buying Signals", key: "buyingSignals", render: d => bullets(d.buyingSignals) },
+  { label: "Lessons", key: "lessons", render: d => bullets(d.lessons) }
+];
+
+// Copy = the WHOLE debrief, not just the visible page. Pagination is a reading aid; it must
+// not silently narrow what the copy button gives you.
+function debriefToText(call, d) {
+  const L = [`DEBRIEF — ${call.client_name}`, fmtTime(call.occurred_at), ""];
+  const sec = (title, xs) => { if ((xs || []).length) L.push(title.toUpperCase(), ...xs.map(x => `• ${x}`), ""); };
+  if (d.scorecard?.length) {
+    L.push("CALL SCORECARD", ...d.scorecard.map(([k, v]) => `• ${k}: ${v}/10`), "");
+  }
+  sec("What you did well", d.didWell);
+  sec("What hurt the sale", d.hurtSale);
+  if (d.objections?.length) {
+    L.push("OBJECTION AUTOPSY");
+    d.objections.forEach(o => L.push(
+      `• "${o.said}"`, `    Meant: ${o.meant}`, `    Felt: ${o.felt}`,
+      `    Say instead: ${o.should}`, `    Follow-up: ${o.follow}`, `    Loop back: ${o.loop}`));
+    L.push("");
+  }
+  sec("Client profile", d.profile);
+  sec("Buying signals + red flags", d.buyingSignals);
+  sec("Coaching lessons", d.lessons);
+  return L.join("\n").trim();
 }
 
 function highlights(d) {
@@ -307,10 +370,15 @@ function highlights(d) {
 }
 
 const tierColor = n => n >= 8 ? "var(--blue-500)" : n >= 6 ? "var(--violet-500)" : "var(--pink-500)";
+// Each dimension is one self-contained cell so the grid can flow them into as many columns as
+// the pane is wide. The old 2-column grid forced all 10 rows into a single tall stack, which is
+// what made the scorecard need scrolling.
 function scorecard(rows) {
   return `<div class="scorecard">${(rows || []).map(([k, v]) => `
-    <div class="k">${esc(k)}</div><div class="v" style="color:${tierColor(v)}">${v}/10</div>
-    <div class="bar"><i style="width:${v * 10}%; background:${tierColor(v)}"></i></div>`).join("")}</div>`;
+    <div class="sc-item">
+      <div class="sc-top"><span class="sc-k">${esc(k)}</span><span class="sc-v" style="color:${tierColor(v)}">${v}/10</span></div>
+      <div class="bar"><i style="width:${v * 10}%; background:${tierColor(v)}"></i></div>
+    </div>`).join("")}</div>`;
 }
 
 function outputPanel(title, out, opts) {
@@ -334,10 +402,16 @@ function outputPanel(title, out, opts) {
 }
 
 function wireDetail(call, outs) {
-  // jump chips
-  document.querySelectorAll(".chip[data-jump]").forEach(chip => chip.addEventListener("click", () => {
-    const el = document.getElementById(chip.dataset.jump);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Debrief pagination: show one page, hide the rest.
+  document.querySelectorAll(".chip[data-page]").forEach(chip => chip.addEventListener("click", () => {
+    const n = chip.dataset.page;
+    document.querySelectorAll(".chip[data-page]").forEach(c => {
+      const on = c.dataset.page === n;
+      c.classList.toggle("active", on);
+      c.setAttribute("aria-selected", on);
+    });
+    document.querySelectorAll(".dpage").forEach(p => p.classList.toggle("active", p.dataset.page === n));
+    $("#debriefBody").scrollTop = 0;
   }));
 
   // tone switch
@@ -384,7 +458,9 @@ function wireDetail(call, outs) {
   });
 
   // copy debrief
-  $("#copyDebrief").addEventListener("click", e => copyText($("#debriefBody").innerText, e.currentTarget));
+  // Build the text from the DATA, not from the DOM. innerText skips display:none nodes, so
+  // reading the pane would copy only whichever page happens to be open.
+  $("#copyDebrief").addEventListener("click", e => copyText(debriefToText(call, outs.debrief || {}), e.currentTarget));
 
   // copy outputs
   document.querySelectorAll(".copy-btn[data-out]").forEach(btn => btn.addEventListener("click", async () => {

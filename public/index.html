@@ -26,7 +26,9 @@
   <div id="mainView" class="app hidden">
     <div class="sidebar">
       <div class="brand"><div class="brand-mark"></div><div class="brand-name">Closer</div></div>
-      <div class="nav-group">
+      <!-- Accounts: hidden while there is only one (OSA). renderAccountNav() reveals this
+           automatically if a second account is ever added — the filtering still works. -->
+      <div class="nav-group hidden" id="accountGroup">
         <div class="nav-label">Accounts</div>
         <div id="accountNav"></div>
       </div>
@@ -40,17 +42,22 @@
         <div class="nav-label">Coaching</div>
         <div class="nav-item" data-view="insights">Insights</div>
         <div class="nav-item" data-view="suggestions">Suggestions</div>
-        <div class="nav-item" data-view="activity">Activity</div>
       </div>
-      <div class="nav-group">
-        <div class="nav-label">Workspace</div>
-        <div class="nav-item" data-view="templates">Prompt Templates</div>
-        <div class="nav-item" data-view="integrations">Integrations</div>
-      </div>
+      <!-- Activity / Templates / Integrations live behind the profile, not in the main nav:
+           they are setup-and-forget, not part of the nightly loop. -->
       <div class="sidebar-foot">
-        <div class="avatar" id="userAvatar">?</div>
-        <span id="userEmail"></span>
-        <button class="linklike" id="logoutBtn">Log out</button>
+        <div class="settings-menu hidden" id="settingsMenu" role="menu">
+          <button class="settings-item" data-view="activity" role="menuitem">Activity</button>
+          <button class="settings-item" data-view="templates" role="menuitem">Prompt Templates</button>
+          <button class="settings-item" data-view="integrations" role="menuitem">Integrations</button>
+          <div class="settings-sep"></div>
+          <button class="settings-item danger" id="logoutBtn" role="menuitem">Log out</button>
+        </div>
+        <button class="user-btn" id="userBtn" aria-haspopup="menu" aria-expanded="false">
+          <div class="avatar" id="userAvatar">?</div>
+          <span id="userEmail"></span>
+          <span class="user-caret" aria-hidden="true">⌃</span>
+        </button>
       </div>
     </div>
 
