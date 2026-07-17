@@ -17,7 +17,7 @@ export async function resolveKey(env, accountId, kind) {
   return envKeys[kind] || null;
 }
 
-export async function generateOutputs(env, { account, call, masterPrompt }) {
+export async function generateOutputs(env, { account, call, masterPrompt, onStep }) {
   const provider = account.llm_provider || "anthropic";
   const key = await resolveKey(env, account.id, provider);
   if (!key) return mockOutputs(call);
@@ -26,21 +26,26 @@ export async function generateOutputs(env, { account, call, masterPrompt }) {
   const total = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   const tally = u => { for (const k of Object.keys(total)) total[k] += (u?.[k] || 0); };
 
+  const t0 = Date.now();
   const debriefRes = await complete(env, provider, key, [
     { role: "user", content: `${masterPrompt}\n\nReturn ONLY valid JSON with keys: scorecard (array of [label, score1to10] pairs for rapport, authority, trust, emotional connection, pain amplification, vision building, objection handling, certainty transfer, close attempt, follow-up positioning), didWell (string[]), hurtSale (string[]), objections (array of {said, meant, felt, should, follow, loop}), profile (string[]), buyingSignals (string[]), lessons (string[]), suggestedTone ("casual"|"balanced"|"formal"), toneReason (string), outcome ("closed"|"followup"), ghlNote (string, under 10000 chars: client name, personal details for rapport, buying profile, objections, next-call guidance).\n\nTranscript:\n${call.transcript}` }
-  ]);
+  ], { effort: "medium", think: false });
   tally(debriefRes.usage);
   const parsed = JSON.parse(extractJson(debriefRes.text));
+  const debriefMs = Date.now() - t0;
+  if (onStep) await onStep({ step: "debrief", duration_ms: debriefMs, usage: debriefRes.usage });
 
   // SMS + email in all three tones, generated in parallel (the v1.5 speed fix).
   const msgJobs = TONES.map(async tone => {
     const res = await complete(env, provider, key, [
       { role: "user", content: `Based on this sales call transcript, write a follow-up SMS and a follow-up email from the closer (Gabriel) to the client. Tone: ${tone}. Match the call outcome (${parsed.outcome}). Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}\n\nTranscript:\n${call.transcript}` }
-    ]);
+    ], { effort: "low", think: false });
     tally(res.usage);
     return { tone, ...JSON.parse(extractJson(res.text)) };
   });
+  const t1 = Date.now();
   const messages = await Promise.all(msgJobs);
+  if (onStep) await onStep({ step: "messages", duration_ms: Date.now() - t1 });
 
   return {
     model: provider,
@@ -54,7 +59,15 @@ export async function generateOutputs(env, { account, call, masterPrompt }) {
   };
 }
 
-async function complete(env, provider, key, messages) {
+// opts.effort: "low" | "medium" | "high" | "xhigh" | "max"
+// opts.think:  false disables thinking entirely.
+//
+// WHY THIS IS EXPLICIT: Sonnet 5 runs ADAPTIVE THINKING when `thinking` is omitted,
+// and `effort` defaults to `high`. Leaving either unset made every call reason at high
+// effort over a 19k-token transcript — 10+ minutes for 4 calls, and thinking competes
+// with the response for the max_tokens budget. Never omit these.
+async function complete(env, provider, key, messages, opts = {}) {
+  const { effort = "medium", think = false } = opts;
   if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -72,7 +85,13 @@ async function complete(env, provider, key, messages) {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-5", max_tokens: 16000, messages })
+    body: JSON.stringify({
+      model: "claude-sonnet-5",
+      max_tokens: 16000,
+      thinking: think ? { type: "adaptive" } : { type: "disabled" },
+      output_config: { effort },
+      messages
+    })
   });
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
   const data = await res.json();

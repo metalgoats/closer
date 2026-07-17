@@ -2,7 +2,7 @@
   "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-07-16",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 55,
+  "completion_percentage": 54,
   "tasks": [
     {
       "id": "TASK-001",
@@ -1257,6 +1257,45 @@
         "2026-07-16: GET /api/events filters by level and kind prefix; totals aggregate runs/tokens/avg duration/failures — pass",
         "2026-07-16: Activity view verified in-browser — summary tiles, failures visually distinct in pink, per-run duration + token counts, filter chips — pass",
         "2026-07-16: deployed (version fe79f3d9), site 200 — pass"
+      ]
+    },
+    {
+      "id": "TASK-041",
+      "title": "Generation takes 10+ min and dies silently — Sonnet 5 runs adaptive thinking at high effort by default",
+      "description": "Ivan 2026-07-16: spinner running 10+ min with no progress and no baseline. DIAGNOSED via the new activity log: generation.started at 04:55:06, then NOTHING — no success, no failure, 0 outputs, 18 min elapsed. The catch block would have logged a throw, so the Worker was killed mid-flight; waitUntil did not survive the duration. ROOT CAUSE: llm.js omits `thinking` entirely. On Sonnet 5 that is a documented SILENT DEFAULT — omitting `thinking` runs ADAPTIVE THINKING, and `effort` defaults to HIGH. So every one of the 4 calls does extended reasoning at high effort over a 19k-token transcript. Thinking also shares the max_tokens budget, so it can eat the 16k and truncate the JSON on top of being slow.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "thinking and effort are set EXPLICITLY on every call — never left to the model default",
+        "A full generation on a ~19k-token transcript completes well inside Cloudflare's Worker lifetime",
+        "Per-step timings are logged so there is an actual baseline for how long this should take",
+        "The UI shows elapsed time and which step is running — not an unbounded spinner",
+        "A run killed mid-flight becomes retryable from the UI rather than spinning forever",
+        "The currently wedged call is recovered rather than left spinning"
+      ],
+      "testing_criteria": [
+        "Measure and log debrief vs messages duration separately on a real 19k-token transcript",
+        "Assert a full generation completes and produces 7 outputs",
+        "Assert the working view shows a rising elapsed counter and a retry affordance",
+        "Assert the wedged call is no longer stuck in 'processing'"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "in_progress",
+      "notes": "THE LOG (TASK-040) PAID FOR ITSELF ON DAY ONE — without it this was indistinguishable from 'it's just slow'. Decision: disable thinking on all 4 calls FIRST and measure, rather than guessing at the right effort level. The debrief prompt is highly prescriptive (9 named sections, exact JSON keys), so the structure is supplied rather than reasoned toward; and with zero baseline the honest move is to get one successful run, read the real durations off the log, then tune quality back up deliberately. Revisit once TASK-015 has a green run: try effort medium on the debrief and compare scorecard quality. Also note this makes TASK-031 (prompt caching) more attractive — cache reads skip prefill, which is a latency win on 19k tokens x4, not just a cost win. SHIPPED 2026-07-16; left in_progress until a real run confirms the duration. The log will now show exactly where time goes.",
+      "test_results": [
+        "2026-07-16 DIAGNOSIS via the activity log: generation.started 04:55:06, no succeeded/failed, 0 outputs, 18.1 min elapsed. The catch block logs any throw, so nothing threw — the Worker was killed mid-flight. waitUntil did not survive the duration.",
+        "2026-07-16 ROOT CAUSE confirmed against the bundled Anthropic reference: 'On Claude Sonnet 5, [a request with no thinking field] runs with adaptive thinking' and 'effort defaults to high'. llm.js omitted both -> 4 calls x adaptive thinking at high effort over a 19k-token transcript.",
+        "2026-07-16 FIX VERIFIED by stubbing fetch and inspecting the real request bodies: debrief -> thinking={type:disabled}, effort=medium; all 3 tone calls -> thinking={type:disabled}, effort=low. Every call now sets both explicitly — pass",
+        "2026-07-16: per-step logging added (generation.debrief_done / generation.messages_done with duration + usage) so a baseline exists and a dying run shows how far it got — pass",
+        "2026-07-16: working view now shows a rising elapsed counter, a 'typical run is under 2 minutes' baseline, a stale warning past 3 min, and a Restart button — pass",
+        "2026-07-16: the wedged call was recovered to 'failed' with an explanatory message and a log entry, instead of spinning forever — pass",
+        "2026-07-16: deployed (version 7d4eb0c4), site 200 — pass",
+        "PENDING: the actual end-to-end timing on the real 19k-token call is still unmeasured — that is the next click, and generation.debrief_done/messages_done will now record it."
       ]
     }
   ]

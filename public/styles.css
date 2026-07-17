@@ -275,3 +275,4 @@ button{ font-family:inherit; }
 .ev-error .ev-kind{ background:var(--pink-100); color:var(--pink-500); }
 .ev-error td{ color:var(--ink-800); }
 .ev-warn .ev-kind{ background:var(--violet-100); color:var(--violet-600); }
+.work-elapsed{ font-variant-numeric:tabular-nums; }

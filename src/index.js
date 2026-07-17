@@ -309,7 +309,15 @@ async function runGeneration(env, id) {
       "SELECT body FROM prompt_templates WHERE account_id = ? AND tone IS NULL AND active = 1"
     ).bind(account.id).first();
 
-    const gen = await generateOutputs(env, { account, call, masterPrompt: tpl?.body || "" });
+    // Log each step so there's a real baseline for how long this should take,
+    // and so a run that dies shows how far it got instead of vanishing.
+    const gen = await generateOutputs(env, {
+      account, call, masterPrompt: tpl?.body || "",
+      onStep: ({ step, duration_ms, usage }) => logEvent(env, {
+        kind: `generation.${step}_done`, call_id: id, account_id: account.id,
+        duration_ms, usage, detail: `${call.client_name} · ${step}`
+      })
+    });
 
     const stmts = [
       env.DB.prepare("DELETE FROM outputs WHERE call_id = ?").bind(id),

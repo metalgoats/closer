@@ -169,6 +169,7 @@ function visibleCalls() {
 
 // While anything is generating, refresh so the dot flips without a manual reload.
 let pollTimer = null;
+let elapsedTimer = null;
 function syncPolling() {
   const anyWorking = state.calls.some(c => callState(c) === "processing");
   if (anyWorking && !pollTimer) {
@@ -448,10 +449,24 @@ function renderWorking(call) {
     </div></div></div>
     <div class="loading-state">
       <div class="spinner"></div>
-      <div>Generating… this can take a minute on a long call.</div>
-      <div style="font-size:12px; color:var(--ink-400);">Safe to close this tab — it keeps running and will be here when you come back.</div>
-      <button class="regen-btn" id="retryBtn" style="margin-top:6px;">Not responding? Retry</button>
+      <div id="workElapsed" class="work-elapsed">Generating…</div>
+      <div style="font-size:12px; color:var(--ink-400);">Typical run is under 2 minutes. Safe to close this tab — it keeps running.</div>
+      <div id="workStale" class="hidden" style="font-size:12px; color:var(--pink-500);">This is taking much longer than expected — the run has probably died.</div>
+      <button class="regen-btn" id="retryBtn" style="margin-top:6px;">Restart generation</button>
     </div>`;
+
+  // Elapsed counter — an unbounded spinner gives no signal about whether anything is happening.
+  const startedMs = call.processing_started_at ? Date.parse(call.processing_started_at.replace(" ", "T") + "Z") : Date.now();
+  const tick = () => {
+    const el = $("#workElapsed");
+    if (!el) return clearInterval(elapsedTimer);
+    const secs = Math.max(0, Math.round((Date.now() - startedMs) / 1000));
+    el.textContent = `Generating… ${Math.floor(secs / 60)}m ${String(secs % 60).padStart(2, "0")}s elapsed`;
+    if (secs > 180) $("#workStale")?.classList.remove("hidden");
+  };
+  clearInterval(elapsedTimer);
+  elapsedTimer = setInterval(tick, 1000);
+  tick();
   // The server refuses a retry while a run is genuinely in flight (no double spend),
   // so this is only ever destructive to a run that has actually died.
   $("#retryBtn").addEventListener("click", async () => {
