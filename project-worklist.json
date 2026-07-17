@@ -520,7 +520,7 @@
         "closer-app/migrations/"
       ],
       "status": "incomplete",
-      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste \u2014 highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and \u2014 because createCall() auto-processes \u2014 fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033). RESCOPED 2026-07-16 to Ivan's 'Gmail' requirement. NOTE the sequencing: auto-generation must NOT be switched on before TASK-015 \u2014 not one real LLM generation has ever succeeded, and turning on an unattended cron that fires 4 paid calls per arriving call, with an unproven generation path, would fail silently on every call and could burn money doing it. Prove one manual generation first. Now also depends on TASK-040 so cron activity is observable \u2014 an unattended job with no log is undebuggable by definition.",
+      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste \u2014 highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and \u2014 because createCall() auto-processes \u2014 fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033). RESCOPED 2026-07-16 to Ivan's 'Gmail' requirement. NOTE the sequencing: auto-generation must NOT be switched on before TASK-015 \u2014 not one real LLM generation has ever succeeded, and turning on an unattended cron that fires 4 paid calls per arriving call, with an unproven generation path, would fail silently on every call and could burn money doing it. Prove one manual generation first. Now also depends on TASK-040 so cron activity is observable \u2014 an unattended job with no log is undebuggable by definition. REASSESSED 2026-07-16: this task assumed waitUntil already gave us background processing. It never did (30s cap, TASK-045). The Gmail behaviour depends on TASK-045's Workflow, not on the cron alone.",
       "test_results": []
     },
     {
@@ -1369,7 +1369,7 @@
         "closer-app/src/llm.js"
       ],
       "status": "in_progress",
-      "notes": "THIS IS WHY BOTH REAL RUNS DIED. TASK-041 fixed a real bug (adaptive thinking at high effort) but was diagnosed as THE cause on the strength of one killed run \u2014 it was a contributing cause at most. Lesson recorded honestly: 'I found a bug that explains the symptom' is not 'I found the bug'. The tell I under-weighted both times: a Worker killed by a platform limit and a fetch that never settles look IDENTICAL from the log (started, silence, no throw) \u2014 and I twice read that silence as 'Worker killed' without checking the API's own documented failure mode. Streaming also makes a REAL progress bar possible (TASK-044) because streamed bytes are genuine progress rather than a fake animation. Do NOT 'simplify' this back to stream:false: max_tokens is 16000 and a 9-section debrief takes minutes to generate, which is exactly the documented drop scenario.",
+      "notes": "THIS IS WHY BOTH REAL RUNS DIED. TASK-041 fixed a real bug (adaptive thinking at high effort) but was diagnosed as THE cause on the strength of one killed run \u2014 it was a contributing cause at most. Lesson recorded honestly: 'I found a bug that explains the symptom' is not 'I found the bug'. The tell I under-weighted both times: a Worker killed by a platform limit and a fetch that never settles look IDENTICAL from the log (started, silence, no throw) \u2014 and I twice read that silence as 'Worker killed' without checking the API's own documented failure mode. Streaming also makes a REAL progress bar possible (TASK-044) because streamed bytes are genuine progress rather than a fake animation. Do NOT 'simplify' this back to stream:false: max_tokens is 16000 and a 9-section debrief takes minutes to generate, which is exactly the documented drop scenario. NOTE 2026-07-16: shipped and correct, but did NOT make generation work \u2014 the real blocker is TASK-045 (waitUntil's 30s cap). This task's value stands on its own (TASK-043 removes a genuine idle-drop hazard and is REQUIRED regardless; TASK-044's streamed progress is what finally exposed the 0:30 death). Neither can be validated end-to-end until TASK-045 lands.",
       "test_results": [
         "2026-07-16 DIAGNOSIS: run 3 (05:31:36, on TASK-041+042 code) hung 12.6 min, status still 'processing', 0 outputs, NO error row. generation.debrief_done absent => died inside the FIRST call. Proves neither the thinking fix nor the 4x fix addressed it.",
         "2026-07-16 ROOT CAUSE verified against Anthropic's errors doc, verbatim: 'Avoid setting a large max_tokens value without using the streaming Messages API: Some networks may drop idle connections after a variable period of time, which can cause the request to fail or time out without receiving a response from Anthropic' and 'The SDKs validate that your non-streaming Messages API requests are not expected to exceed a 10-minute timeout. They also set a socket option for TCP keep-alive.' We use raw fetch => no validation, no keep-alive, max_tokens 16000, zero bytes until done.",
@@ -1418,7 +1418,7 @@
         "closer-app/public/styles.css"
       ],
       "status": "in_progress",
-      "notes": "Ivan asked ONLY for the progress bar; the hang (TASK-043) is what I found while checking the log first, per the README rule. Both matter, but a progress bar over a run that never finishes would just animate the failure more attractively \u2014 TASK-043 lands first and this depends on it. HONESTY CONSTRAINT: the percentage is an estimate (streamed chars / expected chars), and it must be built so it CANNOT advance without real bytes arriving. A bar that keeps climbing while the connection is dead is worse than the spinner it replaces, because it manufactures confidence. Cap at the ceiling rather than overshoot, and let it visibly stall when the stream stalls \u2014 a stalled bar is TRUE information.",
+      "notes": "Ivan asked ONLY for the progress bar; the hang (TASK-043) is what I found while checking the log first, per the README rule. Both matter, but a progress bar over a run that never finishes would just animate the failure more attractively \u2014 TASK-043 lands first and this depends on it. HONESTY CONSTRAINT: the percentage is an estimate (streamed chars / expected chars), and it must be built so it CANNOT advance without real bytes arriving. A bar that keeps climbing while the connection is dead is worse than the spinner it replaces, because it manufactures confidence. Cap at the ceiling rather than overshoot, and let it visibly stall when the stream stalls \u2014 a stalled bar is TRUE information. NOTE 2026-07-16: shipped and correct, but did NOT make generation work \u2014 the real blocker is TASK-045 (waitUntil's 30s cap). This task's value stands on its own (TASK-043 removes a genuine idle-drop hazard and is REQUIRED regardless; TASK-044's streamed progress is what finally exposed the 0:30 death). Neither can be validated end-to-end until TASK-045 lands.",
       "test_results": [
         "2026-07-16 migration 0006 applied to PRODUCTION. Row counts before/after identical: calls 1, outputs 0, integrations 4, events 3, accounts 1 - ZERO data loss, additive only.",
         "2026-07-16 progress rises monotonically across a simulated stream and never reports 100 (100 is written only alongside the saved outputs) - pass",
@@ -1429,7 +1429,42 @@
         "2026-07-16 explicit report(70) added when the debrief completes, so the bar does not lurch from a low estimate to 70 when the first draft byte lands",
         "PENDING: browser-verify the bar actually advances during a real run - that is Ivan's next click."
       ]
+    },
+    {
+      "id": "TASK-045",
+      "title": "THE ACTUAL ROOT CAUSE: ctx.waitUntil is capped at 30 SECONDS \u2014 generation takes minutes, so every run has always died at 0:30",
+      "description": "Ivan 2026-07-16, fourth report of a stuck run. This time the streaming fix (TASK-043) gave us the evidence that was missing all along: processing_progress reached 33 and then FROZE, and the 5-minute AbortSignal.timeout never fired. A timer that never fires means the isolate is gone. VERIFIED against Cloudflare's limits doc, verbatim: 'waitUntil() can extend execution for up to 30 seconds after the response is sent or the client disconnects.' Our design is exactly the pathological case: startProcessing() returns 202 IMMEDIATELY and then calls ctx.waitUntil(runGeneration) \u2014 which buys 30 seconds for a job that takes minutes. THE ARITHMETIC CONFIRMS IT EXACTLY: 33% of the bar = 33/70 of the debrief share = ~6,600 chars; Sonnet 5 streams ~220 chars/sec; 6,600/220 = 30 SECONDS. The Worker died at precisely the documented limit. FIX: Cloudflare Workflows \u2014 per-step wall-clock is UNLIMITED ('waiting on network I/O calls or querying a database' does not count), only CPU is capped at 30s (raisable to 5 min), and our work is ~100% I/O wait on Anthropic. Workflows also genuinely survives nobody being logged in, which waitUntil never did.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "Generation runs in a Cloudflare Workflow, NOT ctx.waitUntil",
+        "A full run on the real 19k-token transcript completes \u2014 the first successful generation in the project's history",
+        "It completes with the browser tab CLOSED (this is what waitUntil only ever pretended to do)",
+        "The expensive LLM step must NOT auto-retry \u2014 Workflows retries steps by default and a silent retry means paying twice for a 19k-token call",
+        "The cheap D1 save step MAY retry, since it costs nothing",
+        "Progress still streams to processing_progress from inside the step",
+        "A failed workflow marks the call 'failed' with real error text rather than leaving it wedged in 'processing' forever",
+        "The 'safe to close this tab' promise in the UI is either true or removed"
+      ],
+      "testing_criteria": [
+        "Assert the workflow binding exists and startProcessing creates an instance instead of calling waitUntil",
+        "Assert the LLM step is configured with retries limit 0 (money-bomb guard) and prove it via the step config, not by reading the code",
+        "REAL RUN: process the 19k call end to end and confirm 7 outputs are written",
+        "REAL RUN with the tab closed immediately after clicking Generate",
+        "Confirm progress advances past 33% \u2014 the exact point every previous run died",
+        "Confirm a deliberately failing step lands the call in 'failed' with the error text",
+        "Re-check the log: generation.debrief_done must appear for the first time ever"
+      ],
+      "files_expected_to_change": [
+        "closer-app/wrangler.toml",
+        "closer-app/src/workflow.js",
+        "closer-app/src/index.js"
+      ],
+      "status": "incomplete",
+      "notes": "FOURTH diagnosis of this symptom, and the first one supported by arithmetic rather than plausibility. The three before it: TASK-041 (adaptive thinking) - a REAL bug, not this. TASK-042 (4x transcript) - a REAL waste, not this. TASK-043 (non-streaming idle drop) - a REAL hazard, not this, BUT it is what made this diagnosable: without streamed progress there was no way to see the run die at 0:30 rather than at 10 minutes. The 10 / 12.6 / 18-minute figures were never durations. They were just when somebody happened to LOOK at a corpse that had been cold since 0:30. HONEST ACCOUNTING: I told Ivan 'fixed' three times. Each fix was real and each was necessary, but I twice let a plausible explanation stand in for a verified one, and never once checked the platform's own limit on the primitive the whole architecture rests on. The pattern to break: when a symptom survives a fix, re-derive from first principles instead of reaching for the next plausible bug. README's 'Does it work while logged out? Partly - a generation you started completes without you (ctx.waitUntil)' was FALSE and has been for the life of the project. RETRY DANGER: Workflows auto-retries steps by default. On a 19k-token call that is a silent double-spend. The LLM step must pin retries to 0; only the D1 save may retry.",
+      "test_results": []
     }
   ],
-  "progress_percentage": 52
+  "progress_percentage": 51
 }

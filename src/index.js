@@ -1,6 +1,9 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
-import { generateOutputs, resolveKey } from "./llm.js";
+import { resolveKey } from "./llm.js";
 import { logEvent } from "./log.js";
+
+// The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
+export { GenerateWorkflow } from "./workflow.js";
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...headers } });
@@ -294,80 +297,16 @@ async function startProcessing(env, id, ctx) {
             processing_error = NULL, processing_progress = 0, processing_step = 'Starting' WHERE id = ?`
   ).bind(id).run();
 
-  // waitUntil keeps the work alive after we respond, and after the client disconnects.
   await logEvent(env, { kind: "generation.started", call_id: id, account_id: call.account_id,
     detail: `${call.client_name} · ${(call.transcript || "").length.toLocaleString()} chars` });
-  ctx.waitUntil(runGeneration(env, id));
-  return json({ ok: true, status: "processing" }, 202);
-}
 
-async function runGeneration(env, id) {
-  const t0 = Date.now();
-  try {
-    const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(id).first();
-    const account = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(call.account_id).first();
-    const tpl = await env.DB.prepare(
-      "SELECT body FROM prompt_templates WHERE account_id = ? AND tone IS NULL AND active = 1"
-    ).bind(account.id).first();
-
-    // Throttle progress writes: the stream reports on every text delta, which is far too
-    // often for D1. 1.5s is frequent enough to look live and cheap enough to ignore.
-    let lastWrite = 0, pending = null;
-    const flush = async () => {
-      if (!pending) return;
-      const { percent, step } = pending; pending = null; lastWrite = Date.now();
-      try {
-        await env.DB.prepare("UPDATE calls SET processing_progress = ?, processing_step = ? WHERE id = ?")
-          .bind(percent, step, id).run();
-      } catch (e) {
-        // Same rule as logEvent: progress reporting must never break the generation it reports on.
-        console.error("progress write failed (non-fatal)", e?.message);
-      }
-    };
-
-    // Log each step so there's a real baseline for how long this should take,
-    // and so a run that dies shows how far it got instead of vanishing.
-    const gen = await generateOutputs(env, {
-      account, call, masterPrompt: tpl?.body || "",
-      onStep: ({ step, duration_ms, usage }) => logEvent(env, {
-        kind: `generation.${step}_done`, call_id: id, account_id: account.id,
-        duration_ms, usage, detail: `${call.client_name} · ${step}`
-      }),
-      onProgress: p => { pending = p; if (Date.now() - lastWrite > 1500) return flush(); }
-    });
-
-    const stmts = [
-      env.DB.prepare("DELETE FROM outputs WHERE call_id = ?").bind(id),
-      env.DB.prepare(
-        `UPDATE calls SET processing_status = 'processed', processed_at = datetime('now'), processing_error = NULL,
-                processing_progress = 100, processing_step = 'Done',
-                debrief_json = ?, suggested_tone = ?, tone_reason = ?,
-                selected_tone = COALESCE(selected_tone, ?), outcome = COALESCE(outcome, ?) WHERE id = ?`
-      ).bind(JSON.stringify(gen.debrief), gen.suggestedTone, gen.toneReason, gen.suggestedTone, gen.outcome, id),
-      env.DB.prepare("INSERT INTO outputs (call_id, kind, body, model) VALUES (?, 'ghl_note', ?, ?)")
-        .bind(id, gen.ghlNote, gen.model)
-    ];
-    for (const m of gen.messages) {
-      stmts.push(env.DB.prepare("INSERT INTO outputs (call_id, kind, tone, body, model) VALUES (?, 'sms', ?, ?, ?)")
-        .bind(id, m.tone, m.sms, gen.model));
-      stmts.push(env.DB.prepare("INSERT INTO outputs (call_id, kind, tone, subject, body, model) VALUES (?, 'email', ?, ?, ?, ?)")
-        .bind(id, m.tone, m.emailSubject, m.email, gen.model));
-    }
-    await env.DB.batch(stmts);
-    await logEvent(env, { kind: "generation.succeeded", call_id: id, account_id: account.id,
-      duration_ms: Date.now() - t0, usage: gen.usage,
-      detail: `${call.client_name} · ${gen.model} · outcome=${gen.outcome}`,
-      meta: { model: gen.model, outputs: 1 + gen.messages.length * 2 } });
-  } catch (err) {
-    // Record the failure instead of silently reverting to a 'New'-looking call.
-    console.error("generation failed", id, err);
-    // Leave processing_progress alone — how far it got before dying is diagnostic.
-    await env.DB.prepare(
-      "UPDATE calls SET processing_status = 'failed', processing_step = 'Failed', processing_error = ? WHERE id = ?"
-    ).bind(String(err.message || err).slice(0, 500), id).run();
-    await logEvent(env, { level: "error", kind: "generation.failed", call_id: id,
-      duration_ms: Date.now() - t0, detail: String(err.message || err) });
-  }
+  // Hand off to a Workflow, NOT ctx.waitUntil. waitUntil is capped at 30 seconds after the
+  // response is sent (Cloudflare's documented limit), which is why every run in this
+  // project's history died at 0:30. See src/workflow.js.
+  const instance = await env.GENERATE.create({ params: { callId: id } });
+  await env.DB.prepare("UPDATE calls SET processing_workflow_id = ? WHERE id = ?")
+    .bind(instance.id, id).run();
+  return json({ ok: true, status: "processing", workflow_id: instance.id }, 202);
 }
 
 // ---------- output edit capture ----------

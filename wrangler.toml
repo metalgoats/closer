@@ -7,6 +7,15 @@ compatibility_date = "2026-06-01"
 directory = "public"
 binding = "ASSETS"
 
+# Generation runs as a Workflow, NOT ctx.waitUntil. waitUntil is capped at 30 seconds after
+# the response is sent (Cloudflare's documented limit) and generation takes minutes — that cap
+# silently killed every run in this project's history at 0:30. Workflows gives unlimited
+# per-step WALL-CLOCK time (only CPU is capped), and our work is ~100% I/O wait on Anthropic.
+[[workflows]]
+name = "closer-generate"
+binding = "GENERATE"
+class_name = "GenerateWorkflow"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "closer"
