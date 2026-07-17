@@ -26,19 +26,24 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
   const total = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   const tally = u => { for (const k of Object.keys(total)) total[k] += (u?.[k] || 0); };
 
+  // The ONLY request that carries the transcript (TASK-042). Everything downstream is built
+  // from what this pass extracts.
   const t0 = Date.now();
   const debriefRes = await complete(env, provider, key, [
-    { role: "user", content: `${masterPrompt}\n\nReturn ONLY valid JSON with keys: scorecard (array of [label, score1to10] pairs for rapport, authority, trust, emotional connection, pain amplification, vision building, objection handling, certainty transfer, close attempt, follow-up positioning), didWell (string[]), hurtSale (string[]), objections (array of {said, meant, felt, should, follow, loop}), profile (string[]), buyingSignals (string[]), lessons (string[]), suggestedTone ("casual"|"balanced"|"formal"), toneReason (string), outcome ("closed"|"followup"), ghlNote (string, under 10000 chars: client name, personal details for rapport, buying profile, objections, next-call guidance).\n\nTranscript:\n${call.transcript}` }
+    { role: "user", content: `${masterPrompt}\n\nReturn ONLY valid JSON with keys: scorecard (array of [label, score1to10] pairs for rapport, authority, trust, emotional connection, pain amplification, vision building, objection handling, certainty transfer, close attempt, follow-up positioning), didWell (string[]), hurtSale (string[]), objections (array of {said, meant, felt, should, follow, loop}), profile (string[]), buyingSignals (string[]), lessons (string[]), suggestedTone ("casual"|"balanced"|"formal"), toneReason (string), outcome ("closed"|"followup"), followUp (object: {nextStep (string: the single concrete next action that was actually agreed on the call), timing (string: when the next contact or call was agreed, or "" if nothing was agreed), commitments (string[]: anything Gabriel promised to do or send), personalDetails (string[]: specifics said on the call worth referencing in a follow-up — names, dates, goals, situations, their own phrasing)}), ghlNote (string, under 10000 chars: client name, personal details for rapport, buying profile, objections, next-call guidance).\n\nTranscript:\n${call.transcript}` }
   ], { effort: "medium", think: false });
   tally(debriefRes.usage);
   const parsed = JSON.parse(extractJson(debriefRes.text));
   const debriefMs = Date.now() - t0;
   if (onStep) await onStep({ step: "debrief", duration_ms: debriefMs, usage: debriefRes.usage });
 
-  // SMS + email in all three tones, generated in parallel (the v1.5 speed fix).
+  // SMS + email in all three tones, generated in parallel so switching the tone slider is
+  // instant. Each job is fed the debrief's distillation, NOT the transcript — see draftContext.
+  assertDraftable(parsed);
+  const ctx = draftContext(call, parsed);
   const msgJobs = TONES.map(async tone => {
     const res = await complete(env, provider, key, [
-      { role: "user", content: `Based on this sales call transcript, write a follow-up SMS and a follow-up email from the closer (Gabriel) to the client. Tone: ${tone}. Match the call outcome (${parsed.outcome}). Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}\n\nTranscript:\n${call.transcript}` }
+      { role: "user", content: `You are drafting a follow-up SMS and email from Gabriel, a high-ticket sales closer, to a client he just got off a call with.\n\nYou are NOT given the transcript. The summary below was extracted from it by a prior analysis pass — treat it as the complete and authoritative record of what happened. Do NOT invent facts, commitments, prices, or dates that are not in it.\n\nTone: ${tone}.\nWrite to the actual outcome (${parsed.outcome}) — do not imply a close that did not happen.\nReference the specific details below — their situation, their own phrasing, what was agreed — so this reads like Gabriel wrote it and not like a template.\n\nCall summary:\n${ctx}\n\nReturn ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
     ], { effort: "low", think: false });
     tally(res.usage);
     return { tone, ...JSON.parse(extractJson(res.text)) };
@@ -57,6 +62,51 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
     toneReason: parsed.toneReason,
     outcome: parsed.outcome
   };
+}
+
+// What the follow-up drafts are built from instead of the transcript (TASK-042).
+//
+// DO NOT "fix" this by passing call.transcript back in. The debrief has already read the
+// transcript and extracted every fact a follow-up needs; re-sending it to each of the 3 tone
+// jobs cost ~57k extra input tokens and 3 extra prefills of a 19k-token document per call, so
+// the model could re-derive facts we were already holding in `parsed`.
+//
+// Note what is deliberately EXCLUDED: scorecard, didWell, hurtSale, lessons. Those are coaching
+// critique OF Gabriel and have no business anywhere near a client-facing email. ghlNote is also
+// excluded — it is prose that restates the fields below and can run to 10k chars.
+function draftContext(call, parsed) {
+  const f = parsed.followUp || {};
+  return JSON.stringify({
+    clientName: call.client_name,
+    outcome: parsed.outcome,
+    nextStep: f.nextStep,
+    timing: f.timing,
+    gabrielCommitted: f.commitments,
+    personalDetails: f.personalDetails,
+    clientProfile: parsed.profile,
+    buyingSignals: parsed.buyingSignals,
+    // `said` is the client's verbatim objection — the phrasing worth mirroring back.
+    objections: (parsed.objections || []).map(o => ({ said: o.said, meant: o.meant, resolveWith: o.follow }))
+  }, null, 1);
+}
+
+// A draft built from an empty distillation does not fail — it produces fluent, generic filler
+// that reads fine and says nothing about the actual call. That is worse than an error, because
+// nobody catches it. Fail loudly instead.
+function assertDraftable(parsed) {
+  const f = parsed.followUp || {};
+  const missing = [];
+  if (!parsed.outcome) missing.push("outcome");
+  if (!f.nextStep) missing.push("followUp.nextStep");
+  const hasColour = [f.personalDetails, parsed.profile, parsed.objections]
+    .some(v => Array.isArray(v) && v.length);
+  if (!hasColour) missing.push("followUp.personalDetails / profile / objections (all empty)");
+  if (missing.length) {
+    throw new Error(
+      `The debrief did not return the fields the follow-up drafts are built from: ${missing.join("; ")}. ` +
+      `Drafting from an empty summary would produce generic filler that looks correct, so the run stopped instead.`
+    );
+  }
 }
 
 // opts.effort: "low" | "medium" | "high" | "xhigh" | "max"

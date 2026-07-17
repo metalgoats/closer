@@ -1,7 +1,7 @@
 {
-  "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
+  "project": "Closer \u2014 post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-07-16",
-  "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
+  "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) \u2014 now the sole template, so it affects 100% of calls.",
   "completion_percentage": 54,
   "tasks": [
     {
@@ -27,13 +27,13 @@
       "status": "completed",
       "notes": "Prompt saved with Gabriel's annotated complaints. Source: two Zoom walkthroughs, 2026-07-10.",
       "test_results": [
-        "2026-07-11: Docs reviewed for standalone readability — pass"
+        "2026-07-11: Docs reviewed for standalone readability \u2014 pass"
       ]
     },
     {
       "id": "TASK-002",
       "title": "Design UI direction via interactive mockup",
-      "description": "Establish the inbox metaphor, all-black blue/violet/pink visual language, tiered scorecards, TL;DR highlights, sent-tracking, filters, Insights view, and responsive behavior — validated with Gabriel before committing to real code.",
+      "description": "Establish the inbox metaphor, all-black blue/violet/pink visual language, tiered scorecards, TL;DR highlights, sent-tracking, filters, Insights view, and responsive behavior \u2014 validated with Gabriel before committing to real code.",
       "dependencies": [
         "TASK-001"
       ],
@@ -55,8 +55,8 @@
       "status": "completed",
       "notes": "Iterated: warm Mac Mail -> 1995 Hackers terminal (rejected, unreadable) -> all-black w/ blue/violet/pink. Gabriel on 2026-07-12: 'This is incredible.' Mockup superseded by the real app but drove every UI decision.",
       "test_results": [
-        "2026-07-11: Browser-verified nav, tone switching, copy, responsive scroll — pass",
-        "2026-07-12: Reviewed live with Gabriel — approved"
+        "2026-07-11: Browser-verified nav, tone switching, copy, responsive scroll \u2014 pass",
+        "2026-07-12: Reviewed live with Gabriel \u2014 approved"
       ]
     },
     {
@@ -85,7 +85,7 @@
       "status": "completed",
       "notes": "Gabriel on call: 'let's just build online for now.' Menu-bar app spec parked as future native companion. Ivan confirmed: email+password auth, D1, vanilla FE.",
       "test_results": [
-        "2026-07-12: Decisions confirmed via AskUserQuestion — all four answered"
+        "2026-07-12: Decisions confirmed via AskUserQuestion \u2014 all four answered"
       ]
     },
     {
@@ -150,9 +150,9 @@
       "status": "completed",
       "notes": "100k PBKDF2 iterations. Constant-time compare implemented in verifyPassword.",
       "test_results": [
-        "2026-07-12: /api/me unauthenticated -> 401 — pass",
-        "2026-07-12: POST /api/setup -> session cookie set, subsequent calls authorized — pass",
-        "2026-07-15: production /api/me -> 401 — pass"
+        "2026-07-12: /api/me unauthenticated -> 401 \u2014 pass",
+        "2026-07-12: POST /api/setup -> session cookie set, subsequent calls authorized \u2014 pass",
+        "2026-07-15: production /api/me -> 401 \u2014 pass"
       ]
     },
     {
@@ -184,8 +184,8 @@
       "status": "completed",
       "notes": "Exactly matches the layout Gabriel and Ivan agreed on the 2026-07-12 call.",
       "test_results": [
-        "2026-07-15: Browser-verified full-width debrief + 3 columns (Text/Email/GHL Note) — pass",
-        "2026-07-15: 7 outputs per call confirmed (3 sms tones, 3 email tones, 1 ghl_note) — pass"
+        "2026-07-15: Browser-verified full-width debrief + 3 columns (Text/Email/GHL Note) \u2014 pass",
+        "2026-07-15: 7 outputs per call confirmed (3 sms tones, 3 email tones, 1 ghl_note) \u2014 pass"
       ]
     },
     {
@@ -213,10 +213,10 @@
         "closer-app/public/app.js"
       ],
       "status": "completed",
-      "notes": "Implements Gabriel's ask: 'I can just click into this field and start editing.' Batched-learning rationale (avoid outlier calls) preserved — edits only accumulate here, they never auto-change the prompt.",
+      "notes": "Implements Gabriel's ask: 'I can just click into this field and start editing.' Batched-learning rationale (avoid outlier calls) preserved \u2014 edits only accumulate here, they never auto-change the prompt.",
       "test_results": [
-        "2026-07-12: Edited Jeffrey's formal SMS -> edits table row id=1, kind=sms, tone=formal — pass",
-        "2026-07-12: Unchanged blur -> {ok:true, unchanged:true}, no row — pass"
+        "2026-07-12: Edited Jeffrey's formal SMS -> edits table row id=1, kind=sms, tone=formal \u2014 pass",
+        "2026-07-12: Unchanged blur -> {ok:true, unchanged:true}, no row \u2014 pass"
       ]
     },
     {
@@ -246,10 +246,10 @@
         "closer-app/seed/production_seed.sql"
       ],
       "status": "completed",
-      "notes": "Confirmed on call: two separate Fathom accounts (personal for hypnotherapy, OSA workspace). Apple Mail 'add an account' metaphor. SUPERSEDED IN PART 2026-07-16 by TASK-030: Hypnotherapy is out of scope; the app now runs a single account (On Screen Authority). The per-account architecture built here is RETAINED and still load-bearing — kept as history per rule 9, and it remains the foundation for TASK-027 multi-tenancy.",
+      "notes": "Confirmed on call: two separate Fathom accounts (personal for hypnotherapy, OSA workspace). Apple Mail 'add an account' metaphor. SUPERSEDED IN PART 2026-07-16 by TASK-030: Hypnotherapy is out of scope; the app now runs a single account (On Screen Authority). The per-account architecture built here is RETAINED and still load-bearing \u2014 kept as history per rule 9, and it remains the foundation for TASK-027 multi-tenancy.",
       "test_results": [
-        "2026-07-15: production query -> accounts [On Screen Authority, Hypnotherapy], 8 integration slots — pass",
-        "2026-07-15: Integrations view renders grouped by account — pass"
+        "2026-07-15: production query -> accounts [On Screen Authority, Hypnotherapy], 8 integration slots \u2014 pass",
+        "2026-07-15: Integrations view renders grouped by account \u2014 pass"
       ]
     },
     {
@@ -279,11 +279,11 @@
         "closer-app/seed/production_seed.sql"
       ],
       "status": "completed",
-      "notes": "Live at https://closer.gabriel-galindo.workers.dev. Cloudflare account is Gabriel's personal ('Gabriel Galindo', derikgab@gmail.com), NOT a separate shared org account as originally planned — deviation accepted by Ivan.",
+      "notes": "Live at https://closer.gabriel-galindo.workers.dev. Cloudflare account is Gabriel's personal ('Gabriel Galindo', derikgab@gmail.com), NOT a separate shared org account as originally planned \u2014 deviation accepted by Ivan.",
       "test_results": [
         "2026-07-15: d1 migrations apply --remote -> 0001_init.sql OK",
         "2026-07-15: production seed -> 6 queries, 18 rows written",
-        "2026-07-15: https://closer.gabriel-galindo.workers.dev -> 200; /api/me -> 401 — pass"
+        "2026-07-15: https://closer.gabriel-galindo.workers.dev -> 200; /api/me -> 401 \u2014 pass"
       ]
     },
     {
@@ -309,10 +309,10 @@
         ".github/workflows/deploy.yml"
       ],
       "status": "completed",
-      "notes": "Initially blocked: GitHub token lacked 'workflow' OAuth scope. Ivan ran `gh auth refresh -s workflow` on 2026-07-16, then it pushed and ran. Known cosmetic warning: actions/checkout@v4 and setup-node@v4 target deprecated Node 20 (forced onto Node 24, still passing) — see TASK-021.",
+      "notes": "Initially blocked: GitHub token lacked 'workflow' OAuth scope. Ivan ran `gh auth refresh -s workflow` on 2026-07-16, then it pushed and ran. Known cosmetic warning: actions/checkout@v4 and setup-node@v4 target deprecated Node 20 (forced onto Node 24, still passing) \u2014 see TASK-021.",
       "test_results": [
         "2026-07-16: gh run 29391130635 -> exit 0, deploy succeeded",
-        "2026-07-16: site 200 + /api/me 401 after automated deploy — pass"
+        "2026-07-16: site 200 + /api/me 401 after automated deploy \u2014 pass"
       ]
     },
     {
@@ -339,17 +339,17 @@
         "closer-app/public/index.html"
       ],
       "status": "completed",
-      "notes": "Recommended against 'anyone who logs in can use it' — public URL + client transcripts/psych profiles. Ivan accepted shared login. VERIFIED 2026-07-16: production users table now has 1 row, so the shared account has been created by Ivan or Gabriel.",
+      "notes": "Recommended against 'anyone who logs in can use it' \u2014 public URL + client transcripts/psych profiles. Ivan accepted shared login. VERIFIED 2026-07-16: production users table now has 1 row, so the shared account has been created by Ivan or Gabriel.",
       "test_results": [
         "2026-07-15: DELETE FROM sessions/users -> production reset to first-run",
-        "2026-07-15: local first-run sign-in created account and loaded app — pass",
-        "2026-07-16: production users COUNT = 1 — shared account exists"
+        "2026-07-15: local first-run sign-in created account and loaded app \u2014 pass",
+        "2026-07-16: production users COUNT = 1 \u2014 shared account exists"
       ]
     },
     {
       "id": "TASK-012",
       "title": "Fix nav failing to return to calls view",
-      "description": "Clicking an account or call filter only refreshed the left-hand list, leaving a stale workspace page (e.g. Integrations) in the detail pane — appeared frozen until manual refresh.",
+      "description": "Clicking an account or call filter only refreshed the left-hand list, leaving a stale workspace page (e.g. Integrations) in the detail pane \u2014 appeared frozen until manual refresh.",
       "dependencies": [
         "TASK-006"
       ],
@@ -372,8 +372,8 @@
       "status": "completed",
       "notes": "Reported by Ivan 2026-07-15. Root cause: account/filter handlers called renderCallList() but never touched the detail pane. Fixed by extracting openRelevantCall() + showCallsView().",
       "test_results": [
-        "2026-07-15: Browser test — Integrations -> All Accounts -> detail = 'Jeffrey R. Closed', integrationsStillActive=false — pass",
-        "2026-07-15: console errors — none"
+        "2026-07-15: Browser test \u2014 Integrations -> All Accounts -> detail = 'Jeffrey R. Closed', integrationsStillActive=false \u2014 pass",
+        "2026-07-15: console errors \u2014 none"
       ]
     },
     {
@@ -402,8 +402,8 @@
       "status": "completed",
       "notes": "Findings: GoHighLevel = true OAuth login (v2 API is OAuth-only, static keys deprecated). Fathom = self-serve key (own-account uses X-Api-Key; their OAuth is only for publishing apps to others). Claude/OpenAI = API key, no login exists for API access. Also corrected a cost assumption from the call: $20/mo Pro/Plus does NOT include API usage.",
       "test_results": [
-        "2026-07-15: Browser — badges render: Claude 'API key', Fathom 'Self-serve key', GHL 'Login (OAuth)' + Connect — pass",
-        "2026-07-15: GHL Connect button present but stubbed (toast) — expected, see TASK-018"
+        "2026-07-15: Browser \u2014 badges render: Claude 'API key', Fathom 'Self-serve key', GHL 'Login (OAuth)' + Connect \u2014 pass",
+        "2026-07-15: GHL Connect button present but stubbed (toast) \u2014 expected, see TASK-018"
       ]
     },
     {
@@ -429,7 +429,7 @@
       ],
       "files_expected_to_change": [],
       "status": "in_progress",
-      "notes": "RESCOPED 2026-07-16: the install mechanism changed. Was `wrangler secret put ANTHROPIC_API_KEY` (terminal + wrangler + Cloudflare token — Ivan reported he couldn't follow it, and it was the practical blocker on the whole project). Now: paste it into the Integrations screen (TASK-032). STILL BLOCKED, but only on Gabriel handing over a key — no longer on tooling. COST NOTE (unchanged, from TASK-013): Gabriel's $20/mo Claude Pro does NOT cover API usage — the API bills separately per token, so this needs its own billing setup. Suggest starting with a low spend cap ($20-50/mo) to prove the workflow. Possible funders: (a) Gabriel creates an Anthropic console account + billing, (b) Ivan funds a key initially and bills back. UPDATE 2026-07-16: an Anthropic key IS now saved in production and the integration status reads 'connected' — which in this app means the auto-test passed against the real API. A Fathom key is also saved (note: 'connected' for Fathom only means 'a key is saved' — there is no Fathom test endpoint yet, so it is UNVERIFIED). NO LONGER BLOCKED. Left in_progress rather than completed because two acceptance criteria are unverifiable from here: (a) confirm 'Test' passes on demand, (b) the provider-side spend cap lives in Gabriel's Anthropic console and I cannot see it. Ivan/Gabriel to confirm both.",
+      "notes": "RESCOPED 2026-07-16: the install mechanism changed. Was `wrangler secret put ANTHROPIC_API_KEY` (terminal + wrangler + Cloudflare token \u2014 Ivan reported he couldn't follow it, and it was the practical blocker on the whole project). Now: paste it into the Integrations screen (TASK-032). STILL BLOCKED, but only on Gabriel handing over a key \u2014 no longer on tooling. COST NOTE (unchanged, from TASK-013): Gabriel's $20/mo Claude Pro does NOT cover API usage \u2014 the API bills separately per token, so this needs its own billing setup. Suggest starting with a low spend cap ($20-50/mo) to prove the workflow. Possible funders: (a) Gabriel creates an Anthropic console account + billing, (b) Ivan funds a key initially and bills back. UPDATE 2026-07-16: an Anthropic key IS now saved in production and the integration status reads 'connected' \u2014 which in this app means the auto-test passed against the real API. A Fathom key is also saved (note: 'connected' for Fathom only means 'a key is saved' \u2014 there is no Fathom test endpoint yet, so it is UNVERIFIED). NO LONGER BLOCKED. Left in_progress rather than completed because two acceptance criteria are unverifiable from here: (a) confirm 'Test' passes on demand, (b) the provider-side spend cap lives in Gabriel's Anthropic console and I cannot see it. Ivan/Gabriel to confirm both.",
       "test_results": []
     },
     {
@@ -459,7 +459,7 @@
         "closer-app/src/index.js"
       ],
       "status": "incomplete",
-      "notes": "RISK: extractJson() does naive brace-slicing and JSON.parse with no retry — a chatty model response will throw and fail the whole process. Real-world validation is likely to surface prompt/parse fixes. Also verify the parallel tone generation actually delivers the speed win promised on the call.",
+      "notes": "RISK: extractJson() does naive brace-slicing and JSON.parse with no retry \u2014 a chatty model response will throw and fail the whole process. Real-world validation is likely to surface prompt/parse fixes. Also verify the parallel tone generation actually delivers the speed win promised on the call.",
       "test_results": []
     },
     {
@@ -483,13 +483,13 @@
       ],
       "files_expected_to_change": [],
       "status": "in_progress",
-      "notes": "RESCOPED 2026-07-16 by TASK-030: was two keys (OSA + hypnotherapy); now ONE key for On Screen Authority only. BLOCKED: needs Gabriel to generate it. Self-serve, ~2 clicks, no developer account needed (per TASK-013 research). Note the OSA Fathom is a workspace Gabriel logs into rather than owns — missing info: whether his access level permits generating an API key there, and whether the plan tier includes API access. UPDATE 2026-07-16: a Fathom key IS saved in production. NO LONGER BLOCKED on Gabriel. But it is UNVERIFIED — the UI showed 'connected' merely because saving sets that flag; there was no Fathom test. TASK-035 adds a real auth check and will verify this.",
+      "notes": "RESCOPED 2026-07-16 by TASK-030: was two keys (OSA + hypnotherapy); now ONE key for On Screen Authority only. BLOCKED: needs Gabriel to generate it. Self-serve, ~2 clicks, no developer account needed (per TASK-013 research). Note the OSA Fathom is a workspace Gabriel logs into rather than owns \u2014 missing info: whether his access level permits generating an API key there, and whether the plan tier includes API access. UPDATE 2026-07-16: a Fathom key IS saved in production. NO LONGER BLOCKED on Gabriel. But it is UNVERIFIED \u2014 the UI showed 'connected' merely because saving sets that flag; there was no Fathom test. TASK-035 adds a real auth check and will verify this.",
       "test_results": []
     },
     {
       "id": "TASK-017",
-      "title": "Fathom auto-ingest on cron — calls arrive and process while nobody is logged in (the 'Gmail' behaviour)",
-      "description": "Ivan 2026-07-16: 'I would like it to be like gmail, receiving mail (and in this case processing the data) even when I am not actively logged in... Ivan or Gabriel can log in and see the processed calls.' Today the cron fires every 5 min and does nothing (pollFathom is a stub), so NOTHING arrives while logged out. Wire the cron to the Fathom client built in TASK-035: pull new calls since the cursor, import them, and generate — all server-side, no session.",
+      "title": "Fathom auto-ingest on cron \u2014 calls arrive and process while nobody is logged in (the 'Gmail' behaviour)",
+      "description": "Ivan 2026-07-16: 'I would like it to be like gmail, receiving mail (and in this case processing the data) even when I am not actively logged in... Ivan or Gabriel can log in and see the processed calls.' Today the cron fires every 5 min and does nothing (pollFathom is a stub), so NOTHING arrives while logged out. Wire the cron to the Fathom client built in TASK-035: pull new calls since the cursor, import them, and generate \u2014 all server-side, no session.",
       "dependencies": [
         "TASK-015",
         "TASK-016",
@@ -501,12 +501,12 @@
       "acceptance_criteria": [
         "Cron imports new Fathom calls with no browser session open",
         "Newly imported calls are auto-generated so they are Ready when someone logs in",
-        "First-run cursor is seeded at key-save time — the cron must NEVER implicitly backfill history",
+        "First-run cursor is seeded at key-save time \u2014 the cron must NEVER implicitly backfill history",
         "Auto-generation is bounded to genuinely new calls only (never a backfill), so cost stays proportional to real call volume",
         "No duplicate calls across polls (dedupe on Fathom recording_id)",
-        "Every cron run logs what it did — imported, generated, skipped, failed (TASK-040)",
+        "Every cron run logs what it did \u2014 imported, generated, skipped, failed (TASK-040)",
         "A cron failure never wedges the cursor or loses calls",
-        "Both Ivan and Gabriel see identical processed state on login (already true — single shared account + server-side data)"
+        "Both Ivan and Gabriel see identical processed state on login (already true \u2014 single shared account + server-side data)"
       ],
       "testing_criteria": [
         "Simulate a poll against real Fathom API and confirm call rows created",
@@ -520,7 +520,7 @@
         "closer-app/migrations/"
       ],
       "status": "incomplete",
-      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste — highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and — because createCall() auto-processes — fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033). RESCOPED 2026-07-16 to Ivan's 'Gmail' requirement. NOTE the sequencing: auto-generation must NOT be switched on before TASK-015 — not one real LLM generation has ever succeeded, and turning on an unattended cron that fires 4 paid calls per arriving call, with an unproven generation path, would fail silently on every call and could burn money doing it. Prove one manual generation first. Now also depends on TASK-040 so cron activity is observable — an unattended job with no log is undebuggable by definition.",
+      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste \u2014 highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and \u2014 because createCall() auto-processes \u2014 fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033). RESCOPED 2026-07-16 to Ivan's 'Gmail' requirement. NOTE the sequencing: auto-generation must NOT be switched on before TASK-015 \u2014 not one real LLM generation has ever succeeded, and turning on an unattended cron that fires 4 paid calls per arriving call, with an unproven generation path, would fail silently on every call and could burn money doing it. Prove one manual generation first. Now also depends on TASK-040 so cron activity is observable \u2014 an unattended job with no log is undebuggable by definition.",
       "test_results": []
     },
     {
@@ -544,7 +544,7 @@
       ],
       "files_expected_to_change": [],
       "status": "blocked",
-      "notes": "RESCOPED 2026-07-16 by TASK-030: now only the On Screen Authority GHL sub-account, not both. BLOCKED: requires Ivan to register the app in the GHL developer marketplace. Missing info: which GHL scopes are needed, and whether Gabriel's GHL plan permits marketplace apps. Possible solutions: (a) register the marketplace app for true OAuth, (b) fall back to GHL Private Integration Tokens (static, simpler, but reintroduces a pasted token — contradicts Ivan's stated preference), (c) defer GHL entirely and keep copy/paste for CRM notes, which Gabriel already tolerates.",
+      "notes": "RESCOPED 2026-07-16 by TASK-030: now only the On Screen Authority GHL sub-account, not both. BLOCKED: requires Ivan to register the app in the GHL developer marketplace. Missing info: which GHL scopes are needed, and whether Gabriel's GHL plan permits marketplace apps. Possible solutions: (a) register the marketplace app for true OAuth, (b) fall back to GHL Private Integration Tokens (static, simpler, but reintroduces a pasted token \u2014 contradicts Ivan's stated preference), (c) defer GHL entirely and keep copy/paste for CRM notes, which Gabriel already tolerates.",
       "test_results": []
     },
     {
@@ -575,7 +575,7 @@
         "closer-app/public/app.js"
       ],
       "status": "incomplete",
-      "notes": "Connect button currently shows a toast explaining it needs the marketplace app first. Requires a new migration for oauth token storage (access_token, refresh_token, expires_at per account). Security note recorded in UI: OAuth still stores a sensitive token server-side — its win is click-to-connect UX + auto-expiry, not eliminating stored credentials.",
+      "notes": "Connect button currently shows a toast explaining it needs the marketplace app first. Requires a new migration for oauth token storage (access_token, refresh_token, expires_at per account). Security note recorded in UI: OAuth still stores a sensitive token server-side \u2014 its win is click-to-connect UX + auto-expiry, not eliminating stored credentials.",
       "test_results": []
     },
     {
@@ -603,7 +603,7 @@
         "closer-app/src/index.js"
       ],
       "status": "incomplete",
-      "notes": "Discovered by auditing production rather than trusting the demo. The seed data made this look finished — Priya/Marcus had hand-written briefs in seed.sql, masking the missing generation path. This is exactly the class of silent gap the work list exists to catch. Pre-call briefs were called out in ROADMAP as the highest-leverage v2 idea ('flips the product from post-call paperwork to pre-call advantage').",
+      "notes": "Discovered by auditing production rather than trusting the demo. The seed data made this look finished \u2014 Priya/Marcus had hand-written briefs in seed.sql, masking the missing generation path. This is exactly the class of silent gap the work list exists to catch. Pre-call briefs were called out in ROADMAP as the highest-leverage v2 idea ('flips the product from post-call paperwork to pre-call advantage').",
       "test_results": []
     },
     {
@@ -631,7 +631,7 @@
         "production data (prompt_templates table)"
       ],
       "status": "incomplete",
-      "notes": "RESCOPED + PRIORITY RAISED 2026-07-16 by TASK-030: was 'diverge two templates'; now 'retune the one remaining template'. Priority medium -> high, because with hypnotherapy gone the ONLY live template is the hypnotherapy-written one, so 100% of Gabriel's calls are now scored by a prompt built for the wrong sales motion. Gabriel on call: 'those people are fast decision-making... they smell that from a mile away.' Templates are editable in-app and versioned, so this is likely a data change, not code — Gabriel should drive the wording.",
+      "notes": "RESCOPED + PRIORITY RAISED 2026-07-16 by TASK-030: was 'diverge two templates'; now 'retune the one remaining template'. Priority medium -> high, because with hypnotherapy gone the ONLY live template is the hypnotherapy-written one, so 100% of Gabriel's calls are now scored by a prompt built for the wrong sales motion. Gabriel on call: 'those people are fast decision-making... they smell that from a mile away.' Templates are editable in-app and versioned, so this is likely a data change, not code \u2014 Gabriel should drive the wording.",
       "test_results": []
     },
     {
@@ -661,7 +661,7 @@
         "closer-app/src/index.js"
       ],
       "status": "incomplete",
-      "notes": "Batching rule and approval gate (never auto-apply) already implemented per the call decision — the missing piece is the actual analysis. NOTE: folded_into_version is never set by current code, so edits would be re-analyzed on every run. Must fix as part of this task.",
+      "notes": "Batching rule and approval gate (never auto-apply) already implemented per the call decision \u2014 the missing piece is the actual analysis. NOTE: folded_into_version is never set by current code, so edits would be re-analyzed on every run. Must fix as part of this task.",
       "test_results": []
     },
     {
@@ -686,7 +686,7 @@
         "closer-app/src/index.js"
       ],
       "status": "incomplete",
-      "notes": "Specified in SAAS-PLAN but never built. D1 PITR (30 days) is the current safety net, which is genuinely adequate for now — hence low priority. Real value arrives once production holds months of irreplaceable call history.",
+      "notes": "Specified in SAAS-PLAN but never built. D1 PITR (30 days) is the current safety net, which is genuinely adequate for now \u2014 hence low priority. Real value arrives once production holds months of irreplaceable call history.",
       "test_results": []
     },
     {
@@ -709,7 +709,7 @@
         ".github/workflows/deploy.yml"
       ],
       "status": "incomplete",
-      "notes": "Cosmetic only — deploys currently succeed (verified run 29391130635, exit 0). Bundle into the next repo change rather than spending a deploy cycle on it alone.",
+      "notes": "Cosmetic only \u2014 deploys currently succeed (verified run 29391130635, exit 0). Bundle into the next repo change rather than spending a deploy cycle on it alone.",
       "test_results": []
     },
     {
@@ -737,7 +737,7 @@
         "closer-app/src/index.js"
       ],
       "status": "incomplete",
-      "notes": "Post-v1. Identified in ROADMAP as 'the moat'. Requires client identity resolution, which is non-trivial — Fathom gives call titles/participants, not stable client IDs. Do not start until v1 proves nightly usage.",
+      "notes": "Post-v1. Identified in ROADMAP as 'the moat'. Requires client identity resolution, which is non-trivial \u2014 Fathom gives call titles/participants, not stable client IDs. Do not start until v1 proves nightly usage.",
       "test_results": []
     },
     {
@@ -790,7 +790,7 @@
         "closer-app/src/"
       ],
       "status": "incomplete",
-      "notes": "Deliberately deferred. Current architecture (email+password in D1, per-account model) was chosen specifically to not block this. Do NOT start before v1 proves value with Gabriel — Ivan and Gabriel both framed this as later.",
+      "notes": "Deliberately deferred. Current architecture (email+password in D1, per-account model) was chosen specifically to not block this. Do NOT start before v1 proves value with Gabriel \u2014 Ivan and Gabriel both framed this as later.",
       "test_results": []
     },
     {
@@ -816,13 +816,13 @@
         "new native app (out of scope for the Worker repo)"
       ],
       "status": "incomplete",
-      "notes": "Fully specced in NEXT_STEPS.md before the SaaS pivot. Superseded as v1 scope by the web app — requires an Apple Developer account ($99/yr) and a separate native codebase. Retained because the requirement (notification + zero-click copy at 2am) is real and unmet by the web app.",
+      "notes": "Fully specced in NEXT_STEPS.md before the SaaS pivot. Superseded as v1 scope by the web app \u2014 requires an Apple Developer account ($99/yr) and a separate native codebase. Retained because the requirement (notification + zero-click copy at 2am) is real and unmet by the web app.",
       "test_results": []
     },
     {
       "id": "TASK-029",
       "title": "Move work list into the versioned repo",
-      "description": "project-worklist.json was created at the project root, which is not a git repo — it survives on disk but has no version history or backup. Move it into closer-app/ so its history is preserved alongside the code.",
+      "description": "project-worklist.json was created at the project root, which is not a git repo \u2014 it survives on disk but has no version history or backup. Move it into closer-app/ so its history is preserved alongside the code.",
       "dependencies": [],
       "priority": "medium",
       "estimated_complexity": "low",
@@ -842,11 +842,11 @@
         "README.md"
       ],
       "status": "completed",
-      "notes": "Requested by Ivan 2026-07-16 after flagging that the root folder is not version-controlled. DONE 2026-07-16: moved to closer-app/project-worklist.json, now versioned with the code. README pointer updated. Single copy on disk — old root path removed.",
+      "notes": "Requested by Ivan 2026-07-16 after flagging that the root folder is not version-controlled. DONE 2026-07-16: moved to closer-app/project-worklist.json, now versioned with the code. README pointer updated. Single copy on disk \u2014 old root path removed.",
       "test_results": [
-        "2026-07-16: JSON parses after move — pass",
-        "2026-07-16: only one copy on disk (root path removed) — pass",
-        "2026-07-16: tracked by git and pushed — pass"
+        "2026-07-16: JSON parses after move \u2014 pass",
+        "2026-07-16: only one copy on disk (root path removed) \u2014 pass",
+        "2026-07-16: tracked by git and pushed \u2014 pass"
       ]
     },
     {
@@ -881,15 +881,15 @@
         "production data (accounts, integrations, prompt_templates)"
       ],
       "status": "completed",
-      "notes": "DECISION FLAGGED: removing the Hypnotherapy *instance and its data*, but RETAINING the multi-account *architecture* (accounts table, per-account scoping). Rationale: the abstraction is load-bearing (every query is account-scoped), it costs nothing to run with one row, and it is the foundation for TASK-027 productization which Gabriel explicitly wants. Ripping it out would be a large destructive refactor that buys nothing and blocks the roadmap. If Ivan wants the abstraction gone entirely, that is a separate decision. KNOCK-ON EFFECTS: TASK-016 now needs 1 Fathom key not 2; TASK-018/019 now 1 GHL sub-account; TASK-021 changes meaning entirely (no longer 'diverge two templates' — now 'retune the single template for OSA', and it becomes MORE important since the live template is hypnotherapy-written and actively mis-scores OSA calls).",
+      "notes": "DECISION FLAGGED: removing the Hypnotherapy *instance and its data*, but RETAINING the multi-account *architecture* (accounts table, per-account scoping). Rationale: the abstraction is load-bearing (every query is account-scoped), it costs nothing to run with one row, and it is the foundation for TASK-027 productization which Gabriel explicitly wants. Ripping it out would be a large destructive refactor that buys nothing and blocks the roadmap. If Ivan wants the abstraction gone entirely, that is a separate decision. KNOCK-ON EFFECTS: TASK-016 now needs 1 Fathom key not 2; TASK-018/019 now 1 GHL sub-account; TASK-021 changes meaning entirely (no longer 'diverge two templates' \u2014 now 'retune the single template for OSA', and it becomes MORE important since the live template is hypnotherapy-written and actively mis-scores OSA calls).",
       "test_results": [
-        "2026-07-16: pre-delete guard — hypnotherapy account had 0 calls / 0 outputs / 0 edits, confirmed twice (once at planning, once immediately before DELETE) — no user data lost",
-        "2026-07-16: production now returns exactly 1 account: On Screen Authority — pass",
-        "2026-07-16: production integrations = 4 rows, all account_id=1; prompt_templates = 1 — pass",
-        "2026-07-16: fresh local migrate+seed -> 1 account, 3 OSA calls (Jeffrey closed / Priya followup / Marcus unprocessed), 14 outputs, Dora removed — pass",
-        "2026-07-16: browser — sidebar shows only 'On Screen Authority'; Integrations renders 3 rows under one heading; mentionsHypno=false; no console errors — pass",
-        "2026-07-16: grep across repo — no functional hypnotherapy references remain (only intentional scope-change comments) — pass",
-        "2026-07-16: deployed (version 13f5c00d); live app.js byte-identical to local (27883 bytes), greps 0 hypnotherapy refs. NOTE: an initial post-deploy grep returned 1 — traced to Cloudflare edge-cache propagation lag, not a stale asset; re-verified clean across multiple requests"
+        "2026-07-16: pre-delete guard \u2014 hypnotherapy account had 0 calls / 0 outputs / 0 edits, confirmed twice (once at planning, once immediately before DELETE) \u2014 no user data lost",
+        "2026-07-16: production now returns exactly 1 account: On Screen Authority \u2014 pass",
+        "2026-07-16: production integrations = 4 rows, all account_id=1; prompt_templates = 1 \u2014 pass",
+        "2026-07-16: fresh local migrate+seed -> 1 account, 3 OSA calls (Jeffrey closed / Priya followup / Marcus unprocessed), 14 outputs, Dora removed \u2014 pass",
+        "2026-07-16: browser \u2014 sidebar shows only 'On Screen Authority'; Integrations renders 3 rows under one heading; mentionsHypno=false; no console errors \u2014 pass",
+        "2026-07-16: grep across repo \u2014 no functional hypnotherapy references remain (only intentional scope-change comments) \u2014 pass",
+        "2026-07-16: deployed (version 13f5c00d); live app.js byte-identical to local (27883 bytes), greps 0 hypnotherapy refs. NOTE: an initial post-deploy grep returned 1 \u2014 traced to Cloudflare edge-cache propagation lag, not a stale asset; re-verified clean across multiple requests"
       ]
     },
     {
@@ -898,7 +898,8 @@
       "description": "Ivan asked (2026-07-16) whether prompt caching would lower API costs. VERIFIED: yes, but it requires restructuring, not just adding cache_control. Today generateOutputs() sends the transcript FOUR times per call (1 debrief + 3 tone variants) and sets no cache_control anywhere. Caching is a strict prefix match and the transcript currently sits at the END of every prompt behind differing instructions, so the 4 requests share no cacheable prefix at all. Fix: invert to transcript-first as content blocks, with cache_control on the transcript block, so the awaited debrief writes the cache and the 3 parallel tone calls read it.",
       "dependencies": [
         "TASK-014",
-        "TASK-015"
+        "TASK-015",
+        "TASK-042"
       ],
       "priority": "medium",
       "estimated_complexity": "medium",
@@ -915,20 +916,20 @@
         "Process a real transcript; assert cache_creation_input_tokens > 0 on request 1 and cache_read_input_tokens > 0 on requests 2-4",
         "Compare measured total input tokens per call before vs after the change (must go DOWN, not up)",
         "Test a short transcript (< ~1024 tokens): confirm it silently does not cache and the run still succeeds",
-        "Confirm output quality is unchanged — reordering transcript-before-instructions must not degrade the debrief or the drafts",
-        "Measure wall-clock time before/after (cache reads should cut prefill latency — Gabriel's #1 complaint is waiting)"
+        "Confirm output quality is unchanged \u2014 reordering transcript-before-instructions must not degrade the debrief or the drafts",
+        "Measure wall-clock time before/after (cache reads should cut prefill latency \u2014 Gabriel's #1 complaint is waiting)"
       ],
       "files_expected_to_change": [
         "closer-app/src/llm.js"
       ],
       "status": "incomplete",
-      "notes": "VERIFIED against current Anthropic docs 2026-07-16. Mechanics: cache write = 1.25x base input (5-min TTL), read = 0.1x; Sonnet 5 minimum cacheable prefix = 1024 tokens (a typical 29-41 min transcript is ~5-8k tokens, so it clears easily). Use the 5-min TTL — the debrief-to-tone gap is seconds, and 1h TTL doubles the write cost for zero benefit. ESTIMATED SAVING (no real measurements exist yet — the app has never made a real API call): ~58% off input tokens, which at Gabriel's ~55 calls/week is roughly $8/mo now (Sonnet 5 intro pricing) or ~$12/mo after the intro rate ends 2026-08-31. Total bill is only ~$28-42/mo either way, so this is a real but SMALL absolute win — priority medium, not high. The latency win may matter more than the cost win. TRAP 1 (why this depends on TASK-015): a broken prefix and an under-length prompt both fail SILENTLY with no error. The ONLY proof it works is non-zero usage.cache_read_input_tokens, which needs a real API key. Do not mark complete on 'the code looks right'. TRAP 2: if caching is wired up wrong, it costs MORE than today — every request pays the 1.25x write premium and nothing ever reads. TRAP 3 (load-bearing ordering): this only works because the debrief is awaited before Promise.all fires the tone calls. A cache entry is only readable after the first response begins. Anyone who later 'optimizes' by firing all 4 in parallel will turn 3 cache reads into 3 cache writes and silently raise the bill. Comment this in the code. BIGGER LEVER, NOT THIS TASK: output tokens are ~half the bill and caching cannot touch them. The 9-section debrief dominates output. Trimming it would cut cost AND address Gabriel's own complaint ('it's just so much, and I don't always read all of it') — that is the deferred v2 decision in NEXT_STEPS decision #3, not this task. REAL DATA 2026-07-16 (supersedes the estimates above): the first real Fathom call is a 62-minute call with a 75,655-char transcript ~= 19,000 tokens — roughly 2.7x the 7,000-token figure used in the original estimate. Recomputed: current input ~78k tokens/call (19k x 4); with transcript-prefix caching ~31k/call, i.e. ~60% reduction and roughly $20-25/mo saved at ~238 calls/mo (intro pricing), not the ~$8 originally estimated. Caching is now materially more worthwhile than first assessed, and the latency win is larger too. Re-baseline again once a few more real calls land — 62 min may be long-tail, not typical.",
+      "notes": "VERIFIED against current Anthropic docs 2026-07-16. Mechanics: cache write = 1.25x base input (5-min TTL), read = 0.1x; Sonnet 5 minimum cacheable prefix = 1024 tokens (a typical 29-41 min transcript is ~5-8k tokens, so it clears easily). Use the 5-min TTL \u2014 the debrief-to-tone gap is seconds, and 1h TTL doubles the write cost for zero benefit. ESTIMATED SAVING (no real measurements exist yet \u2014 the app has never made a real API call): ~58% off input tokens, which at Gabriel's ~55 calls/week is roughly $8/mo now (Sonnet 5 intro pricing) or ~$12/mo after the intro rate ends 2026-08-31. Total bill is only ~$28-42/mo either way, so this is a real but SMALL absolute win \u2014 priority medium, not high. The latency win may matter more than the cost win. TRAP 1 (why this depends on TASK-015): a broken prefix and an under-length prompt both fail SILENTLY with no error. The ONLY proof it works is non-zero usage.cache_read_input_tokens, which needs a real API key. Do not mark complete on 'the code looks right'. TRAP 2: if caching is wired up wrong, it costs MORE than today \u2014 every request pays the 1.25x write premium and nothing ever reads. TRAP 3 (load-bearing ordering): this only works because the debrief is awaited before Promise.all fires the tone calls. A cache entry is only readable after the first response begins. Anyone who later 'optimizes' by firing all 4 in parallel will turn 3 cache reads into 3 cache writes and silently raise the bill. Comment this in the code. BIGGER LEVER, NOT THIS TASK: output tokens are ~half the bill and caching cannot touch them. The 9-section debrief dominates output. Trimming it would cut cost AND address Gabriel's own complaint ('it's just so much, and I don't always read all of it') \u2014 that is the deferred v2 decision in NEXT_STEPS decision #3, not this task. REAL DATA 2026-07-16 (supersedes the estimates above): the first real Fathom call is a 62-minute call with a 75,655-char transcript ~= 19,000 tokens \u2014 roughly 2.7x the 7,000-token figure used in the original estimate. Recomputed: current input ~78k tokens/call (19k x 4); with transcript-prefix caching ~31k/call, i.e. ~60% reduction and roughly $20-25/mo saved at ~238 calls/mo (intro pricing), not the ~$8 originally estimated. Caching is now materially more worthwhile than first assessed, and the latency win is larger too. Re-baseline again once a few more real calls land \u2014 62 min may be long-tail, not typical. SUPERSEDED-PENDING 2026-07-16: Ivan asked why the transcript is sent 4x. TASK-042 removes the duplication at the source rather than discounting it. Caching 4 copies (~31k effective) is strictly worse than not sending 3 of them (~29k actual), and once TASK-042 lands the debrief is the only request carrying the transcript \u2014 a lone request has no sibling to share a cached prefix with, so caching would buy nothing. Do not start this task; resolve TASK-042 first, then close this one as superseded unless a new multi-request-per-transcript path appears.",
       "test_results": []
     },
     {
       "id": "TASK-032",
       "title": "Paste-an-API-key form in Integrations (replace wrangler secret put)",
-      "description": "Ivan 2026-07-16: 'I want an easy place where I can paste the API key... I don't clearly understand the method to install the API key.' Today the only way to install a key is `wrangler secret put` from a terminal with the Cloudflare token — which is the practical blocker on the entire project. Replace it with a paste-and-save field per integration in the Integrations screen, backed by D1, with a Test-connection check so a bad paste is caught immediately instead of surfacing as a failed call later.",
+      "description": "Ivan 2026-07-16: 'I want an easy place where I can paste the API key... I don't clearly understand the method to install the API key.' Today the only way to install a key is `wrangler secret put` from a terminal with the Cloudflare token \u2014 which is the practical blocker on the entire project. Replace it with a paste-and-save field per integration in the Integrations screen, backed by D1, with a Test-connection check so a bad paste is caught immediately instead of surfacing as a failed call later.",
       "dependencies": [
         "TASK-008",
         "TASK-013"
@@ -938,7 +939,7 @@
       "acceptance_criteria": [
         "Each integration has a paste field, Save, Test connection, and Remove",
         "Key is stored server-side in D1 and used by generateOutputs()",
-        "Key is NEVER returned to the browser — GET returns only a masked preview (e.g. sk-ant-...3f2a) plus last-updated",
+        "Key is NEVER returned to the browser \u2014 GET returns only a masked preview (e.g. sk-ant-...3f2a) plus last-updated",
         "Test connection makes a real auth check against the provider and reports pass/fail",
         "Saving a key flips the integration status to connected; Remove reverts it to disconnected",
         "Existing `wrangler secret put` env vars still work as a fallback when no DB key is set (does not break the current deploy)",
@@ -961,23 +962,23 @@
         "closer-app/public/styles.css"
       ],
       "status": "completed",
-      "notes": "DECISION FLAGGED (2026-07-16): Ivan said 'this is a private site with access for only myself and Gabriel, I don't need the API key to be hidden.' Honoring the intent (make it easy, no terminal) while keeping the key WRITE-ONLY — stored in D1, never echoed back to the browser, masked preview only. Rationale: costs zero convenience, and it means a compromised shared login lets someone burn tokens through the app rather than exfiltrate the key and spend it elsewhere at unlimited scale. This is exactly the '$100k leaked key' scenario Ivan himself raised with Gabriel on the 2026-07-12 call. If Ivan wants the raw key displayed, that's a one-line change and his call to make. STORAGE TRADEOFF: the key sits in D1 in plaintext (not encrypted). Encrypting it would need an encryption key in a Cloudflare secret — reintroducing the exact bootstrapping problem this task removes. Accepted given the threat model, BUT note the real consequence: anyone holding the Cloudflare API token can read D1 directly. That token was pasted in plaintext chat on 2026-07-15 and Ivan declined to rotate it — so the API key stored here inherits that exposure. Worth revisiting if the token is ever shared further. Test-connection uses GET /v1/models on both Anthropic and OpenAI — a real auth check that costs zero tokens. Fathom's test is not implemented (their API shape isn't verified yet — don't guess); Fathom saves without a test. UNBLOCKS TASK-014, which gates TASK-015 and nearly all remaining high-value work. DONE 2026-07-16. Also corrected now-false UI copy: the Integrations subtitle claimed 'Cloudflare secrets / encrypted tokens' — keys now live in D1 unencrypted, so the copy was rewritten to say what is actually true (stored server-side, never sent back to the browser).",
+      "notes": "DECISION FLAGGED (2026-07-16): Ivan said 'this is a private site with access for only myself and Gabriel, I don't need the API key to be hidden.' Honoring the intent (make it easy, no terminal) while keeping the key WRITE-ONLY \u2014 stored in D1, never echoed back to the browser, masked preview only. Rationale: costs zero convenience, and it means a compromised shared login lets someone burn tokens through the app rather than exfiltrate the key and spend it elsewhere at unlimited scale. This is exactly the '$100k leaked key' scenario Ivan himself raised with Gabriel on the 2026-07-12 call. If Ivan wants the raw key displayed, that's a one-line change and his call to make. STORAGE TRADEOFF: the key sits in D1 in plaintext (not encrypted). Encrypting it would need an encryption key in a Cloudflare secret \u2014 reintroducing the exact bootstrapping problem this task removes. Accepted given the threat model, BUT note the real consequence: anyone holding the Cloudflare API token can read D1 directly. That token was pasted in plaintext chat on 2026-07-15 and Ivan declined to rotate it \u2014 so the API key stored here inherits that exposure. Worth revisiting if the token is ever shared further. Test-connection uses GET /v1/models on both Anthropic and OpenAI \u2014 a real auth check that costs zero tokens. Fathom's test is not implemented (their API shape isn't verified yet \u2014 don't guess); Fathom saves without a test. UNBLOCKS TASK-014, which gates TASK-015 and nearly all remaining high-value work. DONE 2026-07-16. Also corrected now-false UI copy: the Integrations subtitle claimed 'Cloudflare secrets / encrypted tokens' \u2014 keys now live in D1 unencrypted, so the copy was rewritten to say what is actually true (stored server-side, never sent back to the browser).",
       "test_results": [
-        "2026-07-16: fresh local migrate applies 0001+0002 cleanly; secret_value/updated_at columns present — pass",
-        "2026-07-16: PUT /api/integrations/2 saves key; GET /api/integrations returns has_key=1 + preview 'sk-ant-...3f2a' and the raw key string is ABSENT from the response body (grepped) — pass",
-        "2026-07-16: POST /api/integrations/2/test with a bad key -> real Anthropic call -> {ok:false,'Key was rejected (401). Check for a typo or a revoked key.'}, status reverted to disconnected, no crash — pass",
-        "2026-07-16: test on fathom (no test endpoint) returns a graceful message, no crash — pass",
-        "2026-07-16: RESOLVER PRECEDENCE PROVEN — with fake key in D1, processing call 4 attempted a real API call and returned Anthropic 401 (i.e. no longer mock); after DELETE, same call fell back to mock (model='mock', 7 outputs) — pass",
-        "2026-07-16: browser end-to-end — typed key, clicked Save; auto-tested, card shows '✓ Key saved sk-ant-...9z9z · <timestamp>', input cleared, Remove appeared, toast 'Key saved, but the test failed' (correct for a fake key); raw key never rendered — pass",
-        "2026-07-16: git diff --cached contains no key material — pass",
-        "2026-07-16: PRODUCTION migration 0002 applied; row counts identical before/after (users=1, accounts=1, integrations=4, templates=1) — no data loss — pass",
-        "2026-07-16: deployed (version 296ed92e); site 200, /api/integrations returns 401 unauthenticated, new key UI present in live app.js — pass"
+        "2026-07-16: fresh local migrate applies 0001+0002 cleanly; secret_value/updated_at columns present \u2014 pass",
+        "2026-07-16: PUT /api/integrations/2 saves key; GET /api/integrations returns has_key=1 + preview 'sk-ant-...3f2a' and the raw key string is ABSENT from the response body (grepped) \u2014 pass",
+        "2026-07-16: POST /api/integrations/2/test with a bad key -> real Anthropic call -> {ok:false,'Key was rejected (401). Check for a typo or a revoked key.'}, status reverted to disconnected, no crash \u2014 pass",
+        "2026-07-16: test on fathom (no test endpoint) returns a graceful message, no crash \u2014 pass",
+        "2026-07-16: RESOLVER PRECEDENCE PROVEN \u2014 with fake key in D1, processing call 4 attempted a real API call and returned Anthropic 401 (i.e. no longer mock); after DELETE, same call fell back to mock (model='mock', 7 outputs) \u2014 pass",
+        "2026-07-16: browser end-to-end \u2014 typed key, clicked Save; auto-tested, card shows '\u2713 Key saved sk-ant-...9z9z \u00b7 <timestamp>', input cleared, Remove appeared, toast 'Key saved, but the test failed' (correct for a fake key); raw key never rendered \u2014 pass",
+        "2026-07-16: git diff --cached contains no key material \u2014 pass",
+        "2026-07-16: PRODUCTION migration 0002 applied; row counts identical before/after (users=1, accounts=1, integrations=4, templates=1) \u2014 no data loss \u2014 pass",
+        "2026-07-16: deployed (version 296ed92e); site 200, /api/integrations returns 401 unauthenticated, new key UI present in live app.js \u2014 pass"
       ]
     },
     {
       "id": "TASK-033",
       "title": "Explicit import of past Fathom calls (backfill)",
-      "description": "GAP FOUND 2026-07-16 by Ivan: 'I don't think we ever added a way to pull in calls from the past.' Correct — nothing imports history. TASK-017's poller only fetches calls going forward from a cursor, so on day one everything already in Fathom (including calls from earlier today) is invisible. Add a deliberate, bounded import: pick a date range, preview what would be imported, choose which ones, land them in the inbox.",
+      "description": "GAP FOUND 2026-07-16 by Ivan: 'I don't think we ever added a way to pull in calls from the past.' Correct \u2014 nothing imports history. TASK-017's poller only fetches calls going forward from a cursor, so on day one everything already in Fathom (including calls from earlier today) is invisible. Add a deliberate, bounded import: pick a date range, preview what would be imported, choose which ones, land them in the inbox.",
       "dependencies": [
         "TASK-016",
         "TASK-017"
@@ -987,8 +988,8 @@
       "acceptance_criteria": [
         "An 'Import past calls' action lets the user pick a date range (e.g. today / last 7 days / custom)",
         "Shows a PREVIEW list of matching Fathom calls with a count before importing anything",
-        "User selects which calls to import — never all-or-nothing by default",
-        "Imported calls land UNPROCESSED (status New) — import must not trigger LLM generation",
+        "User selects which calls to import \u2014 never all-or-nothing by default",
+        "Imported calls land UNPROCESSED (status New) \u2014 import must not trigger LLM generation",
         "occurred_at is set from Fathom's real call timestamp, not the import time",
         "Re-importing an overlapping range creates no duplicates",
         "Import is idempotent and safe to re-run"
@@ -1006,7 +1007,7 @@
         "closer-app/migrations/"
       ],
       "status": "incomplete",
-      "notes": "CRITICAL DESIGN CONSTRAINT: import != process. createCall() currently calls processCall() immediately, so reusing that path for a backfill would fire one LLM run per imported call. A 200-call import would be a several-hundred-dollar unattended surprise. Backfill MUST land calls unprocessed and let Gabriel choose which to spend tokens on — which also matches how he actually works (he only debriefs calls that matter). Depends on the Fathom API supporting a date-ranged list endpoint — UNVERIFIED, do not assume. Confirm the real API shape before building (same caution as TASK-017).",
+      "notes": "CRITICAL DESIGN CONSTRAINT: import != process. createCall() currently calls processCall() immediately, so reusing that path for a backfill would fire one LLM run per imported call. A 200-call import would be a several-hundred-dollar unattended surprise. Backfill MUST land calls unprocessed and let Gabriel choose which to spend tokens on \u2014 which also matches how he actually works (he only debriefs calls that matter). Depends on the Fathom API supporting a date-ranged list endpoint \u2014 UNVERIFIED, do not assume. Confirm the real API shape before building (same caution as TASK-017).",
       "test_results": []
     },
     {
@@ -1031,13 +1032,13 @@
         "closer-app/public/app.js"
       ],
       "status": "incomplete",
-      "notes": "Surfaced by Ivan's 2026-07-16 question about 'calls from today'. Small and UNBLOCKED — does not need any API key. Matters most right now because manual paste is currently the ONLY way to get calls in, so every call Gabriel enters tonight is mis-timestamped.",
+      "notes": "Surfaced by Ivan's 2026-07-16 question about 'calls from today'. Small and UNBLOCKED \u2014 does not need any API key. Matters most right now because manual paste is currently the ONLY way to get calls in, so every call Gabriel enters tonight is mis-timestamped.",
       "test_results": []
     },
     {
       "id": "TASK-035",
       "title": "Fathom: real connection test + pull the single latest call",
-      "description": "Ivan 2026-07-16: the Fathom card says 'No connection test available for fathom yet — the key is saved', which proves nothing; and he wants to pull just the most recent call rather than backfill history. Both are solved by one small Fathom integration: a real auth check, plus a bounded 'Pull latest call' that imports exactly one meeting as an unprocessed call.",
+      "description": "Ivan 2026-07-16: the Fathom card says 'No connection test available for fathom yet \u2014 the key is saved', which proves nothing; and he wants to pull just the most recent call rather than backfill history. Both are solved by one small Fathom integration: a real auth check, plus a bounded 'Pull latest call' that imports exactly one meeting as an unprocessed call.",
       "dependencies": [
         "TASK-032"
       ],
@@ -1045,10 +1046,10 @@
       "estimated_complexity": "medium",
       "acceptance_criteria": [
         "Fathom Test performs a real authenticated request and reports genuine pass/fail (no more 'no test available')",
-        "'Pull latest call' imports exactly ONE call — the most recent — never a history dump",
+        "'Pull latest call' imports exactly ONE call \u2014 the most recent \u2014 never a history dump",
         "Request is bounded by created_after so it can never pull the full history even accidentally",
-        "Result is sorted newest-first CLIENT-SIDE (Fathom does not document sort order — must not be trusted)",
-        "Imported call lands UNPROCESSED (New) — import must never trigger LLM generation",
+        "Result is sorted newest-first CLIENT-SIDE (Fathom does not document sort order \u2014 must not be trusted)",
+        "Imported call lands UNPROCESSED (New) \u2014 import must never trigger LLM generation",
         "occurred_at comes from Fathom's real recording_start_time, not the import time",
         "Client name derived from the external calendar invitee, not from Gabriel (the internal recorder)",
         "Re-pulling the same call does not duplicate it (dedupe on Fathom recording_id)",
@@ -1068,26 +1069,26 @@
         "closer-app/public/app.js"
       ],
       "status": "completed",
-      "notes": "API VERIFIED against developers.fathom.ai 2026-07-16 (not guessed): GET https://api.fathom.ai/external/v1/meetings, header X-Api-Key, query params created_after/created_before/cursor/include_transcript, response {limit,next_cursor,items:[{recording_id,title,meeting_title,created_at,scheduled_start_time,recording_start_time,recording_end_time,transcript:[{speaker:{display_name},text,timestamp}],calendar_invitees:[{name,email,is_external}],recorded_by}]}. Rate limit 60 req/min. RISK: sort order is NOT documented — items[0] may be the OLDEST. Sorting client-side by recording_start_time desc is load-bearing, not a nicety. DESIGN: bound with created_after (default 7 days) so the request is inherently incapable of a full-history pull — this is the deliberate answer to the TASK-017 cursor trap. Lands unprocessed per the TASK-033 import!=process rule. Deliberately a narrow slice of TASK-033 (which remains the general date-ranged, multi-select importer). STATUS 2026-07-16: shipped and left in_progress deliberately. Everything testable without Ivan's real Fathom key is verified (endpoint+auth via a real 401, sort defence, dedupe, name derivation, transcript flattening, shape guard). The one unproven criterion is the live success-path response shape — chose NOT to read Ivan's stored Fathom key out of D1 to self-verify; a shape mismatch now yields a precise diagnostic rather than a wrong answer, so the cost of finding out via one button click is low. CLOSED 2026-07-16: success path confirmed against the live Fathom API by real usage.",
+      "notes": "API VERIFIED against developers.fathom.ai 2026-07-16 (not guessed): GET https://api.fathom.ai/external/v1/meetings, header X-Api-Key, query params created_after/created_before/cursor/include_transcript, response {limit,next_cursor,items:[{recording_id,title,meeting_title,created_at,scheduled_start_time,recording_start_time,recording_end_time,transcript:[{speaker:{display_name},text,timestamp}],calendar_invitees:[{name,email,is_external}],recorded_by}]}. Rate limit 60 req/min. RISK: sort order is NOT documented \u2014 items[0] may be the OLDEST. Sorting client-side by recording_start_time desc is load-bearing, not a nicety. DESIGN: bound with created_after (default 7 days) so the request is inherently incapable of a full-history pull \u2014 this is the deliberate answer to the TASK-017 cursor trap. Lands unprocessed per the TASK-033 import!=process rule. Deliberately a narrow slice of TASK-033 (which remains the general date-ranged, multi-select importer). STATUS 2026-07-16: shipped and left in_progress deliberately. Everything testable without Ivan's real Fathom key is verified (endpoint+auth via a real 401, sort defence, dedupe, name derivation, transcript flattening, shape guard). The one unproven criterion is the live success-path response shape \u2014 chose NOT to read Ivan's stored Fathom key out of D1 to self-verify; a shape mismatch now yields a precise diagnostic rather than a wrong answer, so the cost of finding out via one button click is low. CLOSED 2026-07-16: success path confirmed against the live Fathom API by real usage.",
       "test_results": [
-        "2026-07-16: fresh local migrate applies 0001+0002+0003; external_id column + partial unique index present — pass",
-        "2026-07-16: no key -> clean 'save a key first' on both Test and Pull; no crash — pass",
-        "2026-07-16: BAD key -> real request to api.fathom.ai returned 401, surfaced as 'Fathom rejected the key (401)'. This also VERIFIES the base URL and X-Api-Key header are correct — a wrong path would have 404'd — pass",
-        "2026-07-16: SORT DEFENCE PROVEN — fed items oldest-first (the dangerous case Fathom's docs leave unspecified), naive items[0] picks 'Old Client' while our client-side sort correctly picks the newest — pass",
-        "2026-07-16: client name derivation skips the internal recorder (Gabriel) and picks the external invitee; falls back to meeting_title — pass",
-        "2026-07-16: transcript flattens to the app's existing '0:02 — Name: text' format; non-array input returns '' without throwing — pass",
-        "2026-07-16: dedupe — duplicate external_id blocked by UNIQUE constraint; multiple manual calls (NULL external_id) still allowed by the partial index — pass",
-        "2026-07-16: shape-mismatch guard — a response without an 'items' array reports a distinct diagnostic rather than the misleading 'no calls found'",
-        "2026-07-16: PRODUCTION migration 0003 applied, row counts identical before/after (users=1, calls=0, integrations=4) — no data loss — pass",
-        "2026-07-16: deployed (version a62da026), site 200 — pass",
-        "PENDING: success path unverified against a real Fathom key — Ivan to click 'Pull latest call'. Error paths, sort, dedupe and parsing are all verified; what remains unproven is only that the live response body matches the documented schema.",
-        "2026-07-16 VERIFIED IN PRODUCTION with Ivan's real Fathom key: a call was pulled successfully — source='fathom', external_id set (dedupe active), occurred_at=2026-07-17T01:00:51Z (real Fathom recording_start_time, NOT import time), duration_min=62 computed from start/end, transcript=75,655 chars, processing_status='new' with 0 outputs (import did NOT trigger generation, exactly as designed). The documented response shape matched reality — pass."
+        "2026-07-16: fresh local migrate applies 0001+0002+0003; external_id column + partial unique index present \u2014 pass",
+        "2026-07-16: no key -> clean 'save a key first' on both Test and Pull; no crash \u2014 pass",
+        "2026-07-16: BAD key -> real request to api.fathom.ai returned 401, surfaced as 'Fathom rejected the key (401)'. This also VERIFIES the base URL and X-Api-Key header are correct \u2014 a wrong path would have 404'd \u2014 pass",
+        "2026-07-16: SORT DEFENCE PROVEN \u2014 fed items oldest-first (the dangerous case Fathom's docs leave unspecified), naive items[0] picks 'Old Client' while our client-side sort correctly picks the newest \u2014 pass",
+        "2026-07-16: client name derivation skips the internal recorder (Gabriel) and picks the external invitee; falls back to meeting_title \u2014 pass",
+        "2026-07-16: transcript flattens to the app's existing '0:02 \u2014 Name: text' format; non-array input returns '' without throwing \u2014 pass",
+        "2026-07-16: dedupe \u2014 duplicate external_id blocked by UNIQUE constraint; multiple manual calls (NULL external_id) still allowed by the partial index \u2014 pass",
+        "2026-07-16: shape-mismatch guard \u2014 a response without an 'items' array reports a distinct diagnostic rather than the misleading 'no calls found'",
+        "2026-07-16: PRODUCTION migration 0003 applied, row counts identical before/after (users=1, calls=0, integrations=4) \u2014 no data loss \u2014 pass",
+        "2026-07-16: deployed (version a62da026), site 200 \u2014 pass",
+        "PENDING: success path unverified against a real Fathom key \u2014 Ivan to click 'Pull latest call'. Error paths, sort, dedupe and parsing are all verified; what remains unproven is only that the live response body matches the documented schema.",
+        "2026-07-16 VERIFIED IN PRODUCTION with Ivan's real Fathom key: a call was pulled successfully \u2014 source='fathom', external_id set (dedupe active), occurred_at=2026-07-17T01:00:51Z (real Fathom recording_start_time, NOT import time), duration_min=62 computed from start/end, transcript=75,655 chars, processing_status='new' with 0 outputs (import did NOT trigger generation, exactly as designed). The documented response shape matched reality \u2014 pass."
       ]
     },
     {
       "id": "TASK-036",
       "title": "Generation must survive navigating away + persist processing/failed state",
-      "description": "Ivan 2026-07-16: 'took a long time to generate. I don't know if I clicked out too soon and it stopped the generation.' CONFIRMED — processCall() awaits all 4 LLM calls inline in the HTTP request and ctx is never passed to it, so a client disconnect can cancel the work. processed_at is only written at the very end, so a killed run leaves the call indistinguishable from 'New' with no error recorded. There is also no guard against starting a second run while one is in flight (double spend). Fix: persist a processing state machine, run generation via ctx.waitUntil so it completes regardless of the client, return immediately, and let the UI poll.",
+      "description": "Ivan 2026-07-16: 'took a long time to generate. I don't know if I clicked out too soon and it stopped the generation.' CONFIRMED \u2014 processCall() awaits all 4 LLM calls inline in the HTTP request and ctx is never passed to it, so a client disconnect can cancel the work. processed_at is only written at the very end, so a killed run leaves the call indistinguishable from 'New' with no error recorded. There is also no guard against starting a second run while one is in flight (double spend). Fix: persist a processing state machine, run generation via ctx.waitUntil so it completes regardless of the client, return immediately, and let the UI poll.",
       "dependencies": [],
       "priority": "high",
       "estimated_complexity": "high",
@@ -1095,7 +1096,7 @@
         "calls carry an explicit processing_status: new | processing | processed | failed",
         "Generation runs under ctx.waitUntil and completes even if the client navigates away or closes the tab",
         "POST /process returns immediately (202) rather than blocking for the full generation",
-        "Starting generation on a call already processing is rejected — no double spend",
+        "Starting generation on a call already processing is rejected \u2014 no double spend",
         "A failure records processing_status='failed' plus the error, instead of silently reverting to 'New'",
         "A stale 'processing' row (crashed worker) can recover rather than being wedged forever",
         "Existing processed calls are backfilled to 'processed' by the migration"
@@ -1113,15 +1114,15 @@
         "closer-app/public/app.js"
       ],
       "status": "completed",
-      "notes": "ROOT CAUSE of Ivan's report AND the prerequisite for the TASK-037 status indicator — you cannot show 'processing' in the inbox if the state is never written down. Cloudflare cancels request-scoped work on client disconnect unless it is handed to ctx.waitUntil; ctx is currently available in fetch() but never threaded through route() to processCall.",
+      "notes": "ROOT CAUSE of Ivan's report AND the prerequisite for the TASK-037 status indicator \u2014 you cannot show 'processing' in the inbox if the state is never written down. Cloudflare cancels request-scoped work on client disconnect unless it is handed to ctx.waitUntil; ctx is currently available in fetch() but never threaded through route() to processCall.",
       "test_results": [
-        "2026-07-16: migration 0004 applies; backfill UPDATE proven against existing rows (processed_at set -> 'processed', else 'new') — pass",
-        "2026-07-16: POST /process now returns {ok,status:'processing'} IMMEDIATELY instead of blocking for the full generation; work completes in background via ctx.waitUntil (verified: 7 outputs + status='processed' ~3s after the 202) — pass",
-        "2026-07-16: DOUBLE-SPEND GUARD — process on an in-flight call returns already:true 'Already generating' and starts no second run — pass",
-        "2026-07-16: STALE RECOVERY — same call with processing_started_at 20 min old is allowed to restart — pass",
-        "2026-07-16: FAILURE PATH — bad key yields processing_status='failed' with the error recorded ('Anthropic 401: ...'), instead of silently reverting to a New-looking call — pass",
-        "2026-07-16: PRODUCTION migration 0004 applied, row counts identical before/after (users=1, calls=1, integrations=4) — no data loss — pass",
-        "LIMITATION: client-disconnect survival could NOT be faithfully tested locally — miniflare tears down the D1 binding the instant the client aborts (D1_ERROR internal error), so nothing survives in the emulator. The waitUntil mechanism itself is verified working; disconnect-survival rests on Cloudflare's documented waitUntil semantics and needs confirmation from real use."
+        "2026-07-16: migration 0004 applies; backfill UPDATE proven against existing rows (processed_at set -> 'processed', else 'new') \u2014 pass",
+        "2026-07-16: POST /process now returns {ok,status:'processing'} IMMEDIATELY instead of blocking for the full generation; work completes in background via ctx.waitUntil (verified: 7 outputs + status='processed' ~3s after the 202) \u2014 pass",
+        "2026-07-16: DOUBLE-SPEND GUARD \u2014 process on an in-flight call returns already:true 'Already generating' and starts no second run \u2014 pass",
+        "2026-07-16: STALE RECOVERY \u2014 same call with processing_started_at 20 min old is allowed to restart \u2014 pass",
+        "2026-07-16: FAILURE PATH \u2014 bad key yields processing_status='failed' with the error recorded ('Anthropic 401: ...'), instead of silently reverting to a New-looking call \u2014 pass",
+        "2026-07-16: PRODUCTION migration 0004 applied, row counts identical before/after (users=1, calls=1, integrations=4) \u2014 no data loss \u2014 pass",
+        "LIMITATION: client-disconnect survival could NOT be faithfully tested locally \u2014 miniflare tears down the D1 binding the instant the client aborts (D1_ERROR internal error), so nothing survives in the emulator. The waitUntil mechanism itself is verified working; disconnect-survival rests on Cloudflare's documented waitUntil semantics and needs confirmation from real use."
       ]
     },
     {
@@ -1152,9 +1153,9 @@
       "status": "completed",
       "notes": "Four states, three brand colours: grey stays neutral for 'nothing has happened yet' so pink can keep meaning 'something is wrong'.",
       "test_results": [
-        "2026-07-16: all four states render distinctly in-browser — hollow grey (Sarah/new), blue (Jeffrey/processed), violet pulsing (Priya/processing), pink (Marcus/failed) — pass",
-        "2026-07-16: pulse animation disabled under prefers-reduced-motion — pass",
-        "2026-07-16: list polls every 2.5s only while something is generating, and stops when nothing is — pass"
+        "2026-07-16: all four states render distinctly in-browser \u2014 hollow grey (Sarah/new), blue (Jeffrey/processed), violet pulsing (Priya/processing), pink (Marcus/failed) \u2014 pass",
+        "2026-07-16: pulse animation disabled under prefers-reduced-motion \u2014 pass",
+        "2026-07-16: list polls every 2.5s only while something is generating, and stops when nothing is \u2014 pass"
       ]
     },
     {
@@ -1183,14 +1184,14 @@
       "status": "completed",
       "notes": "Matters because Fathom-derived names come from the calendar invitee and won't always be the name Gabriel thinks of the client by.",
       "test_results": [
-        "2026-07-16: PATCH /calls/:id {client_name} persists; list reflected 'Marcus Thompson' immediately — pass",
-        "2026-07-16: client_name added to the patchCall allowlist; Enter saves, Escape reverts, empty rejected — pass"
+        "2026-07-16: PATCH /calls/:id {client_name} persists; list reflected 'Marcus Thompson' immediately \u2014 pass",
+        "2026-07-16: client_name added to the patchCall allowlist; Enter saves, Escape reverts, empty rejected \u2014 pass"
       ]
     },
     {
       "id": "TASK-039",
       "title": "max_tokens is too low for the 9-section debrief",
-      "description": "llm.js caps output at 8000 tokens. The master prompt demands 9 sections including a GHL note of up to 10,000 characters (~2.5k tokens alone). A verbose run truncates mid-JSON, extractJson() throws, and the whole generation fails after paying for every input token — plausibly a contributor to Ivan's slow/failed run.",
+      "description": "llm.js caps output at 8000 tokens. The master prompt demands 9 sections including a GHL note of up to 10,000 characters (~2.5k tokens alone). A verbose run truncates mid-JSON, extractJson() throws, and the whole generation fails after paying for every input token \u2014 plausibly a contributor to Ivan's slow/failed run.",
       "dependencies": [],
       "priority": "high",
       "estimated_complexity": "low",
@@ -1208,14 +1209,14 @@
       "status": "completed",
       "notes": "Anthropic guidance: ~16000 is the safe non-streaming default; above that needs streaming to dodge HTTP timeouts. Quick, high-value, and likely to bite on the very first real run. CONFIRMED NECESSARY: the first real call is a 62-min transcript (~19k tokens). An 8000-token output cap against a 9-section debrief plus a <10k-char GHL note would very plausibly have truncated and failed after paying for every input token.",
       "test_results": [
-        "2026-07-16: max_tokens raised 8000 -> 16000 on both providers — pass",
-        "2026-07-16: truncation now detected via stop_reason=='max_tokens' / finish_reason=='length' and surfaced as 'response was cut off', instead of failing downstream as the misleading 'No JSON in model response' — pass",
+        "2026-07-16: max_tokens raised 8000 -> 16000 on both providers \u2014 pass",
+        "2026-07-16: truncation now detected via stop_reason=='max_tokens' / finish_reason=='length' and surfaced as 'response was cut off', instead of failing downstream as the misleading 'No JSON in model response' \u2014 pass",
         "2026-07-16: also added an explicit refusal check and a guard for a response with no text block"
       ]
     },
     {
       "id": "TASK-040",
-      "title": "Activity log — durable record of failures, completions, usage and token spend",
+      "title": "Activity log \u2014 durable record of failures, completions, usage and token spend",
       "description": "Ivan 2026-07-16: 'add a log system: logs failures, completions, all work... a document you can check as you continue to develop this which reports back information useful in finding bugs, fixing them, verifying components are working, and adding new features based on what gets used and what doesn't.' Add an events table written by every meaningful action, a filterable API, and an Activity view.",
       "dependencies": [],
       "priority": "high",
@@ -1225,10 +1226,10 @@
         "Failures record the actual error text, not just a status",
         "Generation events record wall-clock duration",
         "Generation events record real token usage (input/output/cache) and therefore actual cost",
-        "Key VALUES are never logged — only the fact a key changed",
+        "Key VALUES are never logged \u2014 only the fact a key changed",
         "GET /api/events supports filtering by level and kind so a developer can answer 'what broke' quickly",
         "An Activity view in the UI shows recent events with failures visually distinct",
-        "Logging can never break the app — a logging failure is swallowed, never thrown"
+        "Logging can never break the app \u2014 a logging failure is swallowed, never thrown"
       ],
       "testing_criteria": [
         "Force a generation failure; assert an error event with the real message",
@@ -1246,31 +1247,31 @@
         "closer-app/public/styles.css"
       ],
       "status": "completed",
-      "notes": "Directly serves three needs at once: (1) Ivan's ask for a debugging/verification record, (2) the 'what gets used' question — logging copies/sends per output kind will show whether the 9-section debrief is actually read or whether only the SMS is, which is the evidence needed for the deferred 'trim the debrief' v2 decision, and (3) TOKEN/COST VISIBILITY, which the project currently has zero of — this is also what will empirically settle the TASK-031 caching estimates instead of guessing. Prerequisite for TASK-017: an unattended cron with no log is undebuggable. DONE 2026-07-16. llm.js now returns real summed token usage across all 4 calls, so cost is measured rather than estimated — this is what will empirically settle TASK-031's caching numbers and give the project its first real spend visibility.",
+      "notes": "Directly serves three needs at once: (1) Ivan's ask for a debugging/verification record, (2) the 'what gets used' question \u2014 logging copies/sends per output kind will show whether the 9-section debrief is actually read or whether only the SMS is, which is the evidence needed for the deferred 'trim the debrief' v2 decision, and (3) TOKEN/COST VISIBILITY, which the project currently has zero of \u2014 this is also what will empirically settle the TASK-031 caching estimates instead of guessing. Prerequisite for TASK-017: an unattended cron with no log is undebuggable. DONE 2026-07-16. llm.js now returns real summed token usage across all 4 calls, so cost is measured rather than estimated \u2014 this is what will empirically settle TASK-031's caching numbers and give the project its first real spend visibility.",
       "test_results": [
-        "2026-07-16: migration 0005 creates events + 4 indexes; applied to production with no data loss (users=1, calls=1 unchanged) — pass",
-        "2026-07-16: SUCCESS path logs generation.started -> generation.succeeded with duration — pass",
-        "2026-07-16: FAILURE path logs level=error generation.failed with the REAL message ('Anthropic 401: ...') and duration 241ms, not just a status — pass",
-        "2026-07-16: USAGE SIGNAL — copying an output logs output.copied with kind+tone ('email · balanced'), which is the evidence stream for the deferred trim-the-debrief decision — pass",
-        "2026-07-16: SECURITY — zero rows in events contain key material (queried detail + meta_json for 'sk-ant'/'bogus'); integration.key_saved records only 'integration #2' — pass",
-        "2026-07-16: RESILIENCE — deliberately sabotaged log.js to throw on every call; generation still completed (status='processed', 7 outputs). A logging outage cannot break the app — pass",
-        "2026-07-16: GET /api/events filters by level and kind prefix; totals aggregate runs/tokens/avg duration/failures — pass",
-        "2026-07-16: Activity view verified in-browser — summary tiles, failures visually distinct in pink, per-run duration + token counts, filter chips — pass",
-        "2026-07-16: deployed (version fe79f3d9), site 200 — pass"
+        "2026-07-16: migration 0005 creates events + 4 indexes; applied to production with no data loss (users=1, calls=1 unchanged) \u2014 pass",
+        "2026-07-16: SUCCESS path logs generation.started -> generation.succeeded with duration \u2014 pass",
+        "2026-07-16: FAILURE path logs level=error generation.failed with the REAL message ('Anthropic 401: ...') and duration 241ms, not just a status \u2014 pass",
+        "2026-07-16: USAGE SIGNAL \u2014 copying an output logs output.copied with kind+tone ('email \u00b7 balanced'), which is the evidence stream for the deferred trim-the-debrief decision \u2014 pass",
+        "2026-07-16: SECURITY \u2014 zero rows in events contain key material (queried detail + meta_json for 'sk-ant'/'bogus'); integration.key_saved records only 'integration #2' \u2014 pass",
+        "2026-07-16: RESILIENCE \u2014 deliberately sabotaged log.js to throw on every call; generation still completed (status='processed', 7 outputs). A logging outage cannot break the app \u2014 pass",
+        "2026-07-16: GET /api/events filters by level and kind prefix; totals aggregate runs/tokens/avg duration/failures \u2014 pass",
+        "2026-07-16: Activity view verified in-browser \u2014 summary tiles, failures visually distinct in pink, per-run duration + token counts, filter chips \u2014 pass",
+        "2026-07-16: deployed (version fe79f3d9), site 200 \u2014 pass"
       ]
     },
     {
       "id": "TASK-041",
-      "title": "Generation takes 10+ min and dies silently — Sonnet 5 runs adaptive thinking at high effort by default",
-      "description": "Ivan 2026-07-16: spinner running 10+ min with no progress and no baseline. DIAGNOSED via the new activity log: generation.started at 04:55:06, then NOTHING — no success, no failure, 0 outputs, 18 min elapsed. The catch block would have logged a throw, so the Worker was killed mid-flight; waitUntil did not survive the duration. ROOT CAUSE: llm.js omits `thinking` entirely. On Sonnet 5 that is a documented SILENT DEFAULT — omitting `thinking` runs ADAPTIVE THINKING, and `effort` defaults to HIGH. So every one of the 4 calls does extended reasoning at high effort over a 19k-token transcript. Thinking also shares the max_tokens budget, so it can eat the 16k and truncate the JSON on top of being slow.",
+      "title": "Generation takes 10+ min and dies silently \u2014 Sonnet 5 runs adaptive thinking at high effort by default",
+      "description": "Ivan 2026-07-16: spinner running 10+ min with no progress and no baseline. DIAGNOSED via the new activity log: generation.started at 04:55:06, then NOTHING \u2014 no success, no failure, 0 outputs, 18 min elapsed. The catch block would have logged a throw, so the Worker was killed mid-flight; waitUntil did not survive the duration. ROOT CAUSE: llm.js omits `thinking` entirely. On Sonnet 5 that is a documented SILENT DEFAULT \u2014 omitting `thinking` runs ADAPTIVE THINKING, and `effort` defaults to HIGH. So every one of the 4 calls does extended reasoning at high effort over a 19k-token transcript. Thinking also shares the max_tokens budget, so it can eat the 16k and truncate the JSON on top of being slow.",
       "dependencies": [],
       "priority": "high",
       "estimated_complexity": "medium",
       "acceptance_criteria": [
-        "thinking and effort are set EXPLICITLY on every call — never left to the model default",
+        "thinking and effort are set EXPLICITLY on every call \u2014 never left to the model default",
         "A full generation on a ~19k-token transcript completes well inside Cloudflare's Worker lifetime",
         "Per-step timings are logged so there is an actual baseline for how long this should take",
-        "The UI shows elapsed time and which step is running — not an unbounded spinner",
+        "The UI shows elapsed time and which step is running \u2014 not an unbounded spinner",
         "A run killed mid-flight becomes retryable from the UI rather than spinning forever",
         "The currently wedged call is recovered rather than left spinning"
       ],
@@ -1286,17 +1287,49 @@
         "closer-app/public/app.js"
       ],
       "status": "in_progress",
-      "notes": "THE LOG (TASK-040) PAID FOR ITSELF ON DAY ONE — without it this was indistinguishable from 'it's just slow'. Decision: disable thinking on all 4 calls FIRST and measure, rather than guessing at the right effort level. The debrief prompt is highly prescriptive (9 named sections, exact JSON keys), so the structure is supplied rather than reasoned toward; and with zero baseline the honest move is to get one successful run, read the real durations off the log, then tune quality back up deliberately. Revisit once TASK-015 has a green run: try effort medium on the debrief and compare scorecard quality. Also note this makes TASK-031 (prompt caching) more attractive — cache reads skip prefill, which is a latency win on 19k tokens x4, not just a cost win. SHIPPED 2026-07-16; left in_progress until a real run confirms the duration. The log will now show exactly where time goes.",
+      "notes": "THE LOG (TASK-040) PAID FOR ITSELF ON DAY ONE \u2014 without it this was indistinguishable from 'it's just slow'. Decision: disable thinking on all 4 calls FIRST and measure, rather than guessing at the right effort level. The debrief prompt is highly prescriptive (9 named sections, exact JSON keys), so the structure is supplied rather than reasoned toward; and with zero baseline the honest move is to get one successful run, read the real durations off the log, then tune quality back up deliberately. Revisit once TASK-015 has a green run: try effort medium on the debrief and compare scorecard quality. Also note this makes TASK-031 (prompt caching) more attractive \u2014 cache reads skip prefill, which is a latency win on 19k tokens x4, not just a cost win. SHIPPED 2026-07-16; left in_progress until a real run confirms the duration. The log will now show exactly where time goes.",
       "test_results": [
-        "2026-07-16 DIAGNOSIS via the activity log: generation.started 04:55:06, no succeeded/failed, 0 outputs, 18.1 min elapsed. The catch block logs any throw, so nothing threw — the Worker was killed mid-flight. waitUntil did not survive the duration.",
+        "2026-07-16 DIAGNOSIS via the activity log: generation.started 04:55:06, no succeeded/failed, 0 outputs, 18.1 min elapsed. The catch block logs any throw, so nothing threw \u2014 the Worker was killed mid-flight. waitUntil did not survive the duration.",
         "2026-07-16 ROOT CAUSE confirmed against the bundled Anthropic reference: 'On Claude Sonnet 5, [a request with no thinking field] runs with adaptive thinking' and 'effort defaults to high'. llm.js omitted both -> 4 calls x adaptive thinking at high effort over a 19k-token transcript.",
-        "2026-07-16 FIX VERIFIED by stubbing fetch and inspecting the real request bodies: debrief -> thinking={type:disabled}, effort=medium; all 3 tone calls -> thinking={type:disabled}, effort=low. Every call now sets both explicitly — pass",
-        "2026-07-16: per-step logging added (generation.debrief_done / generation.messages_done with duration + usage) so a baseline exists and a dying run shows how far it got — pass",
-        "2026-07-16: working view now shows a rising elapsed counter, a 'typical run is under 2 minutes' baseline, a stale warning past 3 min, and a Restart button — pass",
-        "2026-07-16: the wedged call was recovered to 'failed' with an explanatory message and a log entry, instead of spinning forever — pass",
-        "2026-07-16: deployed (version 7d4eb0c4), site 200 — pass",
-        "PENDING: the actual end-to-end timing on the real 19k-token call is still unmeasured — that is the next click, and generation.debrief_done/messages_done will now record it."
+        "2026-07-16 FIX VERIFIED by stubbing fetch and inspecting the real request bodies: debrief -> thinking={type:disabled}, effort=medium; all 3 tone calls -> thinking={type:disabled}, effort=low. Every call now sets both explicitly \u2014 pass",
+        "2026-07-16: per-step logging added (generation.debrief_done / generation.messages_done with duration + usage) so a baseline exists and a dying run shows how far it got \u2014 pass",
+        "2026-07-16: working view now shows a rising elapsed counter, a 'typical run is under 2 minutes' baseline, a stale warning past 3 min, and a Restart button \u2014 pass",
+        "2026-07-16: the wedged call was recovered to 'failed' with an explanatory message and a log entry, instead of spinning forever \u2014 pass",
+        "2026-07-16: deployed (version 7d4eb0c4), site 200 \u2014 pass",
+        "PENDING: the actual end-to-end timing on the real 19k-token call is still unmeasured \u2014 that is the next click, and generation.debrief_done/messages_done will now record it."
       ]
+    },
+    {
+      "id": "TASK-042",
+      "title": "Stop sending the 19k-token transcript 4x per call \u2014 the drafting calls need the debrief's facts, not the raw transcript",
+      "description": "Ivan 2026-07-16: 'Why are we running a 19,000-token transcript, four times over?' Fair question; there is no good answer. generateOutputs() interpolates ${call.transcript} into the debrief request AND into each of the 3 parallel tone requests = ~77k input tokens per call. The 3-way split was a deliberate SPEED choice (code comment: 'the v1.5 speed fix') so the tone slider switches instantly, and it was sound against the 7k-token transcript estimate. At the real 19k it inverts: we pay 4 prefills of 19k, and prefill is the dominant latency at that size (a likely co-contributor to the TASK-041 hang). The deeper flaw: the tone calls never needed the transcript. The debrief has already read it and extracted outcome, client name, objections, next steps and rapport details \u2014 the tone prompts even receive parsed.outcome, which proves we were already holding the answer while re-sending the transcript so the model could re-derive it.",
+      "dependencies": [
+        "TASK-015"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "The transcript is sent to the LLM EXACTLY ONCE per call (the debrief). Assert this directly, not by inspection.",
+        "The 3 tone calls are fed a compact distillation from the debrief JSON (outcome, client name, objections + any verbatim client quotes worth mirroring, next steps, rapport details) instead of the transcript",
+        "Measured input tokens per call drop from ~77k to under ~30k on the real 19k-token transcript",
+        "All 3 tone variants are still generated up front \u2014 instant tone switching is a deliberate UX property and must not regress",
+        "Draft quality is not worse: the SMS/email must still reference call-specific specifics, not generic filler",
+        "The debrief JSON is checked to actually carry everything the drafts need; if a field is missing, ADD it to the debrief prompt rather than falling back to the transcript"
+      ],
+      "testing_criteria": [
+        "Stub fetch; assert the transcript string appears in exactly 1 of the 4 outgoing request bodies",
+        "Log real input_tokens before vs after on the same real call; assert the drop and record both numbers",
+        "Side-by-side the drafts before vs after on the same real transcript; a human (Ivan or Gabriel) confirms specificity did not degrade",
+        "Measure wall-clock before vs after \u2014 killing 57k tokens of prefill should be FASTER despite fewer parallel prefills",
+        "Assert a missing/short debrief field does not silently produce a generic draft"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js"
+      ],
+      "status": "incomplete",
+      "notes": "MEASURED, not estimated: transcript = 75,655 chars ~= 19k tokens. Today ~77.2k input tokens/call (19k debrief + 1.2k master + 3 x 19k) ~= $0.154/call input, ~$37/mo at ~238 calls/mo. OPTIONS COSTED: (1) RECOMMENDED \u2014 drafting calls get the debrief's facts (~3k) instead of the transcript: ~29k/call, -62%, ~$14/mo. Keeps the parallel fan-out, keeps instant tone switching, small blast radius, and is arguably BETTER quality because the drafts get curated facts rather than 62 minutes of raw dialogue to re-mine. (2) One call returns debrief + all 3 tones: ~20k/call, -74%, ~$10/mo. Closest to Gabriel's original workflow (his master prompt section 7 already asks for the follow-up text/email in the same pass) but a bigger rewrite, one malformed JSON loses everything, more truncation risk against max_tokens 16k, and no parallelism. (3) Generate only the AI-suggested tone up front, others on demand \u2014 cheapest of all but breaks the instant-switch UX Ivan specifically designed. RELATIONSHIP TO TASK-031 (prompt caching): this SUPERSEDES most of its value. Caching made 4 x 19k cheaper (~31k effective); this makes the 4th, 3rd and 2nd copies not exist (~29k actual). Do THIS first \u2014 it is a real fix, whereas caching is a discount on waste. If both ship, caching would then only cover the debrief's own 19k, which is a single request with nothing to share a prefix with, i.e. worthless. Expect TASK-031 to be closed as superseded once this lands. Do not implement before TASK-015: changing what the drafts are fed is unverifiable while no real generation has ever succeeded, and 'quality did not degrade' has no baseline to compare against.",
+      "test_results": []
     }
-  ]
+  ],
+  "progress_percentage": 52
 }
