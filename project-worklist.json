@@ -2014,6 +2014,30 @@
       "test_results": [
         "2026-07-17 browser: heading 'Master prompt \u00b7 v2 \u00b7 updated Today, 1:00 AM' \u2014 version+date, no Authority/OSA/Account text."
       ]
+    },
+    {
+      "id": "TASK-062",
+      "title": "CALL_LIST_SQL missing comma broke the whole inbox \u2014 verify list endpoints against the REAL query, not a stub",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [],
+      "description": "Ivan 2026-07-17: 'all my old calls disappeared' after adding token labels/keys. Cause was NOT the keys: TASK-060 added `si.label AS source_label` to CALL_LIST_SQL's SELECT but dropped the comma after `email_sent`, so GET /api/calls threw a SQL error, the front-end rendered an empty list, and every call looked deleted. All 7 rows were intact in D1 the whole time.",
+      "acceptance_criteria": [
+        "The comma is restored and GET /api/calls returns all calls",
+        "Verified against the real production query, not a stub",
+        "No data was lost"
+      ],
+      "testing_criteria": [
+        "Run the exact list query against D1 and confirm it returns all rows"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js"
+      ],
+      "notes": "LESSON (recurring): the browser harness STUBS /api/calls, so a broken list SQL passes every test and every UI check. This is the second time verifying against a stub instead of the real login/endpoint has hidden a production break. For any change to a SQL query behind an endpoint I can't hit with a session, run the actual query against D1 as the verification step. Fixed + deployed (ccab7ef); confirmed the query returns all 7 rows in prod. Separately, relabeled historical calls per Ivan: Kyle+Evette->Hypnosis(token 9), John+Michael->OSA(token 1); these predated the 2nd key so all had backfilled to token 1. Future imports attribute automatically by key.",
+      "test_results": [
+        "2026-07-17 ran the corrected CALL_LIST_SQL against production D1: returns all 7 rows. Deploy 29600801159 green, site 200. Historical calls relabeled and verified via the live join (Kyle/Evette=Hypnosis, John/Michael=OSA)."
+      ]
     }
   ],
   "progress_percentage": 74
