@@ -27,7 +27,21 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
       // MONEY-BOMB GUARD: Workflows retries steps automatically by default. A silent retry
       // here is another four paid calls over a 19k-token transcript. This step must never
       // auto-retry — a failed generation is the user's decision to re-run, not ours.
-      const gen = await step.do("generate", { retries: { limit: 0 }, timeout: "15 minutes" }, async () => {
+      //
+      // `delay` is REQUIRED whenever `retries` is present, even when limit is 0. Omitting it
+      // fails the whole run with "Step config for "generate" is in a invalid format" — which
+      // is exactly what happened on the first real Workflow run.
+      //
+      // UNVERIFIED: Cloudflare's docs do not actually state what limit:0 does. Standard retry
+      // semantics say "no retries", but this guard protects real money, so it is instrumented
+      // rather than trusted — the attempt log below makes a silent retry immediately visible
+      // instead of quietly doubling the bill.
+      const gen = await step.do("generate", {
+        retries: { limit: 0, delay: "1 second" },
+        timeout: "15 minutes"
+      }, async () => {
+        await logEvent(env, { kind: "generation.attempt", call_id: callId,
+          detail: `workflow ${event.instanceId || "?"} · if this appears more than once per generation.started, retries:{limit:0} does NOT mean zero and we are double-spending` });
         const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(callId).first();
         if (!call) throw new Error(`call ${callId} vanished`);
         const account = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(call.account_id).first();
@@ -63,7 +77,7 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
 
       // Cheap and idempotent (it deletes prior outputs first), so retrying costs nothing
       // and protects against a transient D1 blip discarding a generation we already paid for.
-      await step.do("save", { retries: { limit: 3 } }, async () => {
+      await step.do("save", { retries: { limit: 3, delay: "2 seconds", backoff: "exponential" } }, async () => {
         const stmts = [
           env.DB.prepare("DELETE FROM outputs WHERE call_id = ?").bind(callId),
           env.DB.prepare(
