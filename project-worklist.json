@@ -1627,7 +1627,94 @@
       "status": "incomplete",
       "notes": "Deliberately NOT built tonight: Ivan flagged it as maybe-unnecessary, and TASK-017 covers the main case. Revisit once the cron has run a real morning and we can see from the log whether anything actually gets skipped. Keep 'import' and 'generate' as separate actions here - the whole 'import != process' rule exists because createCall used to auto-process and a bulk import would have fired one paid run per call.",
       "test_results": []
+    },
+    {
+      "id": "TASK-050",
+      "title": "Archive calls \u2014 for focus, NOT storage (storage is a non-problem: 42 years of headroom)",
+      "description": "Ivan 2026-07-17: 'I make up that after a while our database is gonna balloon with calls... 25 to 30 calls in a week all of that data adds up.' MEASURED, and the premise does not hold: one real 62-min call = 148 KB total (transcript 133 KB = 88%, debrief 11 KB, outputs 7 KB). At 30 calls/week that is 236 MB/YEAR against D1's verified 10 GB ceiling on Workers Paid = ~42 years to fill. Even at 50/week it is 25 years. Storage is not a problem and will not become one. The REAL problem archive solves is FOCUS: an inbox holding 300+ calls is noise, and Gabriel's original complaint about his old workflow was literally 'it's just so much, and I don't always read all of it'. Archive should hide finished calls from the working inbox while keeping every byte.",
+      "dependencies": [],
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "calls.archived_at added by an ADDITIVE migration; no data is deleted or moved",
+        "The default inbox excludes archived calls",
+        "An 'Archived' filter shows them, and any archived call can be un-archived",
+        "Archiving is instant and reversible \u2014 it is a view change, not a data change",
+        "Archived calls stay fully readable: debrief, outputs and transcript all intact",
+        "The count badges reflect the active inbox, not the archive"
+      ],
+      "testing_criteria": [
+        "Archive a call -> gone from the default list, present under Archived, unchanged in the DB",
+        "Un-archive -> returns to the inbox",
+        "Assert the migration is additive and existing rows survive with archived_at NULL",
+        "Assert an archived call's outputs and transcript are byte-identical afterwards"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0008_archive.sql",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js",
+        "closer-app/public/index.html"
+      ],
+      "status": "incomplete",
+      "notes": "DO NOT justify this as a storage fix \u2014 it is not one, and framing it that way would invite bad decisions later (e.g. dropping transcripts to 'save space', which buys 88% of a resource we have 42 years of and permanently destroys the ability to re-generate). Archive also happens to mitigate TASK-052 (the unbounded call-list query) by shrinking the default result set, which is a real side benefit.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-051",
+      "title": "Delete a call \u2014 permanently, deliberately, and only from the archive",
+      "description": "Ivan 2026-07-17: 'Some of these could be deleted.' The real need is not space, it is junk: test calls, mis-imports, a recording that was not a sales call, or a client who asks to be removed. RECOMMENDED SHAPE: delete lives in the ARCHIVE, not the inbox \u2014 archive first, delete second. Two steps means a mis-click costs nothing, and the destructive action is never adjacent to the everyday one.",
+      "dependencies": [
+        "TASK-050"
+      ],
+      "priority": "low",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Delete is reachable only from an archived call, never from the inbox",
+        "A confirmation names the specific call and states plainly that it cannot be undone",
+        "Deleting removes the call AND its outputs and edits \u2014 no orphan rows left behind",
+        "The deletion is recorded in the event log (what was deleted, when) even though the row is gone",
+        "A call currently generating cannot be deleted out from under its Workflow"
+      ],
+      "testing_criteria": [
+        "Delete removes the call and every dependent row; assert zero orphans in outputs/edits",
+        "Assert delete is refused while processing_status='processing'",
+        "Assert the event log retains a record after the row is gone",
+        "Assert no other call is affected (row counts before/after)"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "incomplete",
+      "notes": "HARD delete, not soft. A soft-delete that pretends to delete is dishonest \u2014 if Ivan deletes a client's transcript because they asked him to, a hidden row still holding it is exactly the wrong outcome. Archive already IS the reversible option, so delete should mean delete. Check outputs/edits FK behaviour before implementing: if ON DELETE CASCADE is not set, orphans will accumulate silently.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-052",
+      "title": "The call list has no LIMIT and runs 2 correlated subqueries per row \u2014 this is what will actually get slow",
+      "description": "Found 2026-07-17 while costing Ivan's 'database will balloon' concern. Storage is a non-issue (42 years), but GET /api/calls has NO LIMIT and CALL_LIST_SQL runs two correlated subqueries (sms_sent, email_sent) for EVERY row. At 30 calls/week that is ~1,560 rows and ~3,120 subqueries per inbox load after year one, and the front end renders every row. This, not disk, is what will make the app feel slow. Good news: CALL_LIST_SQL does NOT select the transcript, so the payload stays small (~200 B/row).",
+      "dependencies": [],
+      "priority": "low",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "The call list is bounded (paginate or limit + 'load more')",
+        "sms_sent/email_sent stop being per-row correlated subqueries (JOIN + GROUP BY, or denormalise)",
+        "Search still works across calls the current page does not include",
+        "Measured: inbox load time at ~1,500 calls is materially better than before"
+      ],
+      "testing_criteria": [
+        "Seed ~1,500 calls locally and measure the query before/after",
+        "Assert pagination returns every call across pages with no duplicates or gaps",
+        "Assert search is not silently limited to the first page"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "incomplete",
+      "notes": "Low priority ONLY because there is exactly 1 call in the DB today and TASK-050 (archive) shrinks the default set anyway. Revisit when the DB passes ~300 calls, which at 30/week is about 10 weeks away. Do not pre-optimise this now; do not forget it either.",
+      "test_results": []
     }
   ],
-  "progress_percentage": 65
+  "progress_percentage": 62
 }
