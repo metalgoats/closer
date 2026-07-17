@@ -20,6 +20,8 @@ const api = {
 };
 
 const $ = sel => document.querySelector(sel);
+// The label to show for a call: its Fathom token's custom label (live), else the account name.
+const offerLabel = c => c.source_label || c.account_name;
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // Traffic-light rules. Four states, three brand colours: grey stays neutral for
@@ -79,9 +81,40 @@ async function boot() {
 }
 
 (async function init() {
-  try { state.user = (await api.get("/me")).user; await boot(); }
+  try {
+    const me = await api.get("/me");
+    state.user = me.user;
+    state.buildId = me.build;   // remember the version this tab loaded (TASK-046)
+    await boot();
+    startVersionWatch();
+  }
   catch { /* showAuth already called on 401 */ }
 })();
+
+// A single-page app keeps running whatever JS it first loaded; after a deploy the open tab is
+// silently stale (this cost real debugging time). Poll the build id and, when it changes, offer
+// a reload rather than letting the user act on old code. 'dev' = local/manual deploy: no id to
+// compare, so stay quiet.
+function startVersionWatch() {
+  if (!state.buildId || state.buildId === "dev") return;
+  let notified = false;
+  setInterval(async () => {
+    if (notified) return;
+    try {
+      const { build } = await api.get("/me");
+      if (build && build !== "dev" && build !== state.buildId) { notified = true; showUpdateBanner(); }
+    } catch { /* transient — try again next tick */ }
+  }, 60000);
+}
+function showUpdateBanner() {
+  if ($("#updateBanner")) return;
+  const bar = document.createElement("div");
+  bar.id = "updateBanner";
+  bar.className = "update-banner";
+  bar.innerHTML = `A new version of Closer is available. <button id="updateReload">Reload</button>`;
+  document.body.appendChild(bar);
+  $("#updateReload").addEventListener("click", () => location.reload());
+}
 
 // ---------- sidebar ----------
 function renderAccountNav() {
@@ -206,7 +239,7 @@ function visibleCalls() {
     // so it needs no outcome filter here.
     if (state.filter === "followup" && c.outcome !== "followup") return false;
     if (state.filter === "closed" && c.outcome !== "closed") return false;
-    if (state.search && !`${c.client_name} ${c.account_name} ${c.outcome || ""}`.toLowerCase().includes(state.search)) return false;
+    if (state.search && !`${c.client_name} ${offerLabel(c)} ${c.outcome || ""}`.toLowerCase().includes(state.search)) return false;
     return true;
   });
 }
@@ -241,7 +274,7 @@ function renderCallList() {
     if (c.email_sent) flags.push("✓ email");
     return `<div class="call-item ${c.id === state.currentCallId ? "active" : ""}" data-id="${c.id}" tabindex="0" role="button">
       <div class="call-row1"><span class="call-name"><span class="dot-${st}" title="${STATE_TITLE[st]}"></span>${esc(c.client_name)}</span><span class="call-time">${fmtTime(c.occurred_at)}</span></div>
-      <div class="call-meta">${pill}<span class="offer-tag">${esc(c.account_name)}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}</div>
+      <div class="call-meta">${pill}<span class="offer-tag">${esc(offerLabel(c))}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}</div>
     </div>`;
   }).join("") || `<div style="padding:20px 16px; font-size:12px; color:var(--ink-400);">No calls match.</div>`;
   wrap.querySelectorAll(".call-item").forEach(el => {
@@ -399,7 +432,7 @@ function renderProcessed(call, outputs) {
       <div class="dh-top">
         <div>
           ${callTitle(call, pill)}
-          <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>${call.duration_min ? call.duration_min + " min" : ""} ${fmtTime(call.occurred_at)}<span class="sep">·</span>${srcBadge}</div>
+          <div class="dh-meta">${esc(offerLabel(call))}<span class="sep">·</span>${call.duration_min ? call.duration_min + " min" : ""} ${fmtTime(call.occurred_at)}<span class="sep">·</span>${srcBadge}</div>
         </div>
         <div class="dh-actions">${callActions(call, `<button class="regen-btn" id="regenBtn">↻ Regenerate</button>`)}</div>
       </div>
@@ -592,7 +625,7 @@ function renderUnprocessed(call) {
   $("#detailPane").innerHTML = `
     <div class="detail-header"><div class="dh-top"><div>
       ${callTitle(call, '<span class="pill pill-new">New</span>')}
-      <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>transcript ready, not yet processed</div>
+      <div class="dh-meta">${esc(offerLabel(call))}<span class="sep">·</span>transcript ready, not yet processed</div>
     </div><div class="dh-actions">${callActions(call)}</div></div></div>
     <div class="compose-body">
       ${call.processing_error ? `<div class="fail-banner"><b>Last attempt failed.</b> ${esc(call.processing_error)}</div>` : ""}
@@ -631,7 +664,7 @@ function renderWorking(call) {
   $("#detailPane").innerHTML = `
     <div class="detail-header"><div class="dh-top"><div>
       ${callTitle(call, '<span class="pill pill-followup">Working</span>')}
-      <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>generating debrief, text, email &amp; CRM note</div>
+      <div class="dh-meta">${esc(offerLabel(call))}<span class="sep">·</span>generating debrief, text, email &amp; CRM note</div>
     </div></div></div>
     <div class="loading-state">
       <div class="progress-wrap">
@@ -690,6 +723,7 @@ function renderCompose() {
     <div class="compose-body">
       <div style="display:flex; gap:10px;">
         <input type="text" id="composeName" placeholder="Client name" style="flex:1;">
+        <input type="date" id="composeDate" title="Call date" style="width:150px;">
         <select id="composeAccount">${state.accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join("")}</select>
       </div>
       <label>Call transcript</label>
@@ -700,7 +734,8 @@ function renderCompose() {
     const client_name = $("#composeName").value.trim();
     const transcript = $("#composeTranscript").value.trim();
     if (!client_name || !transcript) return toast("Client name and transcript required");
-    const r = await api.post("/calls", { account_id: +$("#composeAccount").value, client_name, transcript });
+    const occurred_at = $("#composeDate").value || undefined;   // real call date (TASK-034), else now
+    const r = await api.post("/calls", { account_id: +$("#composeAccount").value, client_name, transcript, occurred_at });
     await refreshCalls();
     if (r.call?.id) openCall(r.call.id);
     else { const newest = state.calls[0]; if (newest) openCall(newest.id); }
@@ -766,13 +801,12 @@ async function renderSuggestions() {
 
 async function renderTemplates() {
   const { templates } = await api.get("/templates");
-  viewShell("Prompt Templates", "One master prompt per account — versioned; editing creates a new version",
-    templates.filter(t => !t.tone).map(t => {
-      const acct = state.accounts.find(a => a.id === t.account_id);
-      return `<h4>${esc(acct?.name || "Account " + t.account_id)} · v${t.version}</h4>
+  viewShell("Prompt Templates", "The master prompt. Editing saves a new version — the old one is kept.",
+    templates.filter(t => !t.tone).map(t =>
+      `<h4>Master prompt · v${t.version}<span class="tpl-date"> · updated ${t.created_at ? fmtTime(t.created_at) : "—"}</span></h4>
         <textarea data-tpl="${t.id}">${esc(t.body)}</textarea>
-        <button class="primary-btn" data-savetpl="${t.id}" style="margin:10px 0 20px;">Save as v${t.version + 1}</button>`;
-    }).join(""));
+        <button class="primary-btn" data-savetpl="${t.id}" style="margin:10px 0 20px;">Save as v${t.version + 1}</button>`
+    ).join(""));
   document.querySelectorAll("[data-savetpl]").forEach(btn => btn.addEventListener("click", async () => {
     const body = document.querySelector(`textarea[data-tpl="${btn.dataset.savetpl}"]`).value;
     await api.put(`/templates/${btn.dataset.savetpl}`, { body });
@@ -877,6 +911,11 @@ async function renderIntegrations() {
           </div>
           <span class="status-chip ${i.status === "connected" ? "status-on" : "status-off"}">${i.status}</span>
         </div>
+        ${i.kind === "fathom" ? `<div class="label-row">
+          <span class="label-hint">Inbox label — calls imported by this key show this instead of the account name:</span>
+          <input type="text" class="label-input" data-label="${i.id}" value="${esc(i.label || "")}" placeholder="e.g. Hypnosis or OSA" maxlength="40">
+          <button class="regen-btn" data-labelsave="${i.id}">Save label</button>
+        </div>` : ""}
         <div class="key-row">
           <input type="password" class="key-input" data-int="${i.id}" autocomplete="off"
                  placeholder="${i.has_key ? "Paste a new key to replace the saved one" : "Paste your key here"}">
@@ -961,6 +1000,17 @@ async function renderIntegrations() {
     const id = btn.dataset.remove;
     await api.req("DELETE", `/integrations/${id}`);
     toast("Key removed");
+    renderIntegrations();
+  }));
+
+  // Save a Fathom token's inbox label. It propagates live: existing calls imported by this
+  // token pick up the new label because the call list joins to the token, not a snapshot.
+  document.querySelectorAll("[data-labelsave]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.labelsave;
+    const label = document.querySelector(`.label-input[data-label="${id}"]`).value.trim();
+    await api.post(`/integrations/${id}/label`, { label });
+    toast(label ? `Calls from this key now show "${label}"` : "Label cleared");
+    if (state.calls.length) await refreshCalls();   // reflect the relabel in the inbox immediately
     renderIntegrations();
   }));
 

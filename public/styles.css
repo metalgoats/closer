@@ -404,3 +404,23 @@ button{ font-family:inherit; }
   .tone-opt, .chip, .regen-btn, .copy-btn, .primary-btn, .new-call-btn{ min-height:38px; }
   .call-item{ padding-top:12px; padding-bottom:12px; }
 }
+
+/* Fathom token inbox label (TASK-054 follow-up) */
+.label-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); }
+.label-hint{ font-size:11px; color:var(--ink-400); flex-basis:100%; }
+.label-input{ flex:1; min-width:140px; background:var(--paper-50); border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:12.5px; color:var(--ink-950); font-family:inherit; }
+.label-input:focus{ outline:none; border-color:var(--blue-500); }
+
+/* Template version/date subheading */
+.tpl-date{ color:var(--ink-400); font-weight:400; }
+
+/* "New version available" reload banner (TASK-046) */
+.update-banner{
+  position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:200;
+  background:linear-gradient(90deg, var(--blue-500), var(--violet-500)); color:#fff;
+  padding:10px 14px; border-radius:10px; font-size:12.5px; box-shadow:0 10px 30px rgba(0,0,0,.5);
+  display:flex; align-items:center; gap:12px; max-width:calc(100vw - 32px);
+}
+.update-banner button{ background:rgba(255,255,255,.18); color:#fff; border:1px solid rgba(255,255,255,.4);
+  border-radius:7px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; }
+.update-banner button:hover{ background:rgba(255,255,255,.3); }

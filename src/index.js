@@ -50,7 +50,7 @@ async function route(request, env, url, ctx) {
   const user = await requireUser(request, env);
   if (!user) return json({ error: "unauthorized" }, 401);
 
-  if (path === "/api/me") return json({ user });
+  if (path === "/api/me") return json({ user, build: env.BUILD_ID || "dev" });
 
   // ---- accounts ----
   if (path === "/api/accounts" && method === "GET") {
@@ -91,6 +91,16 @@ async function route(request, env, url, ctx) {
     await env.DB.prepare(
       "UPDATE integrations SET secret_value = NULL, status = 'disconnected', updated_at = datetime('now') WHERE id = ?"
     ).bind(+intMatch[1]).run();
+    return json({ ok: true });
+  }
+
+  const intLabelMatch = path.match(/^\/api\/integrations\/(\d+)\/label$/);
+  if (intLabelMatch && method === "POST") {
+    const { label } = await request.json();
+    await env.DB.prepare("UPDATE integrations SET label = ? WHERE id = ?")
+      .bind((label || "").trim() || null, +intLabelMatch[1]).run();
+    // A label is not a secret — safe to log.
+    await logEvent(env, { kind: "integration.labeled", detail: `#${intLabelMatch[1]} -> ${(label||"").trim() || "(cleared)"}` });
     return json({ ok: true });
   }
 
@@ -218,7 +228,9 @@ const CALL_LIST_SQL = `
          c.callback_note, c.processed_at, c.processing_status, c.processing_error, c.archived_at, a.name AS account_name,
          (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='sms' AND o.sent_at IS NOT NULL) AS sms_sent,
          (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='email' AND o.sent_at IS NOT NULL) AS email_sent
-  FROM calls c JOIN accounts a ON a.id = c.account_id`;
+         si.label AS source_label
+  FROM calls c JOIN accounts a ON a.id = c.account_id
+  LEFT JOIN integrations si ON si.id = c.source_integration_id`;
 
 // ---------- auth handlers ----------
 
@@ -260,7 +272,7 @@ async function logout(request, env) {
 
 async function getCall(env, id) {
   const call = await env.DB.prepare(
-    "SELECT c.*, a.name AS account_name, a.llm_provider FROM calls c JOIN accounts a ON a.id = c.account_id WHERE c.id = ?"
+    "SELECT c.*, a.name AS account_name, a.llm_provider, si.label AS source_label FROM calls c JOIN accounts a ON a.id = c.account_id LEFT JOIN integrations si ON si.id = c.source_integration_id WHERE c.id = ?"
   ).bind(id).first();
   if (!call) return json({ error: "not found" }, 404);
   const { results: outputs } = await env.DB.prepare("SELECT * FROM outputs WHERE call_id = ?").bind(id).all();
@@ -321,11 +333,17 @@ async function deleteCall(env, id) {
 }
 
 async function createCall(request, env, ctx) {
-  const { account_id, client_name, transcript } = await request.json();
+  const { account_id, client_name, transcript, occurred_at } = await request.json();
   if (!account_id || !client_name || !transcript) return json({ error: "account_id, client_name, transcript required" }, 400);
-  const res = await env.DB.prepare(
-    "INSERT INTO calls (account_id, client_name, occurred_at, transcript, source) VALUES (?, ?, datetime('now'), ?, 'manual') RETURNING id"
-  ).bind(account_id, client_name, transcript).first();
+  // Capture the real call date when given (TASK-034); fall back to now for a same-day paste.
+  // Normalise a date-only value (YYYY-MM-DD) to an ISO instant so ordering is stable.
+  let when = "datetime('now')", bindWhen = null;
+  if (occurred_at && /^\d{4}-\d{2}-\d{2}/.test(occurred_at)) {
+    when = "?"; bindWhen = occurred_at.length === 10 ? occurred_at + "T12:00:00Z" : occurred_at;
+  }
+  const stmt = `INSERT INTO calls (account_id, client_name, occurred_at, transcript, source) VALUES (?, ?, ${when}, ?, 'manual') RETURNING id`;
+  const binds = bindWhen ? [account_id, client_name, bindWhen, transcript] : [account_id, client_name, transcript];
+  const res = await env.DB.prepare(stmt).bind(...binds).first();
   return startProcessing(env, res.id, ctx);
 }
 
@@ -453,7 +471,8 @@ const newestFirst = items => items.slice().sort((a, b) => String(meetingWhen(b))
 
 // Inserts one meeting. Idempotent via the unique (account_id, external_id) index.
 // Returns { imported, callId, name, reason }.
-async function importMeeting(env, accountId, m) {
+async function importMeeting(env, integ, m) {
+  const accountId = integ.account_id;
   const externalId = String(m.recording_id);
   const existing = await env.DB.prepare(
     "SELECT id, client_name FROM calls WHERE account_id = ? AND external_id = ?"
@@ -472,9 +491,9 @@ async function importMeeting(env, accountId, m) {
   const name = deriveClientName(m);
 
   const ins = await env.DB.prepare(
-    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id)
-     VALUES (?, ?, ?, ?, ?, 'fathom', ?) RETURNING id`
-  ).bind(accountId, name, start, durationMin, transcript, externalId).first();
+    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id)
+     VALUES (?, ?, ?, ?, ?, 'fathom', ?, ?) RETURNING id`
+  ).bind(accountId, name, start, durationMin, transcript, externalId, integ.id).first();
 
   await logEvent(env, { kind: "fathom.imported", call_id: ins.id, account_id: accountId,
     detail: `${name} · ${transcript.length.toLocaleString()} chars · ${durationMin ?? "?"} min`,
@@ -497,7 +516,7 @@ async function fathomPullLatest(env, id, days = 7) {
   }
 
   const m = newestFirst(fetched.items)[0];
-  const r = await importMeeting(env, row.account_id, m);
+  const r = await importMeeting(env, row, m);
   if (!r.imported) {
     return json({ ok: r.reason !== "no transcript yet", imported: false, call_id: r.callId,
       message: r.reason === "no transcript yet"
@@ -634,7 +653,7 @@ async function pollFathom(env) {
     // Oldest first, so if auto-processing is on and the cap bites, the EARLIEST calls generate
     // first — Gabriel reads them in the order he made them.
     for (const m of newestFirst(fetched.items).reverse()) {
-      const r = await importMeeting(env, row.account_id, m);
+      const r = await importMeeting(env, row, m);
       if (!r.imported) continue;              // already have it, or no transcript yet
       imported++;
 
