@@ -522,9 +522,20 @@
         "closer-app/src/index.js",
         "closer-app/migrations/"
       ],
-      "status": "incomplete",
-      "notes": "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste \u2014 highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and \u2014 because createCall() auto-processes \u2014 fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033). RESCOPED 2026-07-16 to Ivan's 'Gmail' requirement. NOTE the sequencing: auto-generation must NOT be switched on before TASK-015 \u2014 not one real LLM generation has ever succeeded, and turning on an unattended cron that fires 4 paid calls per arriving call, with an unproven generation path, would fail silently on every call and could burn money doing it. Prove one manual generation first. Now also depends on TASK-040 so cron activity is observable \u2014 an unattended job with no log is undebuggable by definition. REASSESSED 2026-07-16: this task assumed waitUntil already gave us background processing. It never did (30s cap, TASK-045). The Gmail behaviour depends on TASK-045's Workflow, not on the cron alone.",
-      "test_results": []
+      "status": "completed",
+      "notes": [
+        "Currently a stub: src/index.js:286 logs 'Fathom polling not yet implemented'. Cron trigger (*/5 * * * *) is already registered and firing harmlessly. Will likely need a new migration to track last-polled cursor / external recording id for dedupe. This is THE feature that eliminates Gabriel's copy/paste \u2014 highest user value of the remaining work. FIRST-RUN CURSOR TRAP (raised by Ivan 2026-07-16, 'there are calls from today'): a poller keyed on 'fetch since last_polled_at' has no cursor on first run. Defaulting to now = today's calls are silently lost. Defaulting to epoch = it backfills Gabriel's ENTIRE Fathom history and \u2014 because createCall() auto-processes \u2014 fires an LLM run per call, unattended. At ~55 calls/wk over a year that is ~2,800 calls and plausibly $300-400 in one cron tick. DECISION: seed the cursor to now at key-save time; the cron only ever picks up genuinely new calls. Historical import is a separate, explicit, user-driven flow (TASK-033). RESCOPED 2026-07-16 to Ivan's 'Gmail' requirement. NOTE the sequencing: auto-generation must NOT be switched on before TASK-015 \u2014 not one real LLM generation has ever succeeded, and turning on an unattended cron that fires 4 paid calls per arriving call, with an unproven generation path, would fail silently on every call and could burn money doing it. Prove one manual generation first. Now also depends on TASK-040 so cron activity is observable \u2014 an unattended job with no log is undebuggable by definition. REASSESSED 2026-07-16: this task assumed waitUntil already gave us background processing. It never did (30s cap, TASK-045). The Gmail behaviour depends on TASK-045's Workflow, not on the cron alone. IMPLEMENTED 2026-07-17, unblocked by TASK-015's first successful run. Ivan's need: Gabriel records early tomorrow, Ivan checks midday, and he wanted calls already processed. Clarified a misconception worth keeping: closing the laptop was NEVER the issue - the app is server-side on Cloudflare. The reason nothing arrived is that pollFathom was a literal stub (console.log('not yet implemented')). DESIGN: bounded 12h lookback window + the unique (account_id, external_id) index, rather than a stored cursor - a corrupt/reset cursor could replay history, a 12h window structurally cannot. MAX_AUTO_PROCESS_PER_TICK=3 bounds the blast radius; overflow is imported and logged, NOT dropped, so the cap delays spend rather than losing calls. Transcript-less meetings are SKIPPED not imported - importing one would let external_id dedupe permanently strand it empty once Fathom finished transcribing. The cron only generates calls IT imported this tick, so a manually-pasted call left 'new' on purpose is never auto-spent. scheduled() now awaits instead of ctx.waitUntil (30s cap, TASK-045)."
+      ],
+      "test_results": [
+        "2026-07-17 19/19 against the REAL pollFathom source (eval'd from src/index.js, not a copy) with a fake D1 + fake Fathom, no network, no LLM spend.",
+        "2026-07-17 MONEY GUARD: polling twice with the same Fathom payload imports 0 duplicates and launches 0 extra paid runs - pass",
+        "2026-07-17 per-tick cap: 7 arriving calls -> all 7 imported, only 3 generations launched, 'deferred 4' logged so the truncation is visible rather than silent - pass",
+        "2026-07-17 transcript-less meeting skipped, then imported correctly on a later tick once the transcript landed (proves it is not stranded by dedupe) - pass",
+        "2026-07-17 oldest-first generation order so Gabriel reads them in the order he made them - pass",
+        "2026-07-17 Fathom 503, 401, and an unexpected response shape each log a distinct error and do not throw; a shape mismatch is NOT reported as 'no calls' - pass",
+        "2026-07-17 a manually-pasted call left in 'new' is never picked up by the cron - pass",
+        "PENDING: the real proof is tomorrow morning - Gabriel records, and calls should be imported+processed with nobody logged in."
+      ]
     },
     {
       "id": "TASK-018",
@@ -1552,7 +1563,69 @@
         "2026-07-16 follow-up banner removed; no regression in tone switching, per-output copy, or Regenerate wiring - pass",
         "2026-07-16 node --check on app.js clean; browser console shows zero errors"
       ]
+    },
+    {
+      "id": "TASK-048",
+      "title": "Fix rename: the double-click handler targeted #callName, which no element ever had",
+      "description": "Ivan 2026-07-17: 'I still cant rename call titles.' The handler existed and looked correct, but queried $('#callName') while the markup rendered <div class=\"dh-name\">{name} {pill}</div> with no id anywhere. nameEl was always null and `if (nameEl)` swallowed it silently, so the feature appeared implemented and did nothing. Was reported as shipped in the TASK-041 batch.",
+      "dependencies": [],
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Double-clicking the call title enters edit mode",
+        "Enter saves; Escape reverts; empty is refused",
+        "Editing cannot touch the status pill",
+        "Works in processed, new/failed and working states",
+        "A failed save rolls the name back instead of showing an unsaved name",
+        "Enter must not save twice via the blur it triggers"
+      ],
+      "testing_criteria": [
+        "Browser-verify dblclick -> edit -> Enter sends exactly ONE PATCH",
+        "Browser-verify Escape and empty-name paths save nothing",
+        "Browser-verify rollback on a 500"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "status": "completed",
+      "notes": "LESSON: `if (el)` on a required element converts a hard failure into a silent no-op - the exact pattern that let this ship as 'done'. It now console.warns if #callName is missing. The title also needed to be its OWN span: .dh-name contains the status pill, so making it contentEditable would have let you edit 'FOLLOW-UP' too. Added a callTitle() helper so all three states render an editable title identically. Also removed dead #briefToggle wiring left over from the removed follow-up banner (TASK-047).",
+      "test_results": [
+        "2026-07-17 root cause: #callName never existed in the DOM; the guard hid it - confirmed by grep of all 6 dh-name render sites",
+        "2026-07-17 browser: dblclick enters edit mode, Enter exits and sends exactly ONE PATCH {\"client_name\":\"Marcus W. \u2014 roofing\"} (the double-save guard works - blur fires after Enter), list row updates without a refetch - pass",
+        "2026-07-17 browser: Escape reverts and saves nothing; whitespace-only name reverts and saves nothing - pass",
+        "2026-07-17 browser: a 500 on save rolls the title back to the original and toasts 'Rename failed: D1 unavailable' - never leaves an unsaved name on screen - pass",
+        "2026-07-17 title is its own span; the status pill is outside it and cannot be edited - pass"
+      ]
+    },
+    {
+      "id": "TASK-049",
+      "title": "Show Fathom calls that exist but were not imported, so a miss is visible",
+      "description": "Ivan 2026-07-17: 'Perhaps it will be useful to see a list of the calls that have not been imported from Fathom in case something doesn't get imported or I want to import something manually. I don't know if this is important now, especially considering the next request.' He is right that TASK-017's cron reduces the need. But the cron can legitimately skip a meeting (no transcript yet, hit the per-tick cap, Fathom outage) and today those skips are only visible by reading the event log. A list of 'Fathom has this, we don't' with a manual Import button makes a miss obvious instead of archaeological.",
+      "dependencies": [
+        "TASK-017"
+      ],
+      "priority": "low",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Lists recent Fathom meetings not present in calls, with the reason (no transcript yet / deferred / outage)",
+        "A one-click Import per row",
+        "Import does NOT auto-generate \u2014 importing and spending stay separate decisions",
+        "Read-only: never mutates Fathom"
+      ],
+      "testing_criteria": [
+        "A meeting Fathom has and we lack appears in the list",
+        "A meeting already imported does NOT appear",
+        "Import inserts the call without launching a paid run"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "incomplete",
+      "notes": "Deliberately NOT built tonight: Ivan flagged it as maybe-unnecessary, and TASK-017 covers the main case. Revisit once the cron has run a real morning and we can see from the log whether anything actually gets skipped. Keep 'import' and 'generate' as separate actions here - the whole 'import != process' rule exists because createCall used to auto-process and a bulk import would have fired one paid run per call.",
+      "test_results": []
     }
   ],
-  "progress_percentage": 64
+  "progress_percentage": 65
 }

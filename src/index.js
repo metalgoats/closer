@@ -22,11 +22,18 @@ export default {
     }
   },
 
+  // AWAIT, don't ctx.waitUntil: waitUntil is capped at 30 seconds (see src/workflow.js), and
+  // the runtime already waits for whatever this handler returns. Both jobs are short —
+  // pollFathom only imports and hands off; the minutes-long LLM work happens in the Workflow.
   async scheduled(event, env, ctx) {
-    if (event.cron === "0 17 * * SUN") {
-      ctx.waitUntil(weeklyEditAnalysis(env));
-    } else {
-      ctx.waitUntil(pollFathom(env));
+    try {
+      if (event.cron === "0 17 * * SUN") await weeklyEditAnalysis(env);
+      else await pollFathom(env);
+    } catch (err) {
+      // A cron that throws is invisible — nobody is watching. Record it.
+      console.error("cron failed", event.cron, err);
+      await logEvent(env, { level: "error", kind: "cron.failed",
+        detail: `${event.cron}: ${String(err?.message || err)}` });
     }
   }
 };
@@ -276,18 +283,17 @@ async function createCall(request, env, ctx) {
 // hand the work to ctx.waitUntil so it survives the client leaving, and return at once.
 const STALE_PROCESSING_MS = 10 * 60 * 1000;
 
-async function startProcessing(env, id, ctx) {
-  const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(id).first();
-  if (!call) return json({ error: "not found" }, 404);
-  if (!call.transcript) return json({ error: "call has no transcript" }, 400);
+// Launches a generation. Shared by the Generate button and the Fathom cron, so both go
+// through the same double-spend guard. Returns { ok, already?, reason?, workflowId? }.
+async function launchGeneration(env, call) {
+  if (!call.transcript) return { ok: false, reason: "call has no transcript" };
 
   // Guard against double spend: a second Generate while one is already in flight
   // would fire another 4 paid LLM calls. Allow retry only once a run is clearly stale.
   if (call.processing_status === "processing") {
     const started = call.processing_started_at ? Date.parse(call.processing_started_at + "Z") : 0;
     if (started && Date.now() - started < STALE_PROCESSING_MS) {
-      return json({ ok: true, status: "processing", already: true,
-        message: "Already generating — hang tight." }, 202);
+      return { ok: true, already: true, reason: "already generating" };
     }
     // else: stale (worker died mid-run) — fall through and retry
   }
@@ -295,18 +301,29 @@ async function startProcessing(env, id, ctx) {
   await env.DB.prepare(
     `UPDATE calls SET processing_status = 'processing', processing_started_at = datetime('now'),
             processing_error = NULL, processing_progress = 0, processing_step = 'Starting' WHERE id = ?`
-  ).bind(id).run();
+  ).bind(call.id).run();
 
-  await logEvent(env, { kind: "generation.started", call_id: id, account_id: call.account_id,
+  await logEvent(env, { kind: "generation.started", call_id: call.id, account_id: call.account_id,
     detail: `${call.client_name} · ${(call.transcript || "").length.toLocaleString()} chars` });
 
   // Hand off to a Workflow, NOT ctx.waitUntil. waitUntil is capped at 30 seconds after the
   // response is sent (Cloudflare's documented limit), which is why every run in this
   // project's history died at 0:30. See src/workflow.js.
-  const instance = await env.GENERATE.create({ params: { callId: id } });
+  const instance = await env.GENERATE.create({ params: { callId: call.id } });
   await env.DB.prepare("UPDATE calls SET processing_workflow_id = ? WHERE id = ?")
-    .bind(instance.id, id).run();
-  return json({ ok: true, status: "processing", workflow_id: instance.id }, 202);
+    .bind(instance.id, call.id).run();
+  return { ok: true, workflowId: instance.id };
+}
+
+async function startProcessing(env, id, ctx) {
+  const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(id).first();
+  if (!call) return json({ error: "not found" }, 404);
+
+  const r = await launchGeneration(env, call);
+  if (!r.ok) return json({ error: r.reason }, 400);
+  if (r.already) return json({ ok: true, status: "processing", already: true,
+    message: "Already generating — hang tight." }, 202);
+  return json({ ok: true, status: "processing", workflow_id: r.workflowId }, 202);
 }
 
 // ---------- output edit capture ----------
@@ -352,6 +369,67 @@ function deriveClientName(m) {
 // Imports EXACTLY ONE call: the most recent within `days`. Bounded by created_after
 // so it is structurally incapable of pulling full history. Lands unprocessed —
 // import must never trigger LLM generation (see TASK-033).
+// Fetches meetings from Fathom. Returns { ok, items } or { ok:false, message } — the caller
+// decides whether that becomes an HTTP response or a log line, so the manual pull and the
+// cron share one implementation rather than drifting apart.
+async function fetchFathomMeetings(key, sinceIso) {
+  const url = `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(sinceIso)}&include_transcript=true`;
+  let data;
+  try {
+    const res = await fetch(url, { headers: { "X-Api-Key": key }, signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) {
+      return { ok: false, message: res.status === 401 || res.status === 403
+        ? `Fathom rejected the key (${res.status}).`
+        : `Fathom returned ${res.status}.` };
+    }
+    data = await res.json();
+  } catch (err) {
+    return { ok: false, message: `Could not reach Fathom: ${err.message}` };
+  }
+  // Distinguish "no calls" from "the response isn't the shape we expect". Treating a
+  // shape mismatch as an empty list would report "no calls" when parsing actually failed.
+  if (!Array.isArray(data.items)) {
+    return { ok: false, message:
+      `Unexpected response from Fathom — no 'items' array (got: ${Object.keys(data || {}).join(", ") || "nothing"}). The API shape may have changed.` };
+  }
+  return { ok: true, items: data.items };
+}
+
+// Fathom does NOT document sort order — never trust items[0]. Sort ourselves.
+const meetingWhen = m => m.recording_start_time || m.scheduled_start_time || m.created_at || "";
+const newestFirst = items => items.slice().sort((a, b) => String(meetingWhen(b)).localeCompare(String(meetingWhen(a))));
+
+// Inserts one meeting. Idempotent via the unique (account_id, external_id) index.
+// Returns { imported, callId, name, reason }.
+async function importMeeting(env, accountId, m) {
+  const externalId = String(m.recording_id);
+  const existing = await env.DB.prepare(
+    "SELECT id, client_name FROM calls WHERE account_id = ? AND external_id = ?"
+  ).bind(accountId, externalId).first();
+  if (existing) return { imported: false, callId: existing.id, name: existing.client_name, reason: "already imported" };
+
+  const transcript = flattenTranscript(m.transcript);
+  // Do NOT insert a transcript-less call: external_id dedupe would then block re-import once
+  // Fathom finishes transcribing, and the call would be stranded empty forever. Skipping means
+  // a later poll picks it up properly.
+  if (!transcript.trim()) return { imported: false, reason: "no transcript yet" };
+
+  const start = m.recording_start_time || m.scheduled_start_time || m.created_at;
+  const end = m.recording_end_time || m.scheduled_end_time;
+  const durationMin = start && end ? Math.max(1, Math.round((new Date(end) - new Date(start)) / 60000)) : null;
+  const name = deriveClientName(m);
+
+  const ins = await env.DB.prepare(
+    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id)
+     VALUES (?, ?, ?, ?, ?, 'fathom', ?) RETURNING id`
+  ).bind(accountId, name, start, durationMin, transcript, externalId).first();
+
+  await logEvent(env, { kind: "fathom.imported", call_id: ins.id, account_id: accountId,
+    detail: `${name} · ${transcript.length.toLocaleString()} chars · ${durationMin ?? "?"} min`,
+    meta: { recording_id: externalId, occurred_at: start } });
+  return { imported: true, callId: ins.id, name, occurred_at: start };
+}
+
 async function fathomPullLatest(env, id, days = 7) {
   const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
   if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
@@ -359,67 +437,23 @@ async function fathomPullLatest(env, id, days = 7) {
   const key = await resolveKey(env, row.account_id, "fathom");
   if (!key) return json({ ok: false, message: "No Fathom key saved yet — paste one and hit Save first." });
 
-  const since = new Date(Date.now() - days * 86400_000).toISOString();
-  const url = `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(since)}&include_transcript=true`;
-
-  let data;
-  try {
-    const res = await fetch(url, { headers: { "X-Api-Key": key } });
-    if (!res.ok) {
-      return json({ ok: false, message: res.status === 401 || res.status === 403
-        ? `Fathom rejected the key (${res.status}).`
-        : `Fathom returned ${res.status}.` });
-    }
-    data = await res.json();
-  } catch (err) {
-    return json({ ok: false, message: `Could not reach Fathom: ${err.message}` });
-  }
-
-  // Distinguish "no calls" from "the response isn't the shape we expect". Treating a
-  // shape mismatch as an empty list would report "no calls" when parsing actually failed.
-  if (!Array.isArray(data.items)) {
-    return json({ ok: false, message:
-      `Unexpected response from Fathom — no 'items' array (got: ${Object.keys(data || {}).join(", ") || "nothing"}). The API shape may have changed.` });
-  }
-  const items = data.items;
-  if (!items.length) {
+  const fetched = await fetchFathomMeetings(key, new Date(Date.now() - days * 86400_000).toISOString());
+  if (!fetched.ok) return json({ ok: false, message: fetched.message });
+  if (!fetched.items.length) {
     await logEvent(env, { kind: "fathom.pull", account_id: row.account_id, detail: `No calls in the last ${days} days` });
     return json({ ok: true, imported: false, message: `No Fathom calls in the last ${days} days.` });
   }
 
-  // Fathom does NOT document sort order — never trust items[0]. Sort ourselves.
-  const when = m => m.recording_start_time || m.scheduled_start_time || m.created_at || "";
-  const m = items.slice().sort((a, b) => String(when(b)).localeCompare(String(when(a))))[0];
-
-  const externalId = String(m.recording_id);
-  const existing = await env.DB.prepare(
-    "SELECT id, client_name FROM calls WHERE account_id = ? AND external_id = ?"
-  ).bind(row.account_id, externalId).first();
-  if (existing) {
-    return json({ ok: true, imported: false, call_id: existing.id,
-      message: `Already imported: ${existing.client_name}. Nothing new to pull.` });
+  const m = newestFirst(fetched.items)[0];
+  const r = await importMeeting(env, row.account_id, m);
+  if (!r.imported) {
+    return json({ ok: r.reason !== "no transcript yet", imported: false, call_id: r.callId,
+      message: r.reason === "no transcript yet"
+        ? "Fathom returned that call without a transcript — it may still be processing."
+        : `Already imported: ${r.name}. Nothing new to pull.` });
   }
-
-  const transcript = flattenTranscript(m.transcript);
-  if (!transcript.trim()) {
-    return json({ ok: false, message: "Fathom returned that call without a transcript — it may still be processing." });
-  }
-
-  const start = m.recording_start_time || m.scheduled_start_time || m.created_at;
-  const end = m.recording_end_time || m.scheduled_end_time;
-  const durationMin = start && end ? Math.max(1, Math.round((new Date(end) - new Date(start)) / 60000)) : null;
-
-  const ins = await env.DB.prepare(
-    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id)
-     VALUES (?, ?, ?, ?, ?, 'fathom', ?) RETURNING id`
-  ).bind(row.account_id, deriveClientName(m), start, durationMin, transcript, externalId).first();
-
-  await logEvent(env, { kind: "fathom.imported", call_id: ins.id, account_id: row.account_id,
-    detail: `${deriveClientName(m)} · ${transcript.length.toLocaleString()} chars · ${durationMin ?? "?"} min`,
-    meta: { recording_id: externalId, occurred_at: start } });
-  return json({ ok: true, imported: true, call_id: ins.id, client_name: deriveClientName(m),
-    occurred_at: start,
-    message: `Imported "${deriveClientName(m)}" — open it and hit Generate when you're ready.` });
+  return json({ ok: true, imported: true, call_id: r.callId, client_name: r.name, occurred_at: r.occurred_at,
+    message: `Imported "${r.name}" — open it and hit Generate when you're ready.` });
 }
 
 // ---------- integration test ----------
@@ -505,12 +539,58 @@ async function insights(env, accountId) {
 
 // ---------- cron jobs ----------
 
+// How far back each poll looks. Bounded on purpose: with the unique (account_id, external_id)
+// index making imports idempotent, a window + dedupe is safer than a stored cursor — a corrupt
+// or reset cursor could re-import history, but a 12h window structurally cannot.
+// 12h covers "Gabriel records early, Ivan looks at midday" with room to spare.
+const POLL_LOOKBACK_MS = 12 * 3600_000;
+
+// Hard cap on paid runs launched per tick. The cron fires every 5 minutes, so this is the
+// blast radius if anything upstream goes wrong (Fathom replays history, dedupe breaks, a
+// key is repointed at a different workspace). Overflow is NOT dropped — it is imported and
+// logged, and the next tick picks it up, so the cap delays spend rather than losing calls.
+const MAX_AUTO_PROCESS_PER_TICK = 3;
+
+// The "like Gmail" behaviour (TASK-017): new calls arrive and are processed with nobody
+// logged in and no laptop open. Runs on the */5 cron.
 async function pollFathom(env) {
-  // Wired up once Fathom API keys are configured as secrets. For each account with a
-  // connected fathom integration: fetch new recordings since last poll, insert calls,
-  // and run processCall on each. TODO after account setup.
-  if (!env.FATHOM_API_KEY_OSA) return;
-  console.log("Fathom polling not yet implemented — keys detected, implement fetch here.");
+  const { results: integrations } = await env.DB.prepare(
+    "SELECT * FROM integrations WHERE kind = 'fathom'"
+  ).all();
+
+  for (const row of integrations || []) {
+    const key = await resolveKey(env, row.account_id, "fathom");
+    if (!key) continue;                       // not configured — silently skip, not an error
+
+    const fetched = await fetchFathomMeetings(key, new Date(Date.now() - POLL_LOOKBACK_MS).toISOString());
+    if (!fetched.ok) {
+      // Log and move on: a Fathom outage must not stop other accounts polling.
+      await logEvent(env, { level: "error", kind: "fathom.poll_failed", account_id: row.account_id,
+        detail: fetched.message });
+      continue;
+    }
+    if (!fetched.items.length) continue;      // nothing new — stay quiet, this runs every 5 min
+
+    let imported = 0, launched = 0, deferred = 0;
+    // Oldest first, so if the cap bites, the EARLIEST calls generate first — Gabriel reads
+    // them in the order he made them.
+    for (const m of newestFirst(fetched.items).reverse()) {
+      const r = await importMeeting(env, row.account_id, m);
+      if (!r.imported) continue;              // already have it, or no transcript yet
+      imported++;
+
+      if (launched >= MAX_AUTO_PROCESS_PER_TICK) { deferred++; continue; }
+      const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(r.callId).first();
+      const g = await launchGeneration(env, call);
+      if (g.ok && !g.already) launched++;
+    }
+
+    if (imported) {
+      await logEvent(env, { kind: "fathom.poll", account_id: row.account_id,
+        detail: `Imported ${imported}, started ${launched}${deferred ? `, deferred ${deferred} to the next tick (cap ${MAX_AUTO_PROCESS_PER_TICK})` : ""}`,
+        meta: { imported, launched, deferred } });
+    }
+  }
 }
 
 async function weeklyEditAnalysis(env) {

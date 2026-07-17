@@ -329,3 +329,8 @@ button{ font-family:inherit; }
 .settings-item.danger{ color:var(--ink-400); }
 .settings-item.danger:hover{ color:var(--pink-500); background:var(--pink-100); }
 .settings-sep{ height:1px; background:var(--line); margin:4px 2px; }
+
+/* Rename-in-place. The title is its own span so editing cannot touch the status pill. */
+.call-title{ cursor:text; border-radius:4px; padding:0 3px; margin:0 -3px; }
+.call-title:hover{ background:var(--paper-100); }
+.call-title.editing{ background:var(--paper-200); outline:1.5px solid var(--blue-500); cursor:text; }

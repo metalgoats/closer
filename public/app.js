@@ -264,6 +264,51 @@ async function openCall(id) {
 
 function toneOf(call) { return call.selected_tone || call.suggested_tone || "balanced"; }
 
+// The title must be its OWN element, separate from the status pill: making the whole
+// .dh-name contentEditable would let you edit the pill text too.
+// (The previous rename attempt targeted #callName, which no element ever had — so `if (nameEl)`
+// silently swallowed it and the feature looked implemented while doing nothing.)
+const callTitle = (call, pill = "") =>
+  `<div class="dh-name"><span id="callName" class="call-title" title="Double-click to rename">${esc(call.client_name)}</span>${pill ? " " + pill : ""}</div>`;
+
+function wireRename(call) {
+  const nameEl = $("#callName");
+  if (!nameEl) { console.warn("rename: #callName missing — title not renameable"); return; }
+  nameEl.addEventListener("dblclick", () => {
+    const original = call.client_name;
+    nameEl.contentEditable = "true";
+    nameEl.classList.add("editing");
+    nameEl.focus();
+    document.getSelection().selectAllChildren(nameEl);
+
+    let done = false;
+    const finish = async (save) => {
+      if (done) return;            // blur fires after Enter too — don't save twice
+      done = true;
+      nameEl.contentEditable = "false";
+      nameEl.classList.remove("editing");
+      const next = nameEl.textContent.trim();
+      if (!save || !next || next === original) { nameEl.textContent = original; return; }
+      try {
+        await api.patch(`/calls/${call.id}`, { client_name: next });
+        call.client_name = next;
+        const row = state.calls.find(c => c.id === call.id);
+        if (row) row.client_name = next;   // keep the list in sync without a full refetch
+        renderCallList();
+        toast("Renamed");
+      } catch (err) {
+        nameEl.textContent = original;     // never leave a name on screen that was not saved
+        toast(`Rename failed: ${err.message}`);
+      }
+    };
+    nameEl.addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); finish(true); nameEl.blur(); }
+      if (e.key === "Escape") { e.preventDefault(); nameEl.textContent = original; finish(false); nameEl.blur(); }
+    });
+    nameEl.addEventListener("blur", () => finish(true), { once: true });
+  });
+}
+
 function renderProcessed(call, outputs) {
   const d = JSON.parse(call.debrief_json || "{}");
   const tone = toneOf(call);
@@ -277,7 +322,7 @@ function renderProcessed(call, outputs) {
     <div class="detail-header">
       <div class="dh-top">
         <div>
-          <div class="dh-name">${esc(call.client_name)} ${pill}</div>
+          ${callTitle(call, pill)}
           <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>${call.duration_min ? call.duration_min + " min" : ""} ${fmtTime(call.occurred_at)}<span class="sep">·</span>${srcBadge}</div>
         </div>
         <div class="dh-actions"><button class="regen-btn" id="regenBtn">↻ Regenerate</button></div>
@@ -420,35 +465,7 @@ function wireDetail(call, outs) {
     openCall(call.id);
   }));
 
-  // pre-call brief
-  const bt = $("#briefToggle");
-  if (bt) bt.addEventListener("click", () => $("#briefBody").classList.toggle("hidden"));
-
-  // double-click the title to rename
-  const nameEl = $("#callName");
-  if (nameEl) nameEl.addEventListener("dblclick", () => {
-    const original = call.client_name;
-    nameEl.contentEditable = "true";
-    nameEl.classList.add("editing");
-    nameEl.focus();
-    document.getSelection().selectAllChildren(nameEl);
-
-    const finish = async (save) => {
-      nameEl.contentEditable = "false";
-      nameEl.classList.remove("editing");
-      const next = nameEl.textContent.trim();
-      if (!save || !next || next === original) { nameEl.textContent = original; return; }
-      await api.patch(`/calls/${call.id}`, { client_name: next });
-      call.client_name = next;
-      await refreshCalls();
-      toast("Renamed");
-    };
-    nameEl.addEventListener("keydown", e => {
-      if (e.key === "Enter") { e.preventDefault(); nameEl.blur(); }
-      if (e.key === "Escape") { e.preventDefault(); nameEl.textContent = original; nameEl.blur(); }
-    });
-    nameEl.addEventListener("blur", () => finish(true), { once: true });
-  });
+  wireRename(call);
 
   // regenerate
   $("#regenBtn").addEventListener("click", async () => {
@@ -497,7 +514,7 @@ function wireDetail(call, outs) {
 function renderUnprocessed(call) {
   $("#detailPane").innerHTML = `
     <div class="detail-header"><div class="dh-top"><div>
-      <div class="dh-name">${esc(call.client_name)} <span class="pill pill-new">New</span></div>
+      ${callTitle(call, '<span class="pill pill-new">New</span>')}
       <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>transcript ready, not yet processed</div>
     </div></div></div>
     <div class="compose-body">
@@ -506,6 +523,7 @@ function renderUnprocessed(call) {
       <textarea readonly>${esc(call.transcript || "")}</textarea>
       <button class="primary-btn" id="processBtn">✦ ${call.processing_error ? "Try again" : "Generate Debrief, Text, Email &amp; CRM Note"}</button>
     </div>`;
+  wireRename(call);
   $("#processBtn").addEventListener("click", async () => {
     renderLoading(call.client_name);
     await api.post(`/calls/${call.id}/process`);
@@ -534,7 +552,7 @@ function renderWorking(call) {
 
   $("#detailPane").innerHTML = `
     <div class="detail-header"><div class="dh-top"><div>
-      <div class="dh-name">${esc(call.client_name)} <span class="pill pill-followup">Working</span></div>
+      ${callTitle(call, '<span class="pill pill-followup">Working</span>')}
       <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>generating debrief, text, email &amp; CRM note</div>
     </div></div></div>
     <div class="loading-state">
@@ -575,6 +593,7 @@ function renderWorking(call) {
   tick();
   // The server refuses a retry while a run is genuinely in flight (no double spend),
   // so this is only ever destructive to a run that has actually died.
+  wireRename(call);
   $("#retryBtn").addEventListener("click", async () => {
     const r = await api.post(`/calls/${call.id}/process`);
     toast(r.already ? "Still generating — give it a moment." : "Restarted generation.");
