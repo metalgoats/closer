@@ -1474,7 +1474,33 @@
         "2026-07-16 money-bomb guard: LLM step pinned to retries:{limit:0}; only the idempotent D1 save step retries (limit 3).",
         "PENDING - the actual proof: a real run past 33%, and generation.debrief_done appearing in the log for the first time in the project's history. Ivan's next click. I cannot trigger it myself (requires his login) and will not read his stored keys to do so."
       ]
+    },
+    {
+      "id": "TASK-046",
+      "title": "A tab left open across a deploy silently runs the OLD front-end \u2014 this cost a full debugging round",
+      "description": "Ivan 2026-07-16: 'I never saw a progress bar, I still saw a spinning circle.' The progress bar WAS deployed (verified: the served /app.js contained progress-wrap). But the app is a single-page app served from a plain /app.js with no version query, so a tab opened before the deploy keeps running the JS already in memory \u2014 clicking Generate ran the old code. The spinner he saw had been deleted from the source. This is not cosmetic: it made a shipped fix look like a failed fix, and sent us both chasing the wrong thing during an already-confusing four-round debugging session.",
+      "dependencies": [],
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "The app can tell that the deployed version differs from the loaded one",
+        "The user is told to reload (or it reloads itself) rather than silently running stale code",
+        "The check costs nothing extra \u2014 the front end already polls, so it should ride on an existing response",
+        "Works without a build step (assets are served statically, there is no bundler to hash filenames)"
+      ],
+      "testing_criteria": [
+        "Load the page, deploy a new version, confirm the running tab notices within one poll",
+        "Confirm no reload prompt appears when the version is unchanged",
+        "Confirm a failed version check never breaks the app (same rule as logEvent)"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "incomplete",
+      "notes": "Cheap to fix and it protects every future debugging session: without it, 'is this deployed?' and 'is this working?' are indistinguishable from the user's side. Simplest approach that needs no bundler: stamp a build id into the Worker, return it on an existing polled endpoint (e.g. /api/me or the calls list), and have app.js compare it to the id it booted with. On mismatch, show a non-blocking 'A new version is available - reload' toast. Do NOT auto-reload while a generation is in flight without warning. Related: cache-control on /app.js is already 'max-age=0, must-revalidate', so a plain reload DOES fetch fresh code - the problem is exclusively the never-reloaded tab.",
+      "test_results": []
     }
   ],
-  "progress_percentage": 51
+  "progress_percentage": 50
 }
