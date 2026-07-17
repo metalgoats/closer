@@ -528,6 +528,7 @@ async function renderIntegrations() {
           <button class="key-reveal" data-reveal="${i.id}" title="Show what you typed">Show</button>
           <button class="primary-btn key-save" data-save="${i.id}">Save</button>
           <button class="regen-btn" data-test="${i.id}">Test</button>
+          ${i.kind === "fathom" && i.has_key ? `<button class="regen-btn" data-pull="${i.id}">Pull latest call</button>` : ""}
           ${i.has_key ? `<button class="regen-btn key-remove" data-remove="${i.id}">Remove</button>` : ""}
         </div>
         <div class="key-foot">${state}<span class="key-msg" data-msg="${i.id}"></span></div>
@@ -606,6 +607,28 @@ async function renderIntegrations() {
     await api.req("DELETE", `/integrations/${id}`);
     toast("Key removed");
     renderIntegrations();
+  }));
+
+  // Pull exactly one call — the most recent. Lands unprocessed; you choose when to spend tokens.
+  document.querySelectorAll("[data-pull]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.pull;
+    setMsg(id, "Looking for your most recent call…");
+    btn.disabled = true;
+    try {
+      const r = await api.post(`/integrations/${id}/pull-latest`);
+      setMsg(id, r.message, r.ok);
+      if (r.imported) {
+        await refreshCalls();
+        toast(`Imported ${r.client_name}`);
+        openCall(r.call_id);
+      } else {
+        toast(r.message);
+      }
+    } catch (err) {
+      setMsg(id, err.message, false);
+    } finally {
+      btn.disabled = false;
+    }
   }));
 }
 

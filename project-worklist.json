@@ -2,7 +2,7 @@
   "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-07-16",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 47,
+  "completion_percentage": 46,
   "tasks": [
     {
       "id": "TASK-001",
@@ -468,21 +468,22 @@
       "description": "Gabriel generates an API key in the On Screen Authority Fathom account (Settings -> Integrations -> API Access).",
       "dependencies": [
         "TASK-009",
-        "TASK-030"
+        "TASK-032"
       ],
       "priority": "high",
       "estimated_complexity": "low",
       "acceptance_criteria": [
-        "FATHOM_API_KEY_OSA set as a Worker secret",
-        "The OSA Fathom integration row flips to connected"
+        "Fathom key saved via the Integrations UI",
+        "A real authenticated call to Fathom's API succeeds",
+        "Integration status reflects a verified connection, not merely 'a key is saved'"
       ],
       "testing_criteria": [
         "wrangler secret list shows FATHOM_API_KEY_OSA",
         "A test authenticated call to Fathom's API returns recordings"
       ],
       "files_expected_to_change": [],
-      "status": "blocked",
-      "notes": "RESCOPED 2026-07-16 by TASK-030: was two keys (OSA + hypnotherapy); now ONE key for On Screen Authority only. BLOCKED: needs Gabriel to generate it. Self-serve, ~2 clicks, no developer account needed (per TASK-013 research). Note the OSA Fathom is a workspace Gabriel logs into rather than owns — missing info: whether his access level permits generating an API key there, and whether the plan tier includes API access.",
+      "status": "in_progress",
+      "notes": "RESCOPED 2026-07-16 by TASK-030: was two keys (OSA + hypnotherapy); now ONE key for On Screen Authority only. BLOCKED: needs Gabriel to generate it. Self-serve, ~2 clicks, no developer account needed (per TASK-013 research). Note the OSA Fathom is a workspace Gabriel logs into rather than owns — missing info: whether his access level permits generating an API key there, and whether the plan tier includes API access. UPDATE 2026-07-16: a Fathom key IS saved in production. NO LONGER BLOCKED on Gabriel. But it is UNVERIFIED — the UI showed 'connected' merely because saving sets that flag; there was no Fathom test. TASK-035 adds a real auth check and will verify this.",
       "test_results": []
     },
     {
@@ -1028,6 +1029,55 @@
       "status": "incomplete",
       "notes": "Surfaced by Ivan's 2026-07-16 question about 'calls from today'. Small and UNBLOCKED — does not need any API key. Matters most right now because manual paste is currently the ONLY way to get calls in, so every call Gabriel enters tonight is mis-timestamped.",
       "test_results": []
+    },
+    {
+      "id": "TASK-035",
+      "title": "Fathom: real connection test + pull the single latest call",
+      "description": "Ivan 2026-07-16: the Fathom card says 'No connection test available for fathom yet — the key is saved', which proves nothing; and he wants to pull just the most recent call rather than backfill history. Both are solved by one small Fathom integration: a real auth check, plus a bounded 'Pull latest call' that imports exactly one meeting as an unprocessed call.",
+      "dependencies": [
+        "TASK-032"
+      ],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Fathom Test performs a real authenticated request and reports genuine pass/fail (no more 'no test available')",
+        "'Pull latest call' imports exactly ONE call — the most recent — never a history dump",
+        "Request is bounded by created_after so it can never pull the full history even accidentally",
+        "Result is sorted newest-first CLIENT-SIDE (Fathom does not document sort order — must not be trusted)",
+        "Imported call lands UNPROCESSED (New) — import must never trigger LLM generation",
+        "occurred_at comes from Fathom's real recording_start_time, not the import time",
+        "Client name derived from the external calendar invitee, not from Gabriel (the internal recorder)",
+        "Re-pulling the same call does not duplicate it (dedupe on Fathom recording_id)",
+        "Clear message when there are no calls in the window"
+      ],
+      "testing_criteria": [
+        "Bad key -> clean auth failure, no crash",
+        "No key -> clear 'save a key first' message, no crash",
+        "Verify the live Fathom response shape matches the documented schema before trusting it",
+        "Pull twice -> assert the second is reported as already-imported, with no duplicate row",
+        "Assert ZERO LLM calls fire during import (money-bomb guard)",
+        "Assert occurred_at matches the Fathom recording_start_time, not now()"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0003_call_external_id.sql",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "in_progress",
+      "notes": "API VERIFIED against developers.fathom.ai 2026-07-16 (not guessed): GET https://api.fathom.ai/external/v1/meetings, header X-Api-Key, query params created_after/created_before/cursor/include_transcript, response {limit,next_cursor,items:[{recording_id,title,meeting_title,created_at,scheduled_start_time,recording_start_time,recording_end_time,transcript:[{speaker:{display_name},text,timestamp}],calendar_invitees:[{name,email,is_external}],recorded_by}]}. Rate limit 60 req/min. RISK: sort order is NOT documented — items[0] may be the OLDEST. Sorting client-side by recording_start_time desc is load-bearing, not a nicety. DESIGN: bound with created_after (default 7 days) so the request is inherently incapable of a full-history pull — this is the deliberate answer to the TASK-017 cursor trap. Lands unprocessed per the TASK-033 import!=process rule. Deliberately a narrow slice of TASK-033 (which remains the general date-ranged, multi-select importer). STATUS 2026-07-16: shipped and left in_progress deliberately. Everything testable without Ivan's real Fathom key is verified (endpoint+auth via a real 401, sort defence, dedupe, name derivation, transcript flattening, shape guard). The one unproven criterion is the live success-path response shape — chose NOT to read Ivan's stored Fathom key out of D1 to self-verify; a shape mismatch now yields a precise diagnostic rather than a wrong answer, so the cost of finding out via one button click is low.",
+      "test_results": [
+        "2026-07-16: fresh local migrate applies 0001+0002+0003; external_id column + partial unique index present — pass",
+        "2026-07-16: no key -> clean 'save a key first' on both Test and Pull; no crash — pass",
+        "2026-07-16: BAD key -> real request to api.fathom.ai returned 401, surfaced as 'Fathom rejected the key (401)'. This also VERIFIES the base URL and X-Api-Key header are correct — a wrong path would have 404'd — pass",
+        "2026-07-16: SORT DEFENCE PROVEN — fed items oldest-first (the dangerous case Fathom's docs leave unspecified), naive items[0] picks 'Old Client' while our client-side sort correctly picks the newest — pass",
+        "2026-07-16: client name derivation skips the internal recorder (Gabriel) and picks the external invitee; falls back to meeting_title — pass",
+        "2026-07-16: transcript flattens to the app's existing '0:02 — Name: text' format; non-array input returns '' without throwing — pass",
+        "2026-07-16: dedupe — duplicate external_id blocked by UNIQUE constraint; multiple manual calls (NULL external_id) still allowed by the partial index — pass",
+        "2026-07-16: shape-mismatch guard — a response without an 'items' array reports a distinct diagnostic rather than the misleading 'no calls found'",
+        "2026-07-16: PRODUCTION migration 0003 applied, row counts identical before/after (users=1, calls=0, integrations=4) — no data loss — pass",
+        "2026-07-16: deployed (version a62da026), site 200 — pass",
+        "PENDING: success path unverified against a real Fathom key — Ivan to click 'Pull latest call'. Error paths, sort, dedupe and parsing are all verified; what remains unproven is only that the live response body matches the documented schema."
+      ]
     }
   ]
 }

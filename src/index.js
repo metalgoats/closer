@@ -84,6 +84,12 @@ async function route(request, env, url) {
   const intTestMatch = path.match(/^\/api\/integrations\/(\d+)\/test$/);
   if (intTestMatch && method === "POST") return testIntegration(env, +intTestMatch[1]);
 
+  const pullMatch = path.match(/^\/api\/integrations\/(\d+)\/pull-latest$/);
+  if (pullMatch && method === "POST") {
+    const days = Math.min(90, Math.max(1, +(url.searchParams.get("days") || 7)));
+    return fathomPullLatest(env, +pullMatch[1], days);
+  }
+
   // ---- calls ----
   if (path === "/api/calls" && method === "GET") {
     const accountId = url.searchParams.get("account");
@@ -286,6 +292,91 @@ async function patchOutput(request, env, id) {
   return json({ ok: true });
 }
 
+// ---------- Fathom ----------
+// API verified against developers.fathom.ai (2026-07-16), not inferred.
+
+const FATHOM_BASE = "https://api.fathom.ai/external/v1";
+
+// Flatten Fathom's structured transcript into the same "0:02 — Name: text" shape
+// the app already uses for pasted transcripts.
+function flattenTranscript(t) {
+  if (!Array.isArray(t)) return "";
+  return t.map(l => `${l.timestamp || ""} — ${l.speaker?.display_name || "Unknown"}: ${l.text || ""}`).join("\n");
+}
+
+// The client is the external invitee — Gabriel is the internal one recording.
+function deriveClientName(m) {
+  const ext = (m.calendar_invitees || []).find(i => i.is_external && i.name);
+  return ext?.name || m.meeting_title || m.title || "Unknown client";
+}
+
+// Imports EXACTLY ONE call: the most recent within `days`. Bounded by created_after
+// so it is structurally incapable of pulling full history. Lands unprocessed —
+// import must never trigger LLM generation (see TASK-033).
+async function fathomPullLatest(env, id, days = 7) {
+  const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
+  if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
+
+  const key = await resolveKey(env, row.account_id, "fathom");
+  if (!key) return json({ ok: false, message: "No Fathom key saved yet — paste one and hit Save first." });
+
+  const since = new Date(Date.now() - days * 86400_000).toISOString();
+  const url = `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(since)}&include_transcript=true`;
+
+  let data;
+  try {
+    const res = await fetch(url, { headers: { "X-Api-Key": key } });
+    if (!res.ok) {
+      return json({ ok: false, message: res.status === 401 || res.status === 403
+        ? `Fathom rejected the key (${res.status}).`
+        : `Fathom returned ${res.status}.` });
+    }
+    data = await res.json();
+  } catch (err) {
+    return json({ ok: false, message: `Could not reach Fathom: ${err.message}` });
+  }
+
+  // Distinguish "no calls" from "the response isn't the shape we expect". Treating a
+  // shape mismatch as an empty list would report "no calls" when parsing actually failed.
+  if (!Array.isArray(data.items)) {
+    return json({ ok: false, message:
+      `Unexpected response from Fathom — no 'items' array (got: ${Object.keys(data || {}).join(", ") || "nothing"}). The API shape may have changed.` });
+  }
+  const items = data.items;
+  if (!items.length) return json({ ok: true, imported: false, message: `No Fathom calls in the last ${days} days.` });
+
+  // Fathom does NOT document sort order — never trust items[0]. Sort ourselves.
+  const when = m => m.recording_start_time || m.scheduled_start_time || m.created_at || "";
+  const m = items.slice().sort((a, b) => String(when(b)).localeCompare(String(when(a))))[0];
+
+  const externalId = String(m.recording_id);
+  const existing = await env.DB.prepare(
+    "SELECT id, client_name FROM calls WHERE account_id = ? AND external_id = ?"
+  ).bind(row.account_id, externalId).first();
+  if (existing) {
+    return json({ ok: true, imported: false, call_id: existing.id,
+      message: `Already imported: ${existing.client_name}. Nothing new to pull.` });
+  }
+
+  const transcript = flattenTranscript(m.transcript);
+  if (!transcript.trim()) {
+    return json({ ok: false, message: "Fathom returned that call without a transcript — it may still be processing." });
+  }
+
+  const start = m.recording_start_time || m.scheduled_start_time || m.created_at;
+  const end = m.recording_end_time || m.scheduled_end_time;
+  const durationMin = start && end ? Math.max(1, Math.round((new Date(end) - new Date(start)) / 60000)) : null;
+
+  const ins = await env.DB.prepare(
+    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id)
+     VALUES (?, ?, ?, ?, ?, 'fathom', ?) RETURNING id`
+  ).bind(row.account_id, deriveClientName(m), start, durationMin, transcript, externalId).first();
+
+  return json({ ok: true, imported: true, call_id: ins.id, client_name: deriveClientName(m),
+    occurred_at: start,
+    message: `Imported "${deriveClientName(m)}" — open it and hit Generate when you're ready.` });
+}
+
 // ---------- integration test ----------
 
 // Verifies a key actually authenticates, so a bad paste fails here rather than
@@ -302,9 +393,29 @@ async function testIntegration(env, id) {
     anthropic: { url: "https://api.anthropic.com/v1/models", headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } },
     openai:    { url: "https://api.openai.com/v1/models",    headers: { "Authorization": `Bearer ${key}` } }
   };
+  // Fathom: a real auth check. Asks for a 1-minute window so it returns (almost
+  // certainly) nothing — we only care that the key authenticates.
+  if (row.kind === "fathom") {
+    const since = new Date(Date.now() - 60_000).toISOString();
+    try {
+      const res = await fetch(`${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(since)}`,
+        { headers: { "X-Api-Key": key } });
+      if (res.ok) {
+        await env.DB.prepare("UPDATE integrations SET status = 'connected' WHERE id = ?").bind(id).run();
+        return json({ ok: true, message: "Fathom key works — connected." });
+      }
+      await env.DB.prepare("UPDATE integrations SET status = 'disconnected' WHERE id = ?").bind(id).run();
+      return json({ ok: false, message: res.status === 401 || res.status === 403
+        ? `Fathom rejected the key (${res.status}). Check it was copied in full.`
+        : `Fathom returned ${res.status}.` });
+    } catch (err) {
+      return json({ ok: false, message: `Could not reach Fathom: ${err.message}` });
+    }
+  }
+
   const ep = endpoints[row.kind];
   if (!ep) {
-    // Don't guess at an API we haven't verified (Fathom, GHL).
+    // Don't guess at an API we haven't verified (GHL is OAuth — see TASK-018/019).
     return json({ ok: false, message: `No connection test available for ${row.kind} yet — the key is saved.` });
   }
 
