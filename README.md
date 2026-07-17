@@ -57,6 +57,24 @@ seed/seed.sql    dev-only demo data
 public/          the UI (ported from the design mockup)
 ```
 
+## Architecture notes for whoever picks this up
+
+- **Generation state machine** (`calls.processing_status`): `new -> processing -> processed|failed`.
+  `startProcessing()` marks 'processing', hands `runGeneration()` to `ctx.waitUntil`, returns 202.
+  `ctx` is threaded `fetch -> route -> startProcessing`; do not "simplify" that away or generation
+  goes back to dying when the client disconnects.
+- **Double-spend guard**: a second process request on an in-flight call is refused for
+  `STALE_PROCESSING_MS` (10 min). Each run is 4 paid LLM calls — losing this guard costs real money.
+- **Import never generates.** Fathom imports land `new`. Keep it that way.
+- **Fathom** (`src/index.js`): `GET api.fathom.ai/external/v1/meetings`, `X-Api-Key`, bounded by
+  `created_after` so it can't pull full history. Fathom does **not** document sort order — the
+  client-side newest-first sort is load-bearing, not a nicety.
+- **Keys** live in `integrations.secret_value` (D1, plaintext) and are write-only over the API —
+  `GET /api/integrations` returns a masked preview, never the raw value. `resolveKey()` prefers the
+  DB key and falls back to a Cloudflare secret.
+- **Traffic-light dots**: hollow grey = new, violet pulsing = processing, blue = processed,
+  pink = failed. Grey stays neutral so pink keeps meaning "wrong" (matches the scorecard language).
+
 ## Key product behaviors (from the 2026-07-12 Gabriel feedback call)
 
 - Debrief renders full-width on top; Text / Email / GHL Note are three columns below.

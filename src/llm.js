@@ -52,20 +52,31 @@ async function complete(env, provider, key, messages) {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gpt-5.2", messages, max_completion_tokens: 8000 })
+      body: JSON.stringify({ model: "gpt-5.2", messages, max_completion_tokens: 16000 })
     });
     if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
     const data = await res.json();
+    if (data.choices[0].finish_reason === "length") {
+      throw new Error("The model's response was cut off before it finished (hit the output limit). Try a shorter transcript or raise max_tokens.");
+    }
     return data.choices[0].message.content;
   }
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-5", max_tokens: 8000, messages })
+    body: JSON.stringify({ model: "claude-sonnet-5", max_tokens: 16000, messages })
   });
   if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
   const data = await res.json();
-  return data.content[0].text;
+  if (data.stop_reason === "max_tokens") {
+    throw new Error("The model's response was cut off before it finished (hit the output limit). Try a shorter transcript or raise max_tokens.");
+  }
+  if (data.stop_reason === "refusal") {
+    throw new Error("The model declined to answer this request.");
+  }
+  const block = (data.content || []).find(b => b.type === "text");
+  if (!block) throw new Error("Model returned no text content.");
+  return block.text;
 }
 
 function extractJson(text) {

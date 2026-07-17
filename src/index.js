@@ -11,7 +11,7 @@ export default {
       return env.ASSETS.fetch(request); // static UI
     }
     try {
-      return await route(request, env, url);
+      return await route(request, env, url, ctx);
     } catch (err) {
       console.error(err);
       return json({ error: err.message }, 500);
@@ -27,7 +27,7 @@ export default {
   }
 };
 
-async function route(request, env, url) {
+async function route(request, env, url, ctx) {
   const path = url.pathname;
   const method = request.method;
 
@@ -104,10 +104,10 @@ async function route(request, env, url) {
   if (callMatch && method === "GET") return getCall(env, +callMatch[1]);
   if (callMatch && method === "PATCH") return patchCall(request, env, +callMatch[1]);
 
-  if (path === "/api/calls" && method === "POST") return createCall(request, env);
+  if (path === "/api/calls" && method === "POST") return createCall(request, env, ctx);
 
   const processMatch = path.match(/^\/api\/calls\/(\d+)\/process$/);
-  if (processMatch && method === "POST") return processCall(env, +processMatch[1]);
+  if (processMatch && method === "POST") return startProcessing(env, +processMatch[1], ctx);
 
   // ---- outputs ----
   const outMatch = path.match(/^\/api\/outputs\/(\d+)$/);
@@ -170,7 +170,7 @@ async function route(request, env, url) {
 
 const CALL_LIST_SQL = `
   SELECT c.id, c.account_id, c.client_name, c.occurred_at, c.duration_min, c.source, c.outcome,
-         c.callback_note, c.processed_at, a.name AS account_name,
+         c.callback_note, c.processed_at, c.processing_status, c.processing_error, a.name AS account_name,
          (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='sms' AND o.sent_at IS NOT NULL) AS sms_sent,
          (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='email' AND o.sent_at IS NOT NULL) AS email_sent
   FROM calls c JOIN accounts a ON a.id = c.account_id`;
@@ -224,7 +224,7 @@ async function getCall(env, id) {
 
 async function patchCall(request, env, id) {
   const body = await request.json();
-  const allowed = ["selected_tone", "outcome", "callback_note"];
+  const allowed = ["selected_tone", "outcome", "callback_note", "client_name"];
   const sets = [], vals = [];
   for (const k of allowed) if (k in body) { sets.push(`${k} = ?`); vals.push(body[k]); }
   if (!sets.length) return json({ error: "nothing to update" }, 400);
@@ -232,42 +232,80 @@ async function patchCall(request, env, id) {
   return json({ ok: true });
 }
 
-async function createCall(request, env) {
+async function createCall(request, env, ctx) {
   const { account_id, client_name, transcript } = await request.json();
   if (!account_id || !client_name || !transcript) return json({ error: "account_id, client_name, transcript required" }, 400);
   const res = await env.DB.prepare(
     "INSERT INTO calls (account_id, client_name, occurred_at, transcript, source) VALUES (?, ?, datetime('now'), ?, 'manual') RETURNING id"
   ).bind(account_id, client_name, transcript).first();
-  return processCall(env, res.id);
+  return startProcessing(env, res.id, ctx);
 }
 
-async function processCall(env, id) {
+// Generation is slow (4 LLM calls). Running it inline in the request meant a client
+// disconnect could cancel it, and because processed_at was only written at the very end,
+// a killed run was indistinguishable from one that never started. Now: mark 'processing',
+// hand the work to ctx.waitUntil so it survives the client leaving, and return at once.
+const STALE_PROCESSING_MS = 10 * 60 * 1000;
+
+async function startProcessing(env, id, ctx) {
   const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(id).first();
   if (!call) return json({ error: "not found" }, 404);
   if (!call.transcript) return json({ error: "call has no transcript" }, 400);
-  const account = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(call.account_id).first();
-  const tpl = await env.DB.prepare(
-    "SELECT body FROM prompt_templates WHERE account_id = ? AND tone IS NULL AND active = 1"
-  ).bind(account.id).first();
 
-  const gen = await generateOutputs(env, { account, call, masterPrompt: tpl?.body || "" });
-
-  const stmts = [
-    env.DB.prepare("DELETE FROM outputs WHERE call_id = ?").bind(id),
-    env.DB.prepare(
-      "UPDATE calls SET processed_at = datetime('now'), debrief_json = ?, suggested_tone = ?, tone_reason = ?, selected_tone = COALESCE(selected_tone, ?), outcome = COALESCE(outcome, ?) WHERE id = ?"
-    ).bind(JSON.stringify(gen.debrief), gen.suggestedTone, gen.toneReason, gen.suggestedTone, gen.outcome, id),
-    env.DB.prepare("INSERT INTO outputs (call_id, kind, body, model) VALUES (?, 'ghl_note', ?, ?)")
-      .bind(id, gen.ghlNote, gen.model)
-  ];
-  for (const m of gen.messages) {
-    stmts.push(env.DB.prepare("INSERT INTO outputs (call_id, kind, tone, body, model) VALUES (?, 'sms', ?, ?, ?)")
-      .bind(id, m.tone, m.sms, gen.model));
-    stmts.push(env.DB.prepare("INSERT INTO outputs (call_id, kind, tone, subject, body, model) VALUES (?, 'email', ?, ?, ?, ?)")
-      .bind(id, m.tone, m.emailSubject, m.email, gen.model));
+  // Guard against double spend: a second Generate while one is already in flight
+  // would fire another 4 paid LLM calls. Allow retry only once a run is clearly stale.
+  if (call.processing_status === "processing") {
+    const started = call.processing_started_at ? Date.parse(call.processing_started_at + "Z") : 0;
+    if (started && Date.now() - started < STALE_PROCESSING_MS) {
+      return json({ ok: true, status: "processing", already: true,
+        message: "Already generating — hang tight." }, 202);
+    }
+    // else: stale (worker died mid-run) — fall through and retry
   }
-  await env.DB.batch(stmts);
-  return getCall(env, id);
+
+  await env.DB.prepare(
+    "UPDATE calls SET processing_status = 'processing', processing_started_at = datetime('now'), processing_error = NULL WHERE id = ?"
+  ).bind(id).run();
+
+  // waitUntil keeps the work alive after we respond, and after the client disconnects.
+  ctx.waitUntil(runGeneration(env, id));
+  return json({ ok: true, status: "processing" }, 202);
+}
+
+async function runGeneration(env, id) {
+  try {
+    const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(id).first();
+    const account = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(call.account_id).first();
+    const tpl = await env.DB.prepare(
+      "SELECT body FROM prompt_templates WHERE account_id = ? AND tone IS NULL AND active = 1"
+    ).bind(account.id).first();
+
+    const gen = await generateOutputs(env, { account, call, masterPrompt: tpl?.body || "" });
+
+    const stmts = [
+      env.DB.prepare("DELETE FROM outputs WHERE call_id = ?").bind(id),
+      env.DB.prepare(
+        `UPDATE calls SET processing_status = 'processed', processed_at = datetime('now'), processing_error = NULL,
+                debrief_json = ?, suggested_tone = ?, tone_reason = ?,
+                selected_tone = COALESCE(selected_tone, ?), outcome = COALESCE(outcome, ?) WHERE id = ?`
+      ).bind(JSON.stringify(gen.debrief), gen.suggestedTone, gen.toneReason, gen.suggestedTone, gen.outcome, id),
+      env.DB.prepare("INSERT INTO outputs (call_id, kind, body, model) VALUES (?, 'ghl_note', ?, ?)")
+        .bind(id, gen.ghlNote, gen.model)
+    ];
+    for (const m of gen.messages) {
+      stmts.push(env.DB.prepare("INSERT INTO outputs (call_id, kind, tone, body, model) VALUES (?, 'sms', ?, ?, ?)")
+        .bind(id, m.tone, m.sms, gen.model));
+      stmts.push(env.DB.prepare("INSERT INTO outputs (call_id, kind, tone, subject, body, model) VALUES (?, 'email', ?, ?, ?, ?)")
+        .bind(id, m.tone, m.emailSubject, m.email, gen.model));
+    }
+    await env.DB.batch(stmts);
+  } catch (err) {
+    // Record the failure instead of silently reverting to a 'New'-looking call.
+    console.error("generation failed", id, err);
+    await env.DB.prepare(
+      "UPDATE calls SET processing_status = 'failed', processing_error = ? WHERE id = ?"
+    ).bind(String(err.message || err).slice(0, 500), id).run();
+  }
 }
 
 // ---------- output edit capture ----------

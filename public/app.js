@@ -22,6 +22,20 @@ const api = {
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+// Traffic-light rules. Four states, three brand colours: grey stays neutral for
+// "nothing has happened yet" so pink keeps meaning "something is wrong".
+const STATE_LABEL = { new: "New", processing: "Working", processed: "Ready", failed: "Failed" };
+const STATE_TITLE = {
+  new: "Not generated yet — open it and hit Generate",
+  processing: "Generating now — safe to navigate away",
+  processed: "Ready — debrief, text, email and CRM note are done",
+  failed: "Generation failed — open it to see why and retry"
+};
+function callState(c) {
+  if (c.processing_status) return c.processing_status;
+  return c.processed_at ? "processed" : "new";   // pre-migration rows
+}
+
 const state = {
   user: null, accounts: [], calls: [],
   filter: "all", accountFilter: null, search: "",
@@ -135,6 +149,7 @@ async function refreshCalls() {
   state.calls = (await api.get(`/calls${q}`)).calls;
   updateCounts();
   renderCallList();
+  syncPolling();
 }
 
 function updateCounts() {
@@ -152,17 +167,35 @@ function visibleCalls() {
   });
 }
 
+// While anything is generating, refresh so the dot flips without a manual reload.
+let pollTimer = null;
+function syncPolling() {
+  const anyWorking = state.calls.some(c => callState(c) === "processing");
+  if (anyWorking && !pollTimer) {
+    pollTimer = setInterval(async () => {
+      await refreshCalls();
+      if (state.currentCallId && callState(state.calls.find(c => c.id === state.currentCallId) || {}) !== "processing") {
+        const still = state.calls.find(c => c.id === state.currentCallId);
+        if (still && callState(still) !== "processing") openCall(state.currentCallId);
+      }
+    }, 2500);
+  } else if (!anyWorking && pollTimer) {
+    clearInterval(pollTimer); pollTimer = null;
+  }
+}
+
 function renderCallList() {
   const wrap = $("#callScroll");
   wrap.innerHTML = visibleCalls().map(c => {
-    const pill = !c.processed_at ? `<span class="pill pill-new">New</span>`
+    const st = callState(c);
+    const pill = st !== "processed" ? `<span class="pill pill-new">${STATE_LABEL[st]}</span>`
       : c.outcome === "closed" ? `<span class="pill pill-closed">Closed</span>`
       : `<span class="pill pill-followup">Follow-up</span>`;
     const flags = [];
     if (c.sms_sent) flags.push("✓ text");
     if (c.email_sent) flags.push("✓ email");
     return `<div class="call-item ${c.id === state.currentCallId ? "active" : ""}" data-id="${c.id}" tabindex="0" role="button">
-      <div class="call-row1"><span class="call-name">${esc(c.client_name)}</span><span class="call-time">${fmtTime(c.occurred_at)}</span></div>
+      <div class="call-row1"><span class="call-name"><span class="dot-${st}" title="${STATE_TITLE[st]}"></span>${esc(c.client_name)}</span><span class="call-time">${fmtTime(c.occurred_at)}</span></div>
       <div class="call-meta">${pill}<span class="offer-tag">${esc(c.account_name)}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}</div>
     </div>`;
   }).join("") || `<div style="padding:20px 16px; font-size:12px; color:var(--ink-400);">No calls match.</div>`;
@@ -186,8 +219,11 @@ async function openCall(id) {
   document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
   renderCallList();
   const { call, outputs } = await api.get(`/calls/${id}`);
-  if (!call.processed_at) return renderUnprocessed(call);
-  renderProcessed(call, outputs);
+  const st = callState(call);
+  if (st === "processing") return renderWorking(call);
+  if (st === "processed") return renderProcessed(call, outputs);
+  return renderUnprocessed(call);   // covers 'new' and 'failed'
+
 }
 
 function toneOf(call) { return call.selected_tone || call.suggested_tone || "balanced"; }
@@ -313,9 +349,34 @@ function wireDetail(call, outs) {
   const bt = $("#briefToggle");
   if (bt) bt.addEventListener("click", () => $("#briefBody").classList.toggle("hidden"));
 
+  // double-click the title to rename
+  const nameEl = $("#callName");
+  if (nameEl) nameEl.addEventListener("dblclick", () => {
+    const original = call.client_name;
+    nameEl.contentEditable = "true";
+    nameEl.classList.add("editing");
+    nameEl.focus();
+    document.getSelection().selectAllChildren(nameEl);
+
+    const finish = async (save) => {
+      nameEl.contentEditable = "false";
+      nameEl.classList.remove("editing");
+      const next = nameEl.textContent.trim();
+      if (!save || !next || next === original) { nameEl.textContent = original; return; }
+      await api.patch(`/calls/${call.id}`, { client_name: next });
+      call.client_name = next;
+      await refreshCalls();
+      toast("Renamed");
+    };
+    nameEl.addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); nameEl.blur(); }
+      if (e.key === "Escape") { e.preventDefault(); nameEl.textContent = original; nameEl.blur(); }
+    });
+    nameEl.addEventListener("blur", () => finish(true), { once: true });
+  });
+
   // regenerate
   $("#regenBtn").addEventListener("click", async () => {
-    renderLoading(call.client_name);
     await api.post(`/calls/${call.id}/process`);
     await refreshCalls();
     openCall(call.id);
@@ -363,15 +424,40 @@ function renderUnprocessed(call) {
       <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>transcript ready, not yet processed</div>
     </div></div></div>
     <div class="compose-body">
+      ${call.processing_error ? `<div class="fail-banner"><b>Last attempt failed.</b> ${esc(call.processing_error)}</div>` : ""}
       <label>Transcript</label>
       <textarea readonly>${esc(call.transcript || "")}</textarea>
-      <button class="primary-btn" id="processBtn">✦ Generate Debrief, Text, Email &amp; CRM Note</button>
+      <button class="primary-btn" id="processBtn">✦ ${call.processing_error ? "Try again" : "Generate Debrief, Text, Email &amp; CRM Note"}</button>
     </div>`;
   $("#processBtn").addEventListener("click", async () => {
     renderLoading(call.client_name);
     await api.post(`/calls/${call.id}/process`);
     await refreshCalls();
     openCall(call.id);
+  });
+}
+
+// Shown while generation runs. The work continues server-side via waitUntil, so
+// leaving this screen (or closing the tab) no longer kills it.
+function renderWorking(call) {
+  renderSeq++;
+  $("#detailPane").innerHTML = `
+    <div class="detail-header"><div class="dh-top"><div>
+      <div class="dh-name">${esc(call.client_name)} <span class="pill pill-followup">Working</span></div>
+      <div class="dh-meta">${esc(call.account_name)}<span class="sep">·</span>generating debrief, text, email &amp; CRM note</div>
+    </div></div></div>
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <div>Generating… this can take a minute on a long call.</div>
+      <div style="font-size:12px; color:var(--ink-400);">Safe to close this tab — it keeps running and will be here when you come back.</div>
+      <button class="regen-btn" id="retryBtn" style="margin-top:6px;">Not responding? Retry</button>
+    </div>`;
+  // The server refuses a retry while a run is genuinely in flight (no double spend),
+  // so this is only ever destructive to a run that has actually died.
+  $("#retryBtn").addEventListener("click", async () => {
+    const r = await api.post(`/calls/${call.id}/process`);
+    toast(r.already ? "Still generating — give it a moment." : "Restarted generation.");
+    await refreshCalls();
   });
 }
 
@@ -396,10 +482,10 @@ function renderCompose() {
     const client_name = $("#composeName").value.trim();
     const transcript = $("#composeTranscript").value.trim();
     if (!client_name || !transcript) return toast("Client name and transcript required");
-    renderLoading(client_name);
-    const { call } = await api.post("/calls", { account_id: +$("#composeAccount").value, client_name, transcript });
+    const r = await api.post("/calls", { account_id: +$("#composeAccount").value, client_name, transcript });
     await refreshCalls();
-    openCall(call.id);
+    if (r.call?.id) openCall(r.call.id);
+    else { const newest = state.calls[0]; if (newest) openCall(newest.id); }
   });
 }
 

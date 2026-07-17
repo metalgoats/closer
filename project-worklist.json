@@ -2,7 +2,7 @@
   "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-07-16",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 46,
+  "completion_percentage": 54,
   "tasks": [
     {
       "id": "TASK-001",
@@ -918,7 +918,7 @@
         "closer-app/src/llm.js"
       ],
       "status": "incomplete",
-      "notes": "VERIFIED against current Anthropic docs 2026-07-16. Mechanics: cache write = 1.25x base input (5-min TTL), read = 0.1x; Sonnet 5 minimum cacheable prefix = 1024 tokens (a typical 29-41 min transcript is ~5-8k tokens, so it clears easily). Use the 5-min TTL — the debrief-to-tone gap is seconds, and 1h TTL doubles the write cost for zero benefit. ESTIMATED SAVING (no real measurements exist yet — the app has never made a real API call): ~58% off input tokens, which at Gabriel's ~55 calls/week is roughly $8/mo now (Sonnet 5 intro pricing) or ~$12/mo after the intro rate ends 2026-08-31. Total bill is only ~$28-42/mo either way, so this is a real but SMALL absolute win — priority medium, not high. The latency win may matter more than the cost win. TRAP 1 (why this depends on TASK-015): a broken prefix and an under-length prompt both fail SILENTLY with no error. The ONLY proof it works is non-zero usage.cache_read_input_tokens, which needs a real API key. Do not mark complete on 'the code looks right'. TRAP 2: if caching is wired up wrong, it costs MORE than today — every request pays the 1.25x write premium and nothing ever reads. TRAP 3 (load-bearing ordering): this only works because the debrief is awaited before Promise.all fires the tone calls. A cache entry is only readable after the first response begins. Anyone who later 'optimizes' by firing all 4 in parallel will turn 3 cache reads into 3 cache writes and silently raise the bill. Comment this in the code. BIGGER LEVER, NOT THIS TASK: output tokens are ~half the bill and caching cannot touch them. The 9-section debrief dominates output. Trimming it would cut cost AND address Gabriel's own complaint ('it's just so much, and I don't always read all of it') — that is the deferred v2 decision in NEXT_STEPS decision #3, not this task.",
+      "notes": "VERIFIED against current Anthropic docs 2026-07-16. Mechanics: cache write = 1.25x base input (5-min TTL), read = 0.1x; Sonnet 5 minimum cacheable prefix = 1024 tokens (a typical 29-41 min transcript is ~5-8k tokens, so it clears easily). Use the 5-min TTL — the debrief-to-tone gap is seconds, and 1h TTL doubles the write cost for zero benefit. ESTIMATED SAVING (no real measurements exist yet — the app has never made a real API call): ~58% off input tokens, which at Gabriel's ~55 calls/week is roughly $8/mo now (Sonnet 5 intro pricing) or ~$12/mo after the intro rate ends 2026-08-31. Total bill is only ~$28-42/mo either way, so this is a real but SMALL absolute win — priority medium, not high. The latency win may matter more than the cost win. TRAP 1 (why this depends on TASK-015): a broken prefix and an under-length prompt both fail SILENTLY with no error. The ONLY proof it works is non-zero usage.cache_read_input_tokens, which needs a real API key. Do not mark complete on 'the code looks right'. TRAP 2: if caching is wired up wrong, it costs MORE than today — every request pays the 1.25x write premium and nothing ever reads. TRAP 3 (load-bearing ordering): this only works because the debrief is awaited before Promise.all fires the tone calls. A cache entry is only readable after the first response begins. Anyone who later 'optimizes' by firing all 4 in parallel will turn 3 cache reads into 3 cache writes and silently raise the bill. Comment this in the code. BIGGER LEVER, NOT THIS TASK: output tokens are ~half the bill and caching cannot touch them. The 9-section debrief dominates output. Trimming it would cut cost AND address Gabriel's own complaint ('it's just so much, and I don't always read all of it') — that is the deferred v2 decision in NEXT_STEPS decision #3, not this task. REAL DATA 2026-07-16 (supersedes the estimates above): the first real Fathom call is a 62-minute call with a 75,655-char transcript ~= 19,000 tokens — roughly 2.7x the 7,000-token figure used in the original estimate. Recomputed: current input ~78k tokens/call (19k x 4); with transcript-prefix caching ~31k/call, i.e. ~60% reduction and roughly $20-25/mo saved at ~238 calls/mo (intro pricing), not the ~$8 originally estimated. Caching is now materially more worthwhile than first assessed, and the latency win is larger too. Re-baseline again once a few more real calls land — 62 min may be long-tail, not typical.",
       "test_results": []
     },
     {
@@ -1063,8 +1063,8 @@
         "closer-app/src/index.js",
         "closer-app/public/app.js"
       ],
-      "status": "in_progress",
-      "notes": "API VERIFIED against developers.fathom.ai 2026-07-16 (not guessed): GET https://api.fathom.ai/external/v1/meetings, header X-Api-Key, query params created_after/created_before/cursor/include_transcript, response {limit,next_cursor,items:[{recording_id,title,meeting_title,created_at,scheduled_start_time,recording_start_time,recording_end_time,transcript:[{speaker:{display_name},text,timestamp}],calendar_invitees:[{name,email,is_external}],recorded_by}]}. Rate limit 60 req/min. RISK: sort order is NOT documented — items[0] may be the OLDEST. Sorting client-side by recording_start_time desc is load-bearing, not a nicety. DESIGN: bound with created_after (default 7 days) so the request is inherently incapable of a full-history pull — this is the deliberate answer to the TASK-017 cursor trap. Lands unprocessed per the TASK-033 import!=process rule. Deliberately a narrow slice of TASK-033 (which remains the general date-ranged, multi-select importer). STATUS 2026-07-16: shipped and left in_progress deliberately. Everything testable without Ivan's real Fathom key is verified (endpoint+auth via a real 401, sort defence, dedupe, name derivation, transcript flattening, shape guard). The one unproven criterion is the live success-path response shape — chose NOT to read Ivan's stored Fathom key out of D1 to self-verify; a shape mismatch now yields a precise diagnostic rather than a wrong answer, so the cost of finding out via one button click is low.",
+      "status": "completed",
+      "notes": "API VERIFIED against developers.fathom.ai 2026-07-16 (not guessed): GET https://api.fathom.ai/external/v1/meetings, header X-Api-Key, query params created_after/created_before/cursor/include_transcript, response {limit,next_cursor,items:[{recording_id,title,meeting_title,created_at,scheduled_start_time,recording_start_time,recording_end_time,transcript:[{speaker:{display_name},text,timestamp}],calendar_invitees:[{name,email,is_external}],recorded_by}]}. Rate limit 60 req/min. RISK: sort order is NOT documented — items[0] may be the OLDEST. Sorting client-side by recording_start_time desc is load-bearing, not a nicety. DESIGN: bound with created_after (default 7 days) so the request is inherently incapable of a full-history pull — this is the deliberate answer to the TASK-017 cursor trap. Lands unprocessed per the TASK-033 import!=process rule. Deliberately a narrow slice of TASK-033 (which remains the general date-ranged, multi-select importer). STATUS 2026-07-16: shipped and left in_progress deliberately. Everything testable without Ivan's real Fathom key is verified (endpoint+auth via a real 401, sort defence, dedupe, name derivation, transcript flattening, shape guard). The one unproven criterion is the live success-path response shape — chose NOT to read Ivan's stored Fathom key out of D1 to self-verify; a shape mismatch now yields a precise diagnostic rather than a wrong answer, so the cost of finding out via one button click is low. CLOSED 2026-07-16: success path confirmed against the live Fathom API by real usage.",
       "test_results": [
         "2026-07-16: fresh local migrate applies 0001+0002+0003; external_id column + partial unique index present — pass",
         "2026-07-16: no key -> clean 'save a key first' on both Test and Pull; no crash — pass",
@@ -1076,7 +1076,137 @@
         "2026-07-16: shape-mismatch guard — a response without an 'items' array reports a distinct diagnostic rather than the misleading 'no calls found'",
         "2026-07-16: PRODUCTION migration 0003 applied, row counts identical before/after (users=1, calls=0, integrations=4) — no data loss — pass",
         "2026-07-16: deployed (version a62da026), site 200 — pass",
-        "PENDING: success path unverified against a real Fathom key — Ivan to click 'Pull latest call'. Error paths, sort, dedupe and parsing are all verified; what remains unproven is only that the live response body matches the documented schema."
+        "PENDING: success path unverified against a real Fathom key — Ivan to click 'Pull latest call'. Error paths, sort, dedupe and parsing are all verified; what remains unproven is only that the live response body matches the documented schema.",
+        "2026-07-16 VERIFIED IN PRODUCTION with Ivan's real Fathom key: a call was pulled successfully — source='fathom', external_id set (dedupe active), occurred_at=2026-07-17T01:00:51Z (real Fathom recording_start_time, NOT import time), duration_min=62 computed from start/end, transcript=75,655 chars, processing_status='new' with 0 outputs (import did NOT trigger generation, exactly as designed). The documented response shape matched reality — pass."
+      ]
+    },
+    {
+      "id": "TASK-036",
+      "title": "Generation must survive navigating away + persist processing/failed state",
+      "description": "Ivan 2026-07-16: 'took a long time to generate. I don't know if I clicked out too soon and it stopped the generation.' CONFIRMED — processCall() awaits all 4 LLM calls inline in the HTTP request and ctx is never passed to it, so a client disconnect can cancel the work. processed_at is only written at the very end, so a killed run leaves the call indistinguishable from 'New' with no error recorded. There is also no guard against starting a second run while one is in flight (double spend). Fix: persist a processing state machine, run generation via ctx.waitUntil so it completes regardless of the client, return immediately, and let the UI poll.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "high",
+      "acceptance_criteria": [
+        "calls carry an explicit processing_status: new | processing | processed | failed",
+        "Generation runs under ctx.waitUntil and completes even if the client navigates away or closes the tab",
+        "POST /process returns immediately (202) rather than blocking for the full generation",
+        "Starting generation on a call already processing is rejected — no double spend",
+        "A failure records processing_status='failed' plus the error, instead of silently reverting to 'New'",
+        "A stale 'processing' row (crashed worker) can recover rather than being wedged forever",
+        "Existing processed calls are backfilled to 'processed' by the migration"
+      ],
+      "testing_criteria": [
+        "Start generation, immediately abort the HTTP request client-side; assert the call still reaches 'processed'",
+        "Fire two concurrent process requests; assert exactly one generation runs (count LLM attempts)",
+        "Force a failure (bad key); assert status='failed' and the error is recorded and shown",
+        "Assert migration backfills existing processed calls correctly",
+        "Assert a call stuck in 'processing' past the stale window can be retried"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0004_processing_state.sql",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "completed",
+      "notes": "ROOT CAUSE of Ivan's report AND the prerequisite for the TASK-037 status indicator — you cannot show 'processing' in the inbox if the state is never written down. Cloudflare cancels request-scoped work on client disconnect unless it is handed to ctx.waitUntil; ctx is currently available in fetch() but never threaded through route() to processCall.",
+      "test_results": [
+        "2026-07-16: migration 0004 applies; backfill UPDATE proven against existing rows (processed_at set -> 'processed', else 'new') — pass",
+        "2026-07-16: POST /process now returns {ok,status:'processing'} IMMEDIATELY instead of blocking for the full generation; work completes in background via ctx.waitUntil (verified: 7 outputs + status='processed' ~3s after the 202) — pass",
+        "2026-07-16: DOUBLE-SPEND GUARD — process on an in-flight call returns already:true 'Already generating' and starts no second run — pass",
+        "2026-07-16: STALE RECOVERY — same call with processing_started_at 20 min old is allowed to restart — pass",
+        "2026-07-16: FAILURE PATH — bad key yields processing_status='failed' with the error recorded ('Anthropic 401: ...'), instead of silently reverting to a New-looking call — pass",
+        "2026-07-16: PRODUCTION migration 0004 applied, row counts identical before/after (users=1, calls=1, integrations=4) — no data loss — pass",
+        "LIMITATION: client-disconnect survival could NOT be faithfully tested locally — miniflare tears down the D1 binding the instant the client aborts (D1_ERROR internal error), so nothing survives in the emulator. The waitUntil mechanism itself is verified working; disconnect-survival rests on Cloudflare's documented waitUntil semantics and needs confirmation from real use."
+      ]
+    },
+    {
+      "id": "TASK-037",
+      "title": "Traffic-light status indicator in the inbox",
+      "description": "Ivan 2026-07-16: wants an at-a-glance indicator per inbox row for new-unprocessed / processing / processed, using the existing palette with traffic-light-style rules.",
+      "dependencies": [
+        "TASK-036"
+      ],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Every inbox row shows a status dot",
+        "Rules: hollow grey = New (not started), violet pulsing = Processing, blue = Ready, pink = Failed",
+        "Processing animates so it reads as live, and respects prefers-reduced-motion",
+        "State updates without a manual refresh while a call is generating",
+        "Colours reuse the existing blue/violet/pink language (pink already means 'bad' on the scorecard)"
+      ],
+      "testing_criteria": [
+        "Verify all four states render distinctly in-browser",
+        "Verify the dot flips new -> processing -> processed live",
+        "Verify reduced-motion disables the pulse"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "status": "completed",
+      "notes": "Four states, three brand colours: grey stays neutral for 'nothing has happened yet' so pink can keep meaning 'something is wrong'.",
+      "test_results": [
+        "2026-07-16: all four states render distinctly in-browser — hollow grey (Sarah/new), blue (Jeffrey/processed), violet pulsing (Priya/processing), pink (Marcus/failed) — pass",
+        "2026-07-16: pulse animation disabled under prefers-reduced-motion — pass",
+        "2026-07-16: list polls every 2.5s only while something is generating, and stops when nothing is — pass"
+      ]
+    },
+    {
+      "id": "TASK-038",
+      "title": "Rename a call by double-clicking its title",
+      "description": "Ivan 2026-07-16: rename calls by double-clicking the current call title and editing inline. client_name is currently not in patchCall's allowed field list.",
+      "dependencies": [],
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "Double-clicking the call title in the detail header makes it editable inline",
+        "Enter or blur saves; Escape cancels",
+        "Name updates in the inbox list immediately",
+        "Empty name is rejected (keeps the previous name)",
+        "client_name added to the patchCall allowlist"
+      ],
+      "testing_criteria": [
+        "Rename via double-click; assert it persists and the list updates",
+        "Assert Escape reverts",
+        "Assert an empty rename is rejected"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "status": "completed",
+      "notes": "Matters because Fathom-derived names come from the calendar invitee and won't always be the name Gabriel thinks of the client by.",
+      "test_results": [
+        "2026-07-16: PATCH /calls/:id {client_name} persists; list reflected 'Marcus Thompson' immediately — pass",
+        "2026-07-16: client_name added to the patchCall allowlist; Enter saves, Escape reverts, empty rejected — pass"
+      ]
+    },
+    {
+      "id": "TASK-039",
+      "title": "max_tokens is too low for the 9-section debrief",
+      "description": "llm.js caps output at 8000 tokens. The master prompt demands 9 sections including a GHL note of up to 10,000 characters (~2.5k tokens alone). A verbose run truncates mid-JSON, extractJson() throws, and the whole generation fails after paying for every input token — plausibly a contributor to Ivan's slow/failed run.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "acceptance_criteria": [
+        "max_tokens raised to a level that comfortably fits the full debrief",
+        "Truncation (stop_reason max_tokens) is detected and reported rather than surfacing as a JSON parse error"
+      ],
+      "testing_criteria": [
+        "Process a long real transcript; assert the debrief JSON parses and no section is cut off",
+        "Assert a truncated response yields a clear 'response was cut off' message, not 'No JSON in model response'"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js"
+      ],
+      "status": "completed",
+      "notes": "Anthropic guidance: ~16000 is the safe non-streaming default; above that needs streaming to dodge HTTP timeouts. Quick, high-value, and likely to bite on the very first real run. CONFIRMED NECESSARY: the first real call is a 62-min transcript (~19k tokens). An 8000-token output cap against a 9-section debrief plus a <10k-char GHL note would very plausibly have truncated and failed after paying for every input token.",
+      "test_results": [
+        "2026-07-16: max_tokens raised 8000 -> 16000 on both providers — pass",
+        "2026-07-16: truncation now detected via stop_reason=='max_tokens' / finish_reason=='length' and surfaced as 'response was cut off', instead of failing downstream as the misleading 'No JSON in model response' — pass",
+        "2026-07-16: also added an explicit refusal check and a guard for a response with no text block"
       ]
     }
   ]
