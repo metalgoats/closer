@@ -1789,9 +1789,14 @@
         "closer-app/src/llm.js",
         "closer-app/public/app.js"
       ],
-      "status": "incomplete",
+      "status": "completed",
       "notes": "REAL BUG this exposes: resolveKey(env, account_id, 'fathom') does SELECT ... WHERE account_id=? AND kind=? .first() \u2014 with two fathom rows on one account BOTH resolve to the same (first) key, so the second workspace is never polled and one is polled twice. Fix: keyForRow(env, row) uses row.secret_value (the cron and manual pull both already SELECT *), env fallback only as legacy. Dedupe the cron by resolved key so an empty second row falling back to the same env key can't double-spend. Anthropic/openai stay one-per-account so resolveKey is fine for them. Seeding one extra slot (not arbitrary N) matches the literal ask; a general 'add integration' UI is a future task.",
-      "test_results": []
+      "test_results": [
+        "2026-07-17 23/23 poll tests (real pollFathom source). NEW: two Fathom keys each poll their OWN workspace (Alice from key A, Bob from key B) \u2014 proving the keyForRow fix; and two rows sharing a key poll ONCE (no double-spend).",
+        "2026-07-17 migration 0009 applied to PRODUCTION: integrations 4->5, two fathom rows ('Primary account' has key, 'Second account' empty), existing keys intact, calls/outputs preserved.",
+        "2026-07-17 browser: Integrations shows two distinct Fathom cards \u2014 'Fathom \u2014 Primary account' and 'Fathom \u2014 Second account' \u2014 each with its own Save/Test/Pull. Verified against the real render path.",
+        "PENDING: Gabriel pastes the second key; the cron then polls both workspaces each tick."
+      ]
     },
     {
       "id": "TASK-055",
@@ -1812,9 +1817,11 @@
       "files_expected_to_change": [
         "closer-app/public/styles.css"
       ],
-      "status": "incomplete",
+      "status": "completed",
       "notes": "",
-      "test_results": []
+      "test_results": [
+        "2026-07-17 browser: debrief pane measured 360px on all of TL;DR/Did Well/Objections/Lessons \u2014 constant height, no jump between pages. Mobile relaxes to auto so the page scrolls."
+      ]
     },
     {
       "id": "TASK-056",
@@ -1842,10 +1849,17 @@
         "closer-app/public/app.js",
         "closer-app/public/styles.css"
       ],
-      "status": "incomplete",
+      "status": "completed",
       "notes": "viewport meta is already present. Reuse existing state (openCall/showCallsView); drive the phone view with a body class toggled where #detailPane is populated, so it's one choke point rather than scattered.",
-      "test_results": []
+      "test_results": [
+        "2026-07-17 browser @375x812: single column, no shell h-scroll, \u2630 menu + 'Closer' title on the list.",
+        "2026-07-17 tapping a call -> detail full-width with '\u2039 Calls' back and the call name as title; back returns to the list and resets the title. Menu button hides in detail, back hides on list.",
+        "2026-07-17 the three output panels stack vertically (262/307/262px) instead of scrolling sideways \u2014 fixed a real collapse-to-1px bug where .outputs kept flex:1 with min-height:0.",
+        "2026-07-17 slide-over: opens full-width with all nav items + profile row, scrim dims the list; picking a filter closes it and stays on the list; a workspace view closes it and opens detail; scrim tap closes it. Verified functionally; the open layout is correct at rest.",
+        "2026-07-17 desktop @1280 unchanged: 3-column grid, mobile bar display:none, sidebar visible.",
+        "NOTE: the preview renderer does not paint CSS transitions (rAF throttled), so the slide ANIMATION could not be observed here; translateX(-100%)->translateX(0) is standard and animates on real iOS Safari. Added prefers-reduced-motion:reduce to make it instant for those users. Switched from transform:none to translateX(0) because some engines won't transition TO none."
+      ]
     }
   ],
-  "progress_percentage": 62
+  "progress_percentage": 68
 }

@@ -262,6 +262,7 @@ function showDetailMobile(title) {
 function showListMobile() {
   document.body.classList.remove("m-detail");
   $("#mTitle").textContent = "Closer";
+  closeMobileNav();   // picking a filter from the slide-over should also close it
 }
 function closeMobileNav() {
   document.querySelector(".sidebar")?.classList.remove("open");

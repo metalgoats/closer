@@ -373,7 +373,10 @@ button{ font-family:inherit; }
     position:fixed; top:0; bottom:0; left:0; width:250px; z-index:60; align-items:stretch;
     transform:translateX(-100%); transition:transform .22s ease; padding:16px 12px;
   }
-  .sidebar.open{ transform:none; box-shadow:0 0 40px rgba(0,0,0,.6); }
+  /* translateX(0), not `none`: some engines won't animate a transition TO `none`, which
+     left the slide-over stuck off-screen. Same-type interpolation is reliable. */
+  .sidebar.open{ transform:translateX(0); box-shadow:0 0 40px rgba(0,0,0,.6); }
+  @media (prefers-reduced-motion: reduce){ .sidebar{ transition:none; } }
   .sidebar .brand-name, .sidebar .nav-label, .sidebar .nav-item,
   .sidebar-foot span, .sidebar-foot .linklike{ display:revert; }
   .nav-scrim{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:55; }
@@ -385,8 +388,10 @@ button{ font-family:inherit; }
   body.m-detail .call-list{ display:none; }
   .call-list{ border-right:none; }
 
-  /* the three output panels stack vertically instead of scrolling sideways */
-  .outputs{ display:flex; flex-direction:column; overflow-x:visible; min-height:0; }
+  /* the three output panels stack vertically instead of scrolling sideways.
+     display:block (not flex:1) so each panel sizes to its own content — a flex-fill
+     column with min-height:0 collapses the panels to nothing. */
+  .outputs{ display:block; flex:0 0 auto; overflow-x:visible; }
   .panel{ min-width:0; border-right:none; border-bottom:1px solid var(--line); }
   .msg-edit{ min-height:120px; }
 
