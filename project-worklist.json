@@ -645,7 +645,9 @@
         "production data (prompt_templates table)"
       ],
       "status": "incomplete",
-      "notes": "RESCOPED + PRIORITY RAISED 2026-07-16 by TASK-030: was 'diverge two templates'; now 'retune the one remaining template'. Priority medium -> high, because with hypnotherapy gone the ONLY live template is the hypnotherapy-written one, so 100% of Gabriel's calls are now scored by a prompt built for the wrong sales motion. Gabriel on call: 'those people are fast decision-making... they smell that from a mile away.' Templates are editable in-app and versioned, so this is likely a data change, not code \u2014 Gabriel should drive the wording.",
+      "notes": [
+        "RESCOPED + PRIORITY RAISED 2026-07-16 by TASK-030: was 'diverge two templates'; now 'retune the one remaining template'. Priority medium -> high, because with hypnotherapy gone the ONLY live template is the hypnotherapy-written one, so 100% of Gabriel's calls are now scored by a prompt built for the wrong sales motion. Gabriel on call: 'those people are fast decision-making... they smell that from a mile away.' Templates are editable in-app and versioned, so this is likely a data change, not code \u2014 Gabriel should drive the wording. || CORRECTED 2026-07-17 with real evidence. (a) Ivan believes 'our only remaining prompt is for OSA'. IT IS NOT. Nobody has ever written an OSA prompt. The live template (version 1, 3,495 chars) is the generic elite-closer prompt Gabriel used AT THE HYPNOSIS JOB; it is merely ATTACHED to the account named 'On Screen Authority', which is why it looks like an OSA prompt. Its content is tuned to emotional/pain-driven selling: 'Emotional leverage and consequence framing', pain x3, emotional x5, fear x2, shame x1, wound x1, urgency x1. Gabriel's own words: OSA buyers 'are fast decision-making... they smell that from a mile away.' (b) Tonight's mismatch was the REVERSE of the risk: a hypnosis call scored by that prompt, which is roughly the motion it was built for - which is why the output looked reasonable. From tomorrow Gabriel is OSA-only (he gave notice at the hypnosis channel), so the real mismatch starts NOW. (c) IMPORTANT SCOPE CORRECTION: this task's note said 'likely a data change, not code'. THAT IS WRONG. The 10 scorecard dimensions - including 'pain amplification' - are HARDCODED in src/llm.js line 47, not in the editable template. Gabriel can rewrite the template body all he likes and every OSA call will still be graded on pain amplification. Fixing this properly requires BOTH a template rewrite (Gabriel drives the wording) AND a code change to make the dimensions come from the template instead of llm.js."
+      ],
       "test_results": []
     },
     {
@@ -1655,9 +1657,13 @@
         "closer-app/public/app.js",
         "closer-app/public/index.html"
       ],
-      "status": "incomplete",
+      "status": "completed",
       "notes": "DO NOT justify this as a storage fix \u2014 it is not one, and framing it that way would invite bad decisions later (e.g. dropping transcripts to 'save space', which buys 88% of a resource we have 42 years of and permanently destroys the ability to re-generate). Archive also happens to mitigate TASK-052 (the unbounded call-list query) by shrinking the default result set, which is a real side benefit.",
-      "test_results": []
+      "test_results": [
+        "2026-07-17 migration 0008 applied to PRODUCTION; row counts identical before/after (calls 2, outputs 7, integrations 4, events 23, accounts 1) - zero data loss",
+        "2026-07-17 archive round-trip on real data: archiving call 2 -> inbox=1 archived=1, and the archived call KEPT its full 57,711-char transcript. Un-archived cleanly. Archive is a view change, not a data change - pass",
+        "2026-07-17 the server excludes archived calls from /api/calls by default; ?archived=1 returns only them, so the inbox stays small as the DB grows rather than relying on client-side filtering"
+      ]
     },
     {
       "id": "TASK-051",
@@ -1685,9 +1691,15 @@
         "closer-app/src/index.js",
         "closer-app/public/app.js"
       ],
-      "status": "incomplete",
+      "status": "completed",
       "notes": "HARD delete, not soft. A soft-delete that pretends to delete is dishonest \u2014 if Ivan deletes a client's transcript because they asked him to, a hidden row still holding it is exactly the wrong outcome. Archive already IS the reversible option, so delete should mean delete. Check outputs/edits FK behaviour before implementing: if ON DELETE CASCADE is not set, orphans will accumulate silently.",
-      "test_results": []
+      "test_results": [
+        "2026-07-17 CONFIRMED there is no ON DELETE CASCADE anywhere (grep of migrations: only outputs->calls and edits->outputs, neither cascading). A naive DELETE would leave silent orphans.",
+        "2026-07-17 tested on a THROWAWAY seeded row (id 9999 + 2 outputs + 2 edits), never on real data. The handler's exact batch (edits -> outputs -> call) removed everything: 0 orphan outputs, 0 orphan edits, and the real data was untouched (2 calls / 7 outputs intact) - pass",
+        "2026-07-17 NEAR-MISS worth recording: my first run of this test reported PASS while the seed had silently FAILED (wrong column names on edits: I used before_text/after_text, the schema has kind/original/edited) \u2014 so it verified nothing. The grep filtering the error hid it. Re-run with the seed ASSERTED before the delete. A test that cannot fail is not a test.",
+        "2026-07-17 delete is refused while a call is generating (409), so a Workflow cannot have its row deleted mid-run",
+        "2026-07-17 the deletion is logged BEFORE the row disappears and the event survives it, because events.call_id deliberately has no FK"
+      ]
     },
     {
       "id": "TASK-052",
@@ -1714,7 +1726,42 @@
       "status": "incomplete",
       "notes": "Low priority ONLY because there is exactly 1 call in the DB today and TASK-050 (archive) shrinks the default set anyway. Revisit when the DB passes ~300 calls, which at 30/week is about 10 weeks away. Do not pre-optimise this now; do not forget it either.",
       "test_results": []
+    },
+    {
+      "id": "TASK-053",
+      "title": "Retry transient LLM failures \u2014 the first autonomous cron run died on overloaded_error and would never have retried",
+      "description": "Found 2026-07-17 by the FIRST cron run, which otherwise worked perfectly: 07:10:09 imported a call and started generation with nobody logged in, exactly one attempt (no double-spend), then 07:10:19 generation.failed 'Anthropic stream error: overloaded_error \u2014 Overloaded' after 8.6s. That is a 529 \u2014 Anthropic's docs say retry it with backoff, and the official SDKs do so automatically. We call fetch directly AND pinned the Workflow step to retries:{limit:0}, so it failed permanently. Gabriel records early; if Anthropic is busy at 6am every call fails and sits there until a human clicks Regenerate, and no human is awake. The zero-retry guard was too blunt: it correctly stops re-spending on a run that already did the work, but an overload at 8.6s had generated nothing.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "acceptance_criteria": [
+        "Transient failures retry with bounded exponential backoff",
+        "Permanent failures are NEVER retried \u2014 a bad key must not be tried four times",
+        "The Workflow step stays at retries:0; retry the individual API call, not the whole 4-call generation",
+        "Retries are logged, so a run that succeeded on attempt 3 is not indistinguishable from a clean one",
+        "A permanent outage gives up rather than looping"
+      ],
+      "testing_criteria": [
+        "Simulate the exact mid-stream overloaded_error and assert recovery",
+        "Assert 401/400/403 are tried exactly once",
+        "Assert a refusal is not retried",
+        "Assert the retry ceiling and that backoff actually waits"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js"
+      ],
+      "status": "completed",
+      "notes": "CLASSIFICATION IS THE WHOLE POINT. Transient: HTTP 408/409/429/500/502/503/504/529, network errors, our own AbortSignal timeout, and mid-stream overloaded_error/api_error/rate_limit_error/timeout_error. Permanent: 400/401/403, refusals, stop_reason max_tokens, malformed JSON \u2014 these fail identically every time and retrying only burns money. TRAP CAUGHT IN REVIEW: my first refactor wrapped the whole Anthropic fetch+classify in one try/catch, which would have converted a permanent 401 into a TransientError and retried a bad key 4x. The catch now covers ONLY the network call. COST: a retry re-sends input, so it is not free \u2014 justified because the failures we retry die early, and the alternative is silent overnight failure.",
+      "test_results": [
+        "2026-07-17 19/19. Reproduced the EXACT cron failure (overloaded_error mid-stream, after a 200): 2 failures then success = 3 debrief attempts + 3 tone calls, recovered fully - pass",
+        "2026-07-17 HTTP 529/429/503/500 each retried and recovered - pass",
+        "2026-07-17 MONEY GUARD: 401/400/403 each attempted EXACTLY ONCE, failing immediately with the real status - pass",
+        "2026-07-17 a mid-stream invalid_request_error is treated as permanent and not retried - pass",
+        "2026-07-17 bounded: a permanent 529 outage stops after 4 attempts with the real reason, and backoff genuinely waited ~10.5s (1.5+3+6) - pass",
+        "2026-07-17 retries surface via onStep so the log shows 'attempt N failed (reason) \u2014 retrying in Nms' rather than hiding them - pass",
+        "2026-07-17 deployed: commit ee4114e, Deploy green (run 29563149195)"
+      ]
     }
   ],
-  "progress_percentage": 62
+  "progress_percentage": 66
 }
