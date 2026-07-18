@@ -63,7 +63,7 @@ async function route(request, env, url, ctx) {
   // the browser — only a masked preview derived server-side.
   if (path === "/api/integrations" && method === "GET") {
     const { results } = await env.DB.prepare(
-      `SELECT i.id, i.account_id, i.kind, i.status, i.secret_name, i.updated_at, i.label,
+      `SELECT i.id, i.account_id, i.kind, i.status, i.secret_name, i.updated_at, i.label, i.owner_email,
               a.name AS account_name,
               CASE WHEN i.secret_value IS NULL OR i.secret_value = '' THEN 0 ELSE 1 END AS has_key,
               CASE WHEN i.secret_value IS NULL OR i.secret_value = '' THEN NULL
@@ -96,9 +96,15 @@ async function route(request, env, url, ctx) {
 
   const intLabelMatch = path.match(/^\/api\/integrations\/(\d+)\/label$/);
   if (intLabelMatch && method === "POST") {
-    const { label } = await request.json();
-    await env.DB.prepare("UPDATE integrations SET label = ? WHERE id = ?")
-      .bind((label || "").trim() || null, +intLabelMatch[1]).run();
+    const { label, owner_email } = await request.json();
+    if (owner_email !== undefined) {
+      await env.DB.prepare("UPDATE integrations SET owner_email = ? WHERE id = ?")
+        .bind((owner_email || "").trim() || null, +intLabelMatch[1]).run();
+    }
+    if (label !== undefined) {
+      await env.DB.prepare("UPDATE integrations SET label = ? WHERE id = ?")
+        .bind((label || "").trim() || null, +intLabelMatch[1]).run();
+    }
     // A label is not a secret — safe to log.
     await logEvent(env, { kind: "integration.labeled", detail: `#${intLabelMatch[1]} -> ${(label||"").trim() || "(cleared)"}` });
     return json({ ok: true });
@@ -442,8 +448,11 @@ function deriveClientName(m) {
 // Fetches meetings from Fathom. Returns { ok, items } or { ok:false, message } — the caller
 // decides whether that becomes an HTTP response or a log line, so the manual pull and the
 // cron share one implementation rather than drifting apart.
-async function fetchFathomMeetings(key, sinceIso) {
-  const url = `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(sinceIso)}&include_transcript=true`;
+async function fetchFathomMeetings(key, sinceIso, ownerEmail) {
+  // recorded_by[] limits results to THIS person's recordings. Without it Fathom returns the
+  // whole org's meetings (documented behaviour) — see TASK-063.
+  const scope = ownerEmail ? `&recorded_by[]=${encodeURIComponent(ownerEmail)}` : "";
+  const url = `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(sinceIso)}&include_transcript=true${scope}`;
   let data;
   try {
     const res = await fetch(url, { headers: { "X-Api-Key": key }, signal: AbortSignal.timeout(60_000) });
@@ -508,7 +517,7 @@ async function fathomPullLatest(env, id, days = 7) {
   const key = keyForRow(env, row);
   if (!key) return json({ ok: false, message: "No Fathom key saved yet — paste one and hit Save first." });
 
-  const fetched = await fetchFathomMeetings(key, new Date(Date.now() - days * 86400_000).toISOString());
+  const fetched = await fetchFathomMeetings(key, new Date(Date.now() - days * 86400_000).toISOString(), row.owner_email);
   if (!fetched.ok) return json({ ok: false, message: fetched.message });
   if (!fetched.items.length) {
     await logEvent(env, { kind: "fathom.pull", account_id: row.account_id, detail: `No calls in the last ${days} days` });
@@ -640,7 +649,15 @@ async function pollFathom(env) {
     if (!key || seenKeys.has(key)) continue;   // not configured, or a duplicate key — skip
     seenKeys.add(key);
 
-    const fetched = await fetchFathomMeetings(key, new Date(Date.now() - POLL_LOOKBACK_MS).toISOString());
+    // FAIL CLOSED: an unscoped token pulls colleagues' calls into our database. Skip it and
+    // say why, rather than quietly ingesting third-party transcripts.
+    if (!row.owner_email) {
+      await logEvent(env, { level: "warn", kind: "fathom.poll_skipped", account_id: row.account_id,
+        detail: `Token "${row.label || row.id}" has no owner email set — skipping. Fathom returns the whole org's recordings without recorded_by[], so polling unscoped would import other people's calls.` });
+      continue;
+    }
+
+    const fetched = await fetchFathomMeetings(key, new Date(Date.now() - POLL_LOOKBACK_MS).toISOString(), row.owner_email);
     if (!fetched.ok) {
       // Log and move on: a Fathom outage must not stop other accounts polling.
       await logEvent(env, { level: "error", kind: "fathom.poll_failed", account_id: row.account_id,

@@ -914,7 +914,11 @@ async function renderIntegrations() {
         ${i.kind === "fathom" ? `<div class="label-row">
           <span class="label-hint">Inbox label — calls imported by this key show this instead of the account name:</span>
           <input type="text" class="label-input" data-label="${i.id}" value="${esc(i.label || "")}" placeholder="e.g. Hypnosis or OSA" maxlength="40">
-          <button class="regen-btn" data-labelsave="${i.id}">Save label</button>
+          <span class="label-hint" style="margin-top:6px;">${i.owner_email
+            ? "Only imports calls recorded by this person."
+            : "<b style='color:var(--pink-500)'>Required —</b> Fathom returns the WHOLE org's recordings. Until you set the Fathom account email, this key is skipped so colleagues' calls aren't imported."}</span>
+          <input type="email" class="label-input" data-owner="${i.id}" value="${esc(i.owner_email || "")}" placeholder="gabriel@example.com — whose recordings to import">
+          <button class="regen-btn" data-labelsave="${i.id}">Save</button>
         </div>` : ""}
         <div class="key-row">
           <input type="password" class="key-input" data-int="${i.id}" autocomplete="off"
@@ -1008,7 +1012,8 @@ async function renderIntegrations() {
   document.querySelectorAll("[data-labelsave]").forEach(btn => btn.addEventListener("click", async () => {
     const id = btn.dataset.labelsave;
     const label = document.querySelector(`.label-input[data-label="${id}"]`).value.trim();
-    await api.post(`/integrations/${id}/label`, { label });
+    const owner_email = document.querySelector(`.label-input[data-owner="${id}"]`).value.trim();
+    await api.post(`/integrations/${id}/label`, { label, owner_email });
     toast(label ? `Calls from this key now show "${label}"` : "Label cleared");
     if (state.calls.length) await refreshCalls();   // reflect the relabel in the inbox immediately
     renderIntegrations();
