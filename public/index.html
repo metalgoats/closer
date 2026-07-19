@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Closer — Post-Call Assistant</title>
+<title>CloserAI — Post-Call Assistant</title>
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
   <div id="authView" class="auth-wrap hidden">
     <form id="authForm" class="auth-card">
       <div class="brand" style="justify-content:center; padding-bottom:8px;">
-        <div class="brand-mark"></div><div class="brand-name">Closer</div>
+        <div class="brand-mark"></div><div class="brand-name">CloserAI</div>
       </div>
       <div id="authMsg" class="auth-msg"></div>
       <input type="email" id="authEmail" placeholder="Email" required autocomplete="username">
@@ -29,11 +29,22 @@
     <div id="mobileBar" class="mobile-bar">
       <button id="mNavBtn" class="mbtn" aria-label="Open menu">☰</button>
       <button id="mBackBtn" class="mbtn" aria-label="Back to calls">‹ Calls</button>
-      <div class="mobile-title" id="mTitle">Closer</div>
+      <div class="mobile-title" id="mTitle">CloserAI</div>
     </div>
-    <div id="navScrim" class="nav-scrim hidden"></div>
+    <!-- No `hidden` class here. `.hidden` is display:none !important, and the JS only ever
+         toggles `.show` — so the scrim was permanently invisible and unclickable, which is what
+         made the mobile menu a trap you could only escape by reloading. `.nav-scrim` already
+         defaults to display:none; `.show` reveals it. -->
+    <div id="navScrim" class="nav-scrim"></div>
     <div class="sidebar">
-      <div class="brand"><div class="brand-mark"></div><div class="brand-name">Closer</div></div>
+      <!-- A real <button>, not a styled div: iOS Safari only reliably fires click on
+           interactive elements. Doubles as the mobile "get me out of here" control. -->
+      <div class="brand-row">
+        <button class="brand" id="brandBtn" aria-label="CloserAI — go to All Calls">
+          <span class="brand-mark"></span><span class="brand-name">CloserAI</span>
+        </button>
+        <button class="sb-close" id="sbCloseBtn" aria-label="Close menu">&times;</button>
+      </div>
       <!-- Accounts: hidden while there is only one (OSA). renderAccountNav() reveals this
            automatically if a second account is ever added — the filtering still works. -->
       <div class="nav-group hidden" id="accountGroup">
@@ -75,6 +86,7 @@
 
     <div class="call-list">
       <div class="list-header">
+        <button class="sb-toggle" id="sbToggle" aria-label="Hide sidebar" title="Hide sidebar"></button>
         <div class="list-title" id="listTitle">All Calls</div>
         <button class="new-call-btn" id="newCallBtn">+ New</button>
       </div>

@@ -2445,6 +2445,29 @@
         "releasenotes.test.mjs (27 assertions) and appboot.test.mjs pass"
       ],
       "notes": "To publish notes for a future release: prepend an entry to RELEASES in public/app.js (newest FIRST \u2014 appending to the end silently shows nothing forever; releasenotes.test.mjs asserts the ordering). Deploy via git push so CI sets BUILD_ID; a direct `wrangler deploy` without --var BUILD_ID breaks the stale-tab banner."
+    },
+    {
+      "id": "TASK-078",
+      "title": "CloserAI rename, brand-as-home, collapsible macOS-style sidebar, mobile menu escape",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-056",
+        "TASK-066"
+      ],
+      "description": "Rename to CloserAI in the header, sign-in card, page title and mobile bar. The brand is now a real <button> that returns to All Calls from anywhere (it drives the actual All Calls nav item rather than showCallsView(), which only picks a filter when none is active and so would have stranded you on Closed). Desktop sidebar collapses via a toggle beside the list title, persisted per browser. Sidebar restyled as an inset rounded panel per macOS Tahoe \u2014 explicitly NOT glassy, no backdrop-filter (a blur layer costs a compositor pass on every scroll). ROOT CAUSE of the mobile trap, found by rendering the app locally rather than by reading the code: #navScrim shipped as class='nav-scrim hidden', and .hidden is `display:none !important`, while the JS only ever toggled `.show`. The !important always won, so the scrim was NEVER visible or clickable on ANY device since it was written \u2014 tap-outside-to-close had never worked, which is why a full page reload was the only escape. My first diagnosis (iOS Safari dropping click on non-interactive elements without cursor:pointer) was WRONG as the cause; cursor:pointer was kept as defence but it was not the bug.",
+      "acceptance_criteria": [
+        "App reads CloserAI in header, sign-in card, <title> and mobile bar",
+        "Brand click returns to All Calls even when Closed/Archived is the active filter",
+        "Mobile menu closes via scrim tap, X, brand, main-content tap, or Escape \u2014 each independently",
+        "The menu can still be REOPENED after the content-tap dismisser was added (no new trap)",
+        "Sidebar collapse persists per browser and is neutralised inside the mobile media query",
+        "Sidebar has rounded corners and is inset; no backdrop-filter anywhere",
+        "nav.test.mjs (33 assertions) passes AND fails when the `hidden` class is reintroduced",
+        "Verified in a real browser at 1280x800 and 375x812, not only by unit test"
+      ],
+      "notes": "LESSON: the first version of nav.test.mjs asserted classList state and passed with the bug fully present \u2014 every class was correct, only the computed style was wrong. Class-level assertions cannot see `display:none !important`. The bug was found by serving public/ with a stubbed API (scratchpad/uiserver.mjs) and reading getComputedStyle in a real browser. For any future UI state bug, render it; do not reason about it from the source. The suite now asserts the markup directly and was verified to fail when the bug is reintroduced."
     }
   ],
   "progress_percentage": 77,

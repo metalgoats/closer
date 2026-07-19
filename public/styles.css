@@ -40,11 +40,45 @@ button{ font-family:inherit; }
   .sidebar{ align-items:center; }
 }
 
-/* ---------- sidebar ---------- */
-.sidebar{ background:var(--paper-100); border-right:1px solid var(--line); padding:14px 10px 10px; display:flex; flex-direction:column; min-height:0; overflow-y:auto; }
-.brand{ display:flex; align-items:center; gap:8px; padding:4px 8px 16px; }
+/* ---------- sidebar ----------
+   Inset rounded panel rather than a full-bleed column with a hairline — the macOS pattern
+   from Tahoe onward. Deliberately NOT glassy: no backdrop-filter, no translucency. A blur
+   layer costs a compositor pass on every scroll, and this app is read on a laptop at 1am. */
+.sidebar{ background:var(--paper-100); border:1px solid var(--line); border-radius:12px;
+  margin:8px 0 8px 8px; padding:14px 10px 10px; display:flex; flex-direction:column;
+  min-height:0; overflow-y:auto; }
+.brand-row{ display:flex; align-items:center; gap:4px; padding-bottom:16px; }
+.brand{ display:flex; align-items:center; gap:8px; padding:4px 8px; flex:1; min-width:0;
+  background:none; border:none; color:inherit; font:inherit; text-align:left; cursor:pointer;
+  border-radius:8px; }
+button.brand:hover{ background:var(--paper-200); }
 .brand-mark{ width:22px; height:22px; border-radius:6px; background:linear-gradient(155deg, var(--blue-500), var(--violet-500)); flex-shrink:0; }
 .brand-name{ font-size:13.5px; font-weight:700; letter-spacing:-0.01em; }
+/* Explicit dismiss for the mobile slide-over; desktop has the sidebar toggle instead. */
+.sb-close{ display:none; background:none; border:none; color:var(--ink-400); font-size:24px;
+  line-height:1; cursor:pointer; padding:2px 8px; border-radius:8px; }
+.sb-close:hover{ background:var(--paper-200); color:var(--ink-950); }
+
+/* ---------- sidebar collapse (desktop) ---------- */
+.sb-toggle{ width:26px; height:26px; flex-shrink:0; background:none; border:none; cursor:pointer;
+  border-radius:6px; padding:0; position:relative; }
+.sb-toggle:hover{ background:var(--paper-200); }
+/* Drawn in CSS so there is no icon font or SVG asset to keep in sync: a rounded rectangle
+   with a filled leading column — the standard sidebar glyph. */
+.sb-toggle::before{ content:""; position:absolute; inset:6px 4px; border:1.5px solid var(--ink-400);
+  border-radius:3px; }
+.sb-toggle::after{ content:""; position:absolute; top:6px; bottom:6px; left:4px; width:5px;
+  background:var(--ink-400); border-radius:3px 0 0 3px; }
+.sb-toggle:hover::before, .sb-toggle:hover::after{ border-color:var(--ink-800); background-color:var(--ink-800); }
+body.sb-collapsed .sb-toggle::after{ background:none; }
+
+body.sb-collapsed .app{ grid-template-columns:0 280px minmax(0,1fr); }
+body.sb-collapsed .sidebar{ opacity:0; margin-left:0; padding-left:0; padding-right:0;
+  border-width:0; pointer-events:none; overflow:hidden; }
+@media (prefers-reduced-motion: no-preference){
+  .app{ transition:grid-template-columns .18s ease; }
+  .sidebar{ transition:opacity .14s ease; }
+}
 .nav-group{ margin-bottom:16px; }
 .nav-label{ font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-400); padding:0 8px 6px; }
 .nav-item{ display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:6px; font-size:12.5px; color:var(--ink-800); cursor:pointer; user-select:none; }
@@ -58,7 +92,9 @@ button{ font-family:inherit; }
 /* ---------- call list ---------- */
 .call-list{ border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; background:var(--paper-0); }
 .list-header{ padding:12px 14px 10px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.list-title{ font-size:15px; font-weight:700; }
+/* margin-right:auto keeps the toggle+title paired on the left and pushes + New to the right;
+   space-between alone would strand the title in the middle once the toggle was added. */
+.list-title{ font-size:15px; font-weight:700; margin-right:auto; }
 .new-call-btn{ background:var(--pink-500); color:#0A0D13; border:none; border-radius:7px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer; }
 .new-call-btn:hover{ background:var(--pink-600); }
 .search-row{ padding:8px 14px 10px; border-bottom:1px solid var(--line); }
@@ -368,10 +404,19 @@ button{ font-family:inherit; }
   body.m-detail #mNavBtn{ display:none; }
   body.m-detail #mBackBtn{ display:inline-flex; align-items:center; }
 
+  /* The desktop sidebar toggle is meaningless here — the ☰ slide-over is the mobile idiom. */
+  .sb-toggle{ display:none; }
+  .sb-close{ display:block; }
+  /* The collapse class is desktop-only state; it must not follow you onto a phone and leave
+     the slide-over invisible and unclickable. */
+  body.sb-collapsed .sidebar{ opacity:1; pointer-events:auto; border-width:1px;
+    padding:16px 12px; margin:0; }
+
   /* sidebar as a slide-over, full width & labels (override the 900px icon-rail rule) */
   .sidebar{
     position:fixed; top:0; bottom:0; left:0; width:250px; z-index:60; align-items:stretch;
     transform:translateX(-100%); transition:transform .22s ease; padding:16px 12px;
+    margin:0; border-radius:0 14px 14px 0; border-width:0 1px 0 0;
   }
   /* translateX(0), not `none`: some engines won't animate a transition TO `none`, which
      left the slide-over stuck off-screen. Same-type interpolation is reliable. */
@@ -379,7 +424,11 @@ button{ font-family:inherit; }
   @media (prefers-reduced-motion: reduce){ .sidebar{ transition:none; } }
   .sidebar .brand-name, .sidebar .nav-label, .sidebar .nav-item,
   .sidebar-foot span, .sidebar-foot .linklike{ display:revert; }
-  .nav-scrim{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:55; }
+  /* cursor:pointer is load-bearing, not decoration. iOS Safari does not reliably dispatch
+     `click` on a non-interactive element without it, so tap-to-dismiss silently did nothing
+     on an iPhone and the slide-over could only be escaped by reloading the page. */
+  .nav-scrim{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:55;
+    cursor:pointer; -webkit-tap-highlight-color:transparent; }
   .nav-scrim.show{ display:block; }
 
   /* one pane at a time in the content row */

@@ -132,6 +132,17 @@ function showUpdateBanner() {
 // only when there is something worth a interruption.
 const RELEASES = [
   {
+    v: "2026.07.20",
+    date: "20 July 2026",
+    title: "CloserAI, a collapsible sidebar, and the mobile menu escape",
+    items: [
+      "The app is now CloserAI. Clicking the name or the gradient mark takes you back to All Calls from anywhere.",
+      "Fixed: on a phone, opening the menu used to trap you — the dimmed area behind it was never actually clickable, so a page reload was the only way out. It now closes by tapping outside it, the new X, the app name, the main content, or Escape.",
+      "The sidebar hides and shows from the button next to the list title, and remembers your choice per browser.",
+      "The sidebar is now an inset rounded panel in the macOS style."
+    ]
+  },
+  {
     v: "2026.07.19",
     date: "19 July 2026",
     title: "Spend windows and release notes",
@@ -463,7 +474,7 @@ function showDetailMobile(title) {
 }
 function showListMobile() {
   document.body.classList.remove("m-detail");
-  $("#mTitle").textContent = "Closer";
+  $("#mTitle").textContent = "CloserAI";
   closeMobileNav();   // picking a filter from the slide-over should also close it
 }
 function closeMobileNav() {
@@ -476,7 +487,60 @@ $("#mNavBtn")?.addEventListener("click", () => {
   $("#navScrim").classList.toggle("show", open);
 });
 $("#mBackBtn")?.addEventListener("click", showListMobile);
+
+// Getting OUT of the slide-over needs more than one route. The scrim was the only way out and
+// it is a bare <div>: iOS Safari does not reliably fire `click` on non-interactive elements
+// (the fix is cursor:pointer, applied in the CSS), so on an iPhone the menu became a trap that
+// only a page refresh escaped. Belt and braces now — scrim tap, an explicit X, the app name,
+// Escape, and any tap on the main content all close it.
 $("#navScrim")?.addEventListener("click", closeMobileNav);
+$("#navScrim")?.addEventListener("touchstart", closeMobileNav, { passive: true });
+$("#sbCloseBtn")?.addEventListener("click", closeMobileNav);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeMobileNav(); });
+// A tap anywhere in the list or detail pane dismisses the slide-over instead of acting on
+// whatever was underneath it. Capture phase so it wins before row/button handlers run.
+for (const sel of [".call-list", ".detail", ".mobile-bar"]) {
+  document.querySelector(sel)?.addEventListener("click", e => {
+    if (!document.querySelector(".sidebar")?.classList.contains("open")) return;
+    if (e.target.closest("#mNavBtn")) return;   // the toggle must still be able to open it
+    e.stopPropagation(); e.preventDefault();
+    closeMobileNav();
+  }, true);
+}
+
+// The app name / gradient mark is Home: back to All Calls, and on a phone it also puts the
+// slide-over away — which is what you reach for when you want out.
+$("#brandBtn")?.addEventListener("click", () => {
+  closeMobileNav();
+  // Drive the real All Calls nav item rather than reimplementing "go home": that path already
+  // handles the archived-boundary refetch, the list title, and the active highlight. Calling
+  // showCallsView() directly would leave you on Closed, because it only picks a filter when
+  // none is active.
+  const all = document.querySelector('.nav-item[data-filter="all"]');
+  if (all) all.click();
+  else { showListMobile(); showCallsView(); }
+});
+
+// ---------- sidebar collapse (desktop) ----------
+// Persisted per browser, like the theme. Mobile has its own slide-over and ignores this.
+const SIDEBAR_KEY = "closer-sidebar-collapsed";
+function applySidebar(collapsed) {
+  document.body.classList.toggle("sb-collapsed", collapsed);
+  const b = $("#sbToggle");
+  if (b) {
+    b.setAttribute("aria-label", collapsed ? "Show sidebar" : "Hide sidebar");
+    b.setAttribute("title", collapsed ? "Show sidebar" : "Hide sidebar");
+  }
+  try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch {}
+}
+(function initSidebar() {
+  let saved = "0";
+  try { saved = localStorage.getItem(SIDEBAR_KEY) || "0"; } catch {}
+  applySidebar(saved === "1");
+})();
+$("#sbToggle")?.addEventListener("click", () => {
+  applySidebar(!document.body.classList.contains("sb-collapsed"));
+});
 
 function fmtTime(iso) {
   const d = new Date(iso + (iso.includes("Z") || iso.includes("+") ? "" : "Z"));
