@@ -425,6 +425,29 @@ button{ font-family:inherit; }
   border-radius:7px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; }
 .update-banner button:hover{ background:rgba(255,255,255,.3); }
 
+/* ---------- release notes (TASK-077) ---------- */
+.release-dlg{
+  border:1px solid var(--line-strong); border-radius:14px; padding:0; width:min(520px, calc(100vw - 32px));
+  background:var(--paper-0); color:var(--ink-800); box-shadow:0 24px 60px rgba(0,0,0,.55);
+}
+.release-dlg::backdrop{ background:rgba(0,0,0,.55); backdrop-filter:blur(2px); }
+.release-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+  padding:18px 20px 12px; border-bottom:1px solid var(--line); }
+.release-eyebrow{ font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-400); }
+.release-title{ font-size:17px; font-weight:700; margin-top:3px;
+  background:linear-gradient(90deg,var(--blue-500),var(--violet-500)); -webkit-background-clip:text;
+  background-clip:text; color:transparent; }
+.release-x{ background:none; border:none; color:var(--ink-400); font-size:22px; line-height:1;
+  cursor:pointer; padding:0 2px; }
+.release-x:hover{ color:var(--ink-800); }
+.release-body{ padding:14px 20px 4px; max-height:min(60vh, 420px); overflow-y:auto; }
+.release-block + .release-block{ margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
+.release-v{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-400); margin-bottom:6px; }
+.release-body ul{ margin:0; padding-left:18px; }
+.release-body li{ font-size:13px; line-height:1.55; margin-bottom:7px; }
+.release-foot{ padding:8px 20px 18px; display:flex; justify-content:flex-end; }
+.release-foot .primary-btn{ align-self:auto; }
+
 /* ============================================================================
    Light theme (TASK-066). Dark is the default; this re-maps the same tokens so
    every component follows without per-component work.

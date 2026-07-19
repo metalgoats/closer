@@ -258,13 +258,31 @@ async function route(request, env, url, ctx) {
        FROM events WHERE kind = 'generation.succeeded'`
     ).first();
     const fails = await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE level = 'error'").first();
-    // Rolling spend so cost is visible without exporting the log.
-    const month = await env.DB.prepare(
-      `SELECT COUNT(*) AS runs, COALESCE(SUM(input_tokens),0) AS input_tokens,
-              COALESCE(SUM(output_tokens),0) AS output_tokens
-         FROM events WHERE kind = 'generation.succeeded' AND at >= date('now','start of month')`
+    // Rolling spend so cost is visible without exporting the log. One pass over the same rows —
+    // separate queries per window would scan events four times for the same answer.
+    // NOTE: this is OUR logged token spend, not Anthropic's billed total. Anthropic exposes real
+    // cost only through the Admin API (a separate sk-ant-admin key), and exposes account balance
+    // nowhere at all — see TASK-076.
+    const w = await env.DB.prepare(
+      `SELECT
+         COUNT(*) AS runs,
+         COALESCE(SUM(input_tokens),0)  AS input_tokens,
+         COALESCE(SUM(output_tokens),0) AS output_tokens,
+         COALESCE(SUM(CASE WHEN at >= date('now')                  THEN 1 ELSE 0 END),0) AS d_runs,
+         COALESCE(SUM(CASE WHEN at >= date('now')                  THEN input_tokens  ELSE 0 END),0) AS d_in,
+         COALESCE(SUM(CASE WHEN at >= date('now')                  THEN output_tokens ELSE 0 END),0) AS d_out,
+         COALESCE(SUM(CASE WHEN at >= date('now','-7 days')         THEN 1 ELSE 0 END),0) AS w_runs,
+         COALESCE(SUM(CASE WHEN at >= date('now','-7 days')         THEN input_tokens  ELSE 0 END),0) AS w_in,
+         COALESCE(SUM(CASE WHEN at >= date('now','-7 days')         THEN output_tokens ELSE 0 END),0) AS w_out,
+         COALESCE(SUM(CASE WHEN at >= date('now','start of month')  THEN 1 ELSE 0 END),0) AS m_runs,
+         COALESCE(SUM(CASE WHEN at >= date('now','start of month')  THEN input_tokens  ELSE 0 END),0) AS m_in,
+         COALESCE(SUM(CASE WHEN at >= date('now','start of month')  THEN output_tokens ELSE 0 END),0) AS m_out
+       FROM events WHERE kind = 'generation.succeeded'`
     ).first();
-    return json({ events: results, totals: { ...totals, failures: fails?.n || 0 }, month });
+    const today = { runs: w?.d_runs || 0, input_tokens: w?.d_in || 0, output_tokens: w?.d_out || 0 };
+    const week  = { runs: w?.w_runs || 0, input_tokens: w?.w_in || 0, output_tokens: w?.w_out || 0 };
+    const month = { runs: w?.m_runs || 0, input_tokens: w?.m_in || 0, output_tokens: w?.m_out || 0 };
+    return json({ events: results, totals: { ...totals, failures: fails?.n || 0 }, today, week, month });
   }
 
   // ---- suggestions ----

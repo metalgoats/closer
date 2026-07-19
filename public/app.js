@@ -90,6 +90,8 @@ async function boot() {
     state.buildId = me.build;   // remember the version this tab loaded (TASK-046)
     await boot();
     startVersionWatch();
+    // After boot, never before — the notes must not appear over the sign-in screen.
+    maybeShowReleaseNotes();
   }
   catch { /* showAuth already called on 401 */ }
 })();
@@ -118,6 +120,79 @@ function showUpdateBanner() {
   document.body.appendChild(bar);
   $("#updateReload").addEventListener("click", () => location.reload());
 }
+
+// ---------- release notes (TASK-077) ----------
+// Ivan and Gabriel share one login, so "has this person read the notes" cannot live on the
+// account row — one of them reading it would silence it for the other. It lives in localStorage,
+// which is per-browser, so each of them gets it once on their own machine.
+//
+// Keyed on a hand-written version, NOT on BUILD_ID. BUILD_ID is the git SHA and changes on every
+// deploy including typo fixes; a popup that fires for a one-line CSS change gets dismissed
+// unread, and then the one that matters gets dismissed unread too. A release earns an entry here
+// only when there is something worth a interruption.
+const RELEASES = [
+  {
+    v: "2026.07.19",
+    date: "19 July 2026",
+    title: "Spend windows and release notes",
+    items: [
+      "Activity now shows spend for Today, Last 7 days, This month and All time — not just this month.",
+      "Anthropic has no API for your credit balance, so that number still only exists in the Anthropic console. The Activity footnote now says so plainly instead of implying our estimate is the real bill.",
+      "This box. It appears once per browser after an update, so you and Gabriel each see it on your own machine. Re-open it any time from the profile menu → What's new."
+    ]
+  }
+];
+const RELEASE_KEY = "closer-seen-release";
+
+// Pure so it can be tested without a browser: given the release list (newest first) and the
+// version this browser last acknowledged, which notes should pop?
+function unseenFrom(list, seen) {
+  if (!list.length) return [];
+  if (!seen) return list.slice(0, 1);              // new browser: latest only, not the back catalogue
+  const i = list.findIndex(r => r.v === seen);
+  return i === -1 ? list.slice(0, 1) : list.slice(0, i);   // everything since they last looked
+}
+function unseenReleases() {
+  let seen = null;
+  try { seen = localStorage.getItem(RELEASE_KEY); } catch { /* private mode — just show it */ }
+  return unseenFrom(RELEASES, seen);
+}
+function markReleasesSeen() {
+  if (!RELEASES.length) return;
+  try { localStorage.setItem(RELEASE_KEY, RELEASES[0].v); } catch {}
+}
+
+function showReleaseNotes(list) {
+  if (!list.length || $("#releaseDlg")) return;
+  const dlg = document.createElement("dialog");
+  dlg.id = "releaseDlg";
+  dlg.className = "release-dlg";
+  dlg.innerHTML = `
+    <div class="release-head">
+      <div>
+        <div class="release-eyebrow">What's new</div>
+        <div class="release-title">${esc(list[0].title)}</div>
+      </div>
+      <button class="release-x" id="releaseX" aria-label="Close">&times;</button>
+    </div>
+    <div class="release-body">
+      ${list.map(r => `<div class="release-block">
+          <div class="release-v">${esc(r.date)}${list.length > 1 ? ` · ${esc(r.title)}` : ""}</div>
+          <ul>${r.items.map(i => `<li>${esc(i)}</li>`).join("")}</ul>
+        </div>`).join("")}
+    </div>
+    <div class="release-foot"><button class="primary-btn" id="releaseOk">Got it</button></div>`;
+  document.body.appendChild(dlg);
+
+  // Mark seen on close however it closes — button, X, or Escape. Doing it only on the button
+  // would mean an Escape press re-pops the same notes on the next refresh, forever.
+  dlg.addEventListener("close", () => { markReleasesSeen(); dlg.remove(); });
+  $("#releaseOk").addEventListener("click", () => dlg.close());
+  $("#releaseX").addEventListener("click", () => dlg.close());
+  dlg.showModal();
+}
+
+function maybeShowReleaseNotes() { showReleaseNotes(unseenReleases()); }
 
 // ---------- sidebar ----------
 function renderAccountNav() {
@@ -225,6 +300,11 @@ document.addEventListener("click", e => {
   if (!settingsMenu().contains(e.target)) closeSettings();
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeSettings(); });
+$("#whatsNewBtn")?.addEventListener("click", e => {
+  e.stopPropagation();
+  closeSettings();
+  showReleaseNotes(RELEASES.slice(0, 5));   // on demand: recent history, not just the unseen ones
+});
 $("#themeToggle")?.addEventListener("click", e => {
   e.stopPropagation();
   applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light");
@@ -1060,7 +1140,7 @@ function openTypeEditor(t) {
 }
 
 async function renderActivity() {
-  const { events, totals, month } = await api.get("/events?limit=200");
+  const { events, totals, today, week, month } = await api.get("/events?limit=200");
   // Rough but honest: Sonnet 5 list pricing, input $3/M and output $15/M. Labelled an estimate
   // because the real invoice is Anthropic's, not ours.
   const cost = (inp, outp) => `$${((inp || 0) / 1e6 * 3 + (outp || 0) / 1e6 * 15).toFixed(2)}`;
@@ -1080,10 +1160,17 @@ async function renderActivity() {
     </tr>`;
   }).join("") : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing logged yet.</td></tr>`;
 
+  const runs = n => `${n || 0} generation${n === 1 ? "" : "s"}`;
   const spend = `<div class="spend-row">
+      <div class="spend-card"><div class="spend-k">Today</div>
+        <div class="spend-v">${cost(today?.input_tokens, today?.output_tokens)}</div>
+        <div class="spend-sub">${runs(today?.runs)}</div></div>
+      <div class="spend-card"><div class="spend-k">Last 7 days</div>
+        <div class="spend-v">${cost(week?.input_tokens, week?.output_tokens)}</div>
+        <div class="spend-sub">${runs(week?.runs)}</div></div>
       <div class="spend-card"><div class="spend-k">This month</div>
         <div class="spend-v">${cost(month?.input_tokens, month?.output_tokens)}</div>
-        <div class="spend-sub">${month?.runs || 0} generation${month?.runs === 1 ? "" : "s"}</div></div>
+        <div class="spend-sub">${runs(month?.runs)}</div></div>
       <div class="spend-card"><div class="spend-k">All time</div>
         <div class="spend-v">${cost(totals?.input_tokens, totals?.output_tokens)}</div>
         <div class="spend-sub">${totals?.runs || 0} runs · ${totals?.failures || 0} errors</div></div>
@@ -1091,7 +1178,7 @@ async function renderActivity() {
         <div class="spend-v">${totals?.runs ? cost((totals.input_tokens || 0) / totals.runs, (totals.output_tokens || 0) / totals.runs) : "$0.00"}</div>
         <div class="spend-sub">${totals?.avg_ms ? Math.round(totals.avg_ms / 1000) + "s avg" : "—"}</div></div>
     </div>
-    <div class="insight-note">Estimated from logged tokens at Sonnet 5 list pricing — the real bill is in your Anthropic console.</div>`;
+    <div class="insight-note">Estimated from tokens this app logged, at Sonnet 5 list pricing. It counts Closer's spend only — the billed total and your remaining credit balance live in the Anthropic console, which has no API for either.</div>`;
   viewShell("Activity", "Everything the app has done — failures, completions, token spend, and which outputs actually get used",
     spend + `<div class="ev-summary">
        <div><b>${totals.runs || 0}</b><span>generations</span></div>

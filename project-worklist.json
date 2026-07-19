@@ -2404,6 +2404,47 @@
         "2026-07-19 browser: spend cards render THIS MONTH $0.99 / ALL TIME $1.35 / AVG per call $0.19 (68s avg); bulk bar shows '2 selected' with Set type / Archive / Delete / Cancel and clears correctly.",
         "2026-07-19 the rewritten list query was executed against PRODUCTION D1 before deploy and returned all 7 rows with correct sms/email counts \u2014 the verification step whose absence caused the earlier outage."
       ]
+    },
+    {
+      "id": "TASK-076",
+      "title": "Spend windows in Activity: today / last 7 days / this month / all time",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [
+        "TASK-075"
+      ],
+      "description": "Ivan asked for Anthropic balance plus spend today/week/lifetime in Activity, and whether the API key can see it. Researched against current Anthropic docs (2026-07-19). Findings: (1) ACCOUNT/CREDIT BALANCE IS NOT EXPOSED BY ANY ANTHROPIC API \u2014 the Admin API covers members, workspaces, keys, usage and cost reports only; balance is Console-only. (2) Real billed spend IS available via GET /v1/organizations/cost_report and /v1/organizations/usage_report/messages, but requires a separate ADMIN API KEY (sk-ant-admin01-...), not the sk-ant-api key we store; the Admin API is unavailable to individual accounts (org must exist in Console > Settings > Organization); cost_report is 1d granularity, USD, ~5min lag. NOT ADOPTED: an admin key can list and deactivate API keys and manage org members, and our D1 stores keys in plaintext by design \u2014 that is Ivan's call to make deliberately, not a default. (3) Today/week/lifetime from our OWN events log needed no new key and shipped here.",
+      "acceptance_criteria": [
+        "Activity shows Today, Last 7 days, This month, All time, Avg/call",
+        "All windows computed in ONE pass over events, not four queries",
+        "Footnote states plainly that this is Closer's spend only and that balance has no API",
+        "SQL verified against production D1 before deploy",
+        "appboot.test.mjs still passes (app.js executes at load)"
+      ],
+      "notes": "To add real billed spend later: create an Admin API key in Console (admin role required), store it separately from the per-account provider keys, and call GET /v1/organizations/cost_report?starting_at=&ending_at=&group_by[]=description with header x-api-key. Balance still would not be available."
+    },
+    {
+      "id": "TASK-077",
+      "title": "Release-notes popup, once per browser per release",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [
+        "TASK-046"
+      ],
+      "description": "Ivan and Gabriel share one login and work remotely, so 'has this person read the notes' cannot be stored on the account row \u2014 one of them dismissing it would silence the other. The marker lives in localStorage, which is per-browser, so each of them gets it once on their own machine on the first refresh after an update. Keyed on a hand-written release version (RELEASES[0].v), NOT on BUILD_ID: BUILD_ID is the git SHA and changes on every deploy including typo fixes, and a popup that fires for a one-line CSS change trains you to dismiss it unread. Also fixes a live regression: the previous manual `wrangler deploy` omitted --var BUILD_ID, so BUILD_ID was 'dev' in production and startVersionWatch (TASK-046) had silently stopped polling for new versions. Deploying through CI restores it.",
+      "acceptance_criteria": [
+        "Popup appears on the first refresh after a release, once per browser",
+        "Dismissing on one browser does NOT silence the other browser on the same login",
+        "Escape / X / Got it all mark it seen \u2014 Escape must not re-pop it forever",
+        "A brand-new browser sees the latest note only, not the whole back catalogue",
+        "Blocked localStorage (private mode) degrades to showing the notes, never throws",
+        "Re-openable any time from profile menu > What's new",
+        "Never renders over the sign-in screen",
+        "releasenotes.test.mjs (27 assertions) and appboot.test.mjs pass"
+      ],
+      "notes": "To publish notes for a future release: prepend an entry to RELEASES in public/app.js (newest FIRST \u2014 appending to the end silently shows nothing forever; releasenotes.test.mjs asserts the ordering). Deploy via git push so CI sets BUILD_ID; a direct `wrangler deploy` without --var BUILD_ID breaks the stale-tab banner."
     }
   ],
   "progress_percentage": 77,
