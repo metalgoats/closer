@@ -647,7 +647,8 @@
       ],
       "status": "incomplete",
       "notes": [
-        "RESCOPED + PRIORITY RAISED 2026-07-16 by TASK-030: was 'diverge two templates'; now 'retune the one remaining template'. Priority medium -> high, because with hypnotherapy gone the ONLY live template is the hypnotherapy-written one, so 100% of Gabriel's calls are now scored by a prompt built for the wrong sales motion. Gabriel on call: 'those people are fast decision-making... they smell that from a mile away.' Templates are editable in-app and versioned, so this is likely a data change, not code \u2014 Gabriel should drive the wording. || CORRECTED 2026-07-17 with real evidence. (a) Ivan believes 'our only remaining prompt is for OSA'. IT IS NOT. Nobody has ever written an OSA prompt. The live template (version 1, 3,495 chars) is the generic elite-closer prompt Gabriel used AT THE HYPNOSIS JOB; it is merely ATTACHED to the account named 'On Screen Authority', which is why it looks like an OSA prompt. Its content is tuned to emotional/pain-driven selling: 'Emotional leverage and consequence framing', pain x3, emotional x5, fear x2, shame x1, wound x1, urgency x1. Gabriel's own words: OSA buyers 'are fast decision-making... they smell that from a mile away.' (b) Tonight's mismatch was the REVERSE of the risk: a hypnosis call scored by that prompt, which is roughly the motion it was built for - which is why the output looked reasonable. From tomorrow Gabriel is OSA-only (he gave notice at the hypnosis channel), so the real mismatch starts NOW. (c) IMPORTANT SCOPE CORRECTION: this task's note said 'likely a data change, not code'. THAT IS WRONG. The 10 scorecard dimensions - including 'pain amplification' - are HARDCODED in src/llm.js line 47, not in the editable template. Gabriel can rewrite the template body all he likes and every OSA call will still be graded on pain amplification. Fixing this properly requires BOTH a template rewrite (Gabriel drives the wording) AND a code change to make the dimensions come from the template instead of llm.js."
+        "RESCOPED + PRIORITY RAISED 2026-07-16 by TASK-030: was 'diverge two templates'; now 'retune the one remaining template'. Priority medium -> high, because with hypnotherapy gone the ONLY live template is the hypnotherapy-written one, so 100% of Gabriel's calls are now scored by a prompt built for the wrong sales motion. Gabriel on call: 'those people are fast decision-making... they smell that from a mile away.' Templates are editable in-app and versioned, so this is likely a data change, not code \u2014 Gabriel should drive the wording. || CORRECTED 2026-07-17 with real evidence. (a) Ivan believes 'our only remaining prompt is for OSA'. IT IS NOT. Nobody has ever written an OSA prompt. The live template (version 1, 3,495 chars) is the generic elite-closer prompt Gabriel used AT THE HYPNOSIS JOB; it is merely ATTACHED to the account named 'On Screen Authority', which is why it looks like an OSA prompt. Its content is tuned to emotional/pain-driven selling: 'Emotional leverage and consequence framing', pain x3, emotional x5, fear x2, shame x1, wound x1, urgency x1. Gabriel's own words: OSA buyers 'are fast decision-making... they smell that from a mile away.' (b) Tonight's mismatch was the REVERSE of the risk: a hypnosis call scored by that prompt, which is roughly the motion it was built for - which is why the output looked reasonable. From tomorrow Gabriel is OSA-only (he gave notice at the hypnosis channel), so the real mismatch starts NOW. (c) IMPORTANT SCOPE CORRECTION: this task's note said 'likely a data change, not code'. THAT IS WRONG. The 10 scorecard dimensions - including 'pain amplification' - are HARDCODED in src/llm.js line 47, not in the editable template. Gabriel can rewrite the template body all he likes and every OSA call will still be graded on pain amplification. Fixing this properly requires BOTH a template rewrite (Gabriel drives the wording) AND a code change to make the dimensions come from the template instead of llm.js.",
+        "ABSORBED 2026-07-19 into TASK-065 (call-type labels select the prompt). That feature requires making the scorecard dimensions template-driven, which IS the fix this task was blocked on. Gabriel on the call: 'what I don't need is how is the emotional connection on this call \u2014 that's not important' for non-sales calls."
       ],
       "test_results": []
     },
@@ -2070,7 +2071,180 @@
         "2026-07-18 PARKED: preserved on branch fathom-org-scope-fix; main reverted at Ivan's request."
       ],
       "test_results_note": ""
+    },
+    {
+      "id": "TASK-064",
+      "title": "Duplicate group-call detection \u2014 one meeting recorded by N attendees arrives N times",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "incomplete",
+      "dependencies": [
+        "TASK-063"
+      ],
+      "description": "Gabriel on the 2026-07-19 call: 'when I have group calls... is there a way to have it detect if there's a duplicate? Everybody was on the call and that's why we got it 3 times. 3 versions of it.' Confirmed in data: three 'Nathan Macias' recordings 15:01-15:03, durations 59/55/66 min, three distinct recording_ids \u2014 so external_id dedupe cannot merge them. Gabriel's preferred resolution: 'if there's one that it can tell that you were the one who logged into it, that it's your name, you own that call'.",
+      "acceptance_criteria": [
+        "Near-identical meetings (overlapping time window + same participants) are detected as one",
+        "Gabriel's OWN recording is the one kept when several exist",
+        "Either auto-merge keeping the most complete transcript, or surface 'this looks like a duplicate \u2014 which do you want?'",
+        "Never silently discard a call that is not a duplicate"
+      ],
+      "testing_criteria": [
+        "Three overlapping recordings of one meeting collapse to one",
+        "Two genuinely different calls at similar times are NOT merged",
+        "The kept copy is the one recorded by the token owner"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js"
+      ],
+      "notes": "TASK-063's recorded_by[] filter already removes MOST of this: only Gabriel's own recording of a group call will import. This task covers the residue (e.g. he records the same meeting twice, or joins late and Fathom splits it). Do the cheap part first and measure whether duplicates still appear once scoping is live. Gabriel also noted the different durations are explained by people joining at different times.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-065",
+      "title": "Call-type labels that select the prompt (prompt library) \u2014 THE big feature from the call",
+      "priority": "high",
+      "estimated_complexity": "high",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Gabriel: 'maybe there's a way to label it, and then that label creates \u2014 once I hit generate \u2014 because of the label that was put before, it's going to change the actual prompt. If it's labeled as a sales call it uses the sales call prompt; because it's an operations call it's labeled that way; because it's a vendor call...' Ivan: 'you have a prompt library ready to go.' Gabriel on why it matters: 'what I don't need is like, how is the emotional connection on this call? That's not important.' So: label a call on arrival (sales / client / internal / vendor / coaching), and the Generate button runs the prompt bound to that label, producing the right OUTPUTS for that type (not always debrief+SMS+email+CRM).",
+      "acceptance_criteria": [
+        "A call can be labelled by type before generating",
+        "Each type maps to its own prompt AND its own output set",
+        "Non-sales types produce appropriate outputs (e.g. next steps, action items, commitments) instead of a sales debrief",
+        "The scorecard dimensions come from the prompt/type, NOT hardcoded in llm.js",
+        "Adding a new call type does not require a code change"
+      ],
+      "testing_criteria": [
+        "A call labelled 'internal' generates action items, not a sales scorecard",
+        "Changing a type's prompt changes what is scored",
+        "Assert dimensions are read from the template, not llm.js"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js",
+        "migrations/"
+      ],
+      "notes": "THIS SUPERSEDES/ABSORBS TASK-021. TASK-021's core blocker was that the 10 scorecard dimensions (incl. 'pain amplification') are HARDCODED in llm.js:47, so editing the template cannot change scoring. This feature requires making dimensions template-driven, which fixes TASK-021 as a side effect. Gabriel's suggested coaching-call prompt language, verbatim: 'What were the commitments? What were the agreements? What sounded like an expectation? What needs clarification?' Ivan's framing: prompt packages become a SALEABLE unit ('3 prompts for your business is this much money').",
+      "test_results": []
+    },
+    {
+      "id": "TASK-066",
+      "title": "Light mode / dark mode",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Ivan proposed, Gabriel agreed: 'there should be a light mode and a dark mode at minimum.' Gabriel prefers dark ('easier on your eyes') but recognises customers may want light. Keep dark as the default.",
+      "acceptance_criteria": [
+        "A light theme exists and is switchable",
+        "Dark stays the default",
+        "The whole UI is readable in both, including the scorecard colour tiers",
+        "Preference persists"
+      ],
+      "testing_criteria": [
+        "Browser-verify both themes at desktop and phone width",
+        "Check scorecard tier colours still read correctly on light"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/styles.css",
+        "closer-app/public/app.js"
+      ],
+      "notes": "The palette is already CSS variables, so this is mostly re-mapping tokens rather than a rewrite. Precursor to TASK-067 (brand theming).",
+      "test_results": []
+    },
+    {
+      "id": "TASK-067",
+      "title": "Brand theming \u2014 customer logo + colour palette (product tier)",
+      "priority": "low",
+      "estimated_complexity": "medium",
+      "status": "incomplete",
+      "dependencies": [
+        "TASK-066"
+      ],
+      "description": "Ivan: 'we can add a feature that lets you choose from these palettes or create your own... to change the highlights so that it's sort of branded to the business \u2014 drop your business logo here, drop your business colour palette here.' A selling point for the productised version.",
+      "acceptance_criteria": [
+        "Pick from preset palettes or define custom highlight colours",
+        "Upload/set a business logo",
+        "Theming is per-account so tenants differ"
+      ],
+      "testing_criteria": [
+        "A custom palette applies across the app without breaking contrast"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/styles.css",
+        "closer-app/public/app.js",
+        "migrations/"
+      ],
+      "notes": "Depends on light/dark landing first so the token layer is already abstracted.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-068",
+      "title": "Productisation: ONE codebase Gabriel also uses \u2014 no Gabriel-fork vs customer-fork",
+      "priority": "medium",
+      "estimated_complexity": "high",
+      "status": "incomplete",
+      "dependencies": [
+        "TASK-065"
+      ],
+      "description": "The strategic decision from the call. Ivan: 'instead of creating Closer for Gabriel and then Closer for everybody else, Closer for everybody else becomes the big product. You start using that thing as well \u2014 so that (1) we're not doing support for 2 different branches of an app, and (2) anything that improves that one improves your work as well.' Gabriel agreed and wants to sell it: per-seat logins, ~$100/mo/seat, ~$1,000 activation fee with a tech doing CRM/Fathom integration, onboarding that asks what kind of calls you run, and prompt packages as paid add-ons. First target: the hypnosis company owner (3 closers now, growing fast, ~$150k/mo).",
+      "acceptance_criteria": [
+        "Gabriel's instance runs the same code path as customers",
+        "Per-user accounts and isolation (see TASK-027 multi-tenancy)",
+        "Onboarding captures call types and provisions the matching prompts",
+        "No 'Gabriel-only' branch"
+      ],
+      "testing_criteria": [
+        "A second tenant's data is fully isolated",
+        "Gabriel's workflow still works on the generic build"
+      ],
+      "files_expected_to_change": [
+        "broad"
+      ],
+      "notes": "Overlaps TASK-027 (multi-tenancy). Gabriel's own constraint, repeated: keep it HYPER-SPECIFIC to remote high-ticket sales reps and resist broadening. He cited paying $20-40/mo for Yurp AI purely because it solved ONE problem well. Pricing/packaging is Gabriel's domain; build order should follow TASK-065 since prompt packages are the saleable unit.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-069",
+      "title": "Rename the product (currently 'Closer')",
+      "priority": "low",
+      "estimated_complexity": "low",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Ivan: 'Closer is just what it called itself, I did not come up with that name, and it feels a little Glengarry Glen Ross on the nose.' Gabriel: 'the name should be changed... but that to me feels like not the highest priority.' DECISION ON THE CALL: keep calling it Closer AI for now, revisit when productising.",
+      "acceptance_criteria": [
+        "A short list of candidate names for Gabriel to react to",
+        "Rename is mechanical when chosen (title, brand mark, docs)"
+      ],
+      "testing_criteria": [
+        "n/a until a name is chosen"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/index.html",
+        "README.md"
+      ],
+      "notes": "Explicitly deprioritised by Gabriel on the call. Do NOT spend build time here yet; it is parked deliberately, not forgotten.",
+      "test_results": []
+    },
+    {
+      "id": "TASK-070",
+      "title": "Future ideas parked from the 2026-07-19 call",
+      "priority": "low",
+      "estimated_complexity": "high",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Ideas raised and explicitly deferred, recorded so they are not lost: (1) AI support chat bubble \u2014 Gabriel: 'closer AI having a little chat bubble, AI support 24/7 that actually solves the problem'. (2) LIVE objection-handling assistant \u2014 Gabriel paid $20-40/mo for 'Yurp AI' (YURP.AI) which listens live and, on one keypress, generates an objection response rendered as a transparency he can read while looking at camera; he stopped using it because it was clunky and would not feed his teleprompter. He raised it mainly as a lesson in hyper-specific value, not as a request. (3) Internal 'Jarvis' recap for Ivan+Gabriel's own calls \u2014 instant recap, action items, auto-booked next appointment. (4) Self-writing prompt \u2014 Ivan: 'get the text of the transcript and YOU decide what the best information for me to move forward with is, and how I should intake this post-call information'.",
+      "acceptance_criteria": [
+        "Each idea is revisited deliberately rather than drifting into scope"
+      ],
+      "testing_criteria": [
+        "n/a \u2014 holding record"
+      ],
+      "files_expected_to_change": [],
+      "notes": "GUIDING CONSTRAINT from the call, worth honouring over any of these: Gabriel warned the temptation will be to add features/broaden scope, and argued the power is in staying hyper-specific to remote high-ticket closers. Treat this list as deliberately parked, and weigh each against that constraint before building. The teleprompter-compatibility failure is the reason the live assistant died for him \u2014 any live-overlay work must solve output surfaces, not just generation.",
+      "test_results": []
     }
   ],
-  "progress_percentage": 73
+  "progress_percentage": 66
 }
