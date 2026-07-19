@@ -645,12 +645,14 @@
       "files_expected_to_change": [
         "production data (prompt_templates table)"
       ],
-      "status": "incomplete",
+      "status": "completed",
       "notes": [
         "RESCOPED + PRIORITY RAISED 2026-07-16 by TASK-030: was 'diverge two templates'; now 'retune the one remaining template'. Priority medium -> high, because with hypnotherapy gone the ONLY live template is the hypnotherapy-written one, so 100% of Gabriel's calls are now scored by a prompt built for the wrong sales motion. Gabriel on call: 'those people are fast decision-making... they smell that from a mile away.' Templates are editable in-app and versioned, so this is likely a data change, not code \u2014 Gabriel should drive the wording. || CORRECTED 2026-07-17 with real evidence. (a) Ivan believes 'our only remaining prompt is for OSA'. IT IS NOT. Nobody has ever written an OSA prompt. The live template (version 1, 3,495 chars) is the generic elite-closer prompt Gabriel used AT THE HYPNOSIS JOB; it is merely ATTACHED to the account named 'On Screen Authority', which is why it looks like an OSA prompt. Its content is tuned to emotional/pain-driven selling: 'Emotional leverage and consequence framing', pain x3, emotional x5, fear x2, shame x1, wound x1, urgency x1. Gabriel's own words: OSA buyers 'are fast decision-making... they smell that from a mile away.' (b) Tonight's mismatch was the REVERSE of the risk: a hypnosis call scored by that prompt, which is roughly the motion it was built for - which is why the output looked reasonable. From tomorrow Gabriel is OSA-only (he gave notice at the hypnosis channel), so the real mismatch starts NOW. (c) IMPORTANT SCOPE CORRECTION: this task's note said 'likely a data change, not code'. THAT IS WRONG. The 10 scorecard dimensions - including 'pain amplification' - are HARDCODED in src/llm.js line 47, not in the editable template. Gabriel can rewrite the template body all he likes and every OSA call will still be graded on pain amplification. Fixing this properly requires BOTH a template rewrite (Gabriel drives the wording) AND a code change to make the dimensions come from the template instead of llm.js.",
         "ABSORBED 2026-07-19 into TASK-065 (call-type labels select the prompt). That feature requires making the scorecard dimensions template-driven, which IS the fix this task was blocked on. Gabriel on the call: 'what I don't need is how is the emotional connection on this call \u2014 that's not important' for non-sales calls."
       ],
-      "test_results": []
+      "test_results": [
+        "2026-07-19 FIXED via TASK-065: scorecard dimensions are now per-call-type data, not hardcoded in llm.js. Editing a type's dimensions changes what gets scored; clearing them removes the scorecard entirely."
+      ]
     },
     {
       "id": "TASK-022",
@@ -2078,7 +2080,7 @@
       "title": "Duplicate group-call detection \u2014 one meeting recorded by N attendees arrives N times",
       "priority": "high",
       "estimated_complexity": "medium",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [
         "TASK-063"
       ],
@@ -2098,14 +2100,17 @@
         "closer-app/src/index.js"
       ],
       "notes": "TASK-063's recorded_by[] filter already removes MOST of this: only Gabriel's own recording of a group call will import. This task covers the residue (e.g. he records the same meeting twice, or joins late and Fathom splits it). Do the cheap part first and measure whether duplicates still appear once scoping is live. Gabriel also noted the different durations are explained by people joining at different times.",
-      "test_results": []
+      "test_results": [
+        "2026-07-19 poll suite (30 assertions) incl. new: an overlapping recording (\u00b120 min) is still IMPORTED and FLAGGED as a possible duplicate, never silently discarded; call.possible_duplicate logged. UI shows a 'dup?' tag in the list and a banner on the call before you spend a generation on it.",
+        "2026-07-19 recorded_by[] scoping (TASK-063) already removes most duplicates at source; this catches the residue."
+      ]
     },
     {
       "id": "TASK-065",
       "title": "Call-type labels that select the prompt (prompt library) \u2014 THE big feature from the call",
       "priority": "high",
       "estimated_complexity": "high",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "description": "Gabriel: 'maybe there's a way to label it, and then that label creates \u2014 once I hit generate \u2014 because of the label that was put before, it's going to change the actual prompt. If it's labeled as a sales call it uses the sales call prompt; because it's an operations call it's labeled that way; because it's a vendor call...' Ivan: 'you have a prompt library ready to go.' Gabriel on why it matters: 'what I don't need is like, how is the emotional connection on this call? That's not important.' So: label a call on arrival (sales / client / internal / vendor / coaching), and the Generate button runs the prompt bound to that label, producing the right OUTPUTS for that type (not always debrief+SMS+email+CRM).",
       "acceptance_criteria": [
@@ -2126,15 +2131,21 @@
         "closer-app/public/app.js",
         "migrations/"
       ],
-      "notes": "THIS SUPERSEDES/ABSORBS TASK-021. TASK-021's core blocker was that the 10 scorecard dimensions (incl. 'pain amplification') are HARDCODED in llm.js:47, so editing the template cannot change scoring. This feature requires making dimensions template-driven, which fixes TASK-021 as a side effect. Gabriel's suggested coaching-call prompt language, verbatim: 'What were the commitments? What were the agreements? What sounded like an expectation? What needs clarification?' Ivan's framing: prompt packages become a SALEABLE unit ('3 prompts for your business is this much money').",
-      "test_results": []
+      "notes": "THIS SUPERSEDES/ABSORBS TASK-021. TASK-021's core blocker was that the 10 scorecard dimensions (incl. 'pain amplification') are HARDCODED in llm.js:47, so editing the template cannot change scoring. This feature requires making dimensions template-driven, which fixes TASK-021 as a side effect. Gabriel's suggested coaching-call prompt language, verbatim: 'What were the commitments? What were the agreements? What sounded like an expectation? What needs clarification?' Ivan's framing: prompt packages become a SALEABLE unit ('3 prompts for your business is this much money'). || UI follows Grain's Templates settings pattern (per Mobbin research): list of types, each a row with name/description/what-it-produces/Edit; editor modelled on Sana AI (identity left, prompt given the most room). ABSORBS TASK-021.",
+      "test_results": [
+        "2026-07-19 21/21 engine tests: the TYPE's prompt is sent (not the legacy master), dimensions come from the type, a type with [] dimensions requests NO scorecard, an internal type bills ZERO tone calls and returns no CRM note, a client type still produces 3 drafts + CRM note.",
+        "2026-07-19 TASK-021 FIXED as a side effect: asserted 'pain amplification' and 'emotional connection' are NOT in the prompt for a type that doesn't list them \u2014 they were hardcoded in llm.js before, so editing a prompt could never change scoring.",
+        "2026-07-19 BUG CAUGHT IN REVIEW by the older suites: defaulting a MISSING callType to [] dimensions silently stripped the scorecard off every unlabelled legacy call. Missing vs empty are now distinct (LEGACY_DIMENSIONS fallback) with a regression guard asserting a legacy call still gets all 10.",
+        "2026-07-19 UI verified in browser: Prompt Library lists all 4 types with what each produces ('10-point scorecard \u00b7 text + email \u00b7 CRM note' vs 'No scorecard'); editor opens inline with prompt, dimensions and output toggles; type chips on a call switch the prompt; the Generate button names ONLY what that type produces ('Generate Debrief' for internal vs 'Generate Debrief, Text, Email & CRM Note' for sales).",
+        "2026-07-19 migration 0012 additive on production: 15 calls / 49 outputs intact, 4 types seeded, all existing calls labelled Sales (seeded verbatim from the live prompt so behaviour is unchanged)."
+      ]
     },
     {
       "id": "TASK-066",
       "title": "Light mode / dark mode",
       "priority": "medium",
       "estimated_complexity": "medium",
-      "status": "in_progress",
+      "status": "completed",
       "dependencies": [],
       "description": "Ivan proposed, Gabriel agreed: 'there should be a light mode and a dark mode at minimum.' Gabriel prefers dark ('easier on your eyes') but recognises customers may want light. Keep dark as the default.",
       "acceptance_criteria": [
@@ -2152,7 +2163,9 @@
         "closer-app/public/app.js"
       ],
       "notes": "The palette is already CSS variables, so this is mostly re-mapping tokens rather than a rewrite. Precursor to TASK-067 (brand theming).",
-      "test_results": []
+      "test_results": [
+        "2026-07-19 light theme verified in browser: body #F7F8FC / text #0F1422, persisted to localStorage, toggled from the profile menu. Dark remains the default. Implemented by re-mapping the existing CSS variables, so every component follows without per-component work."
+      ]
     },
     {
       "id": "TASK-067",
@@ -2245,9 +2258,34 @@
       "files_expected_to_change": [],
       "notes": "GUIDING CONSTRAINT from the call, worth honouring over any of these: Gabriel warned the temptation will be to add features/broaden scope, and argued the power is in staying hyper-specific to remote high-ticket closers. Treat this list as deliberately parked, and weigh each against that constraint before building. The teleprompter-compatibility failure is the reason the live assistant died for him \u2014 any live-overlay work must solve output surfaces, not just generation.",
       "test_results": []
+    },
+    {
+      "id": "TASK-071",
+      "title": "app.js boot guard \u2014 node --check is blind to undefined identifiers (caused a live blank-app outage)",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [],
+      "description": "2026-07-19: shipping the Prompt Library, the replacement span ran renderTemplates -> renderIntegrations and renderActivity lived BETWEEN them, so it was deleted. VIEWS still referenced it, so app.js threw 'renderActivity is not defined' at load; every binding after that line stayed in the temporal dead zone, boot() died on pollTimer, and the app rendered BLANK. Live ~15 minutes. Front-end only, no data affected.",
+      "acceptance_criteria": [
+        "A test EXECUTES app.js against a minimal DOM and fails if it throws at load",
+        "Every VIEWS target is asserted to exist",
+        "Every data-view menu item has a VIEWS entry"
+      ],
+      "testing_criteria": [
+        "Prove the guard FAILS on the broken file and passes on the fixed one"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/app.js"
+      ],
+      "notes": "ROOT CAUSE OF THE MISS: `node --check` was my only front-end gate and it merely PARSES \u2014 it passes happily on a file referencing a function that doesn't exist. Verified that claim directly by re-breaking the file: node --check passed while the app was broken. The unit suites all test llm.js/index.js, never app.js. Guard added (appboot.test.mjs) and PROVEN to fail on the broken file. LESSON, same family as TASK-062: parsing is not executing, and a stub is not the real thing. Run appboot before any deploy touching app.js.",
+      "test_results": [
+        "2026-07-19 guard fails on the broken file with 'renderActivity is not defined (line 184)' and passes (11/11) on the fixed file. node --check passes on BOTH \u2014 demonstrating exactly why this shipped.",
+        "2026-07-19 hotfix deployed 6321fc3; live app.js contains renderActivity; app boots and renders in the browser."
+      ]
     }
   ],
-  "progress_percentage": 66,
+  "progress_percentage": 73,
   "project_principles": [
     "DECISION AUTHORITY (Ivan, 2026-07-19): Ivan is the ultimate authority on what gets built and deployed. Gabriel's input from calls is SUGGESTION and raw material, not specification \u2014 capture it on the potential-features list, but do not treat it as approved work. Ivan's words: 'I trust my instincts and design skills more than his... take it with a grain of salt, though I do expect that he will have great ideas.' PRACTICALLY: never move a Gabriel idea into a build round without Ivan asking for it; when Gabriel's suggestion conflicts with Ivan's design judgement, Ivan wins; surface Gabriel's ideas as options with tradeoffs rather than as requirements."
   ]

@@ -486,3 +486,6 @@ button{ font-family:inherit; }
 .dup-banner{ border:1px solid var(--violet-500); border-left:3px solid var(--violet-500);
   background:var(--violet-100); border-radius:8px; padding:10px 13px; font-size:12.5px;
   line-height:1.5; color:var(--ink-800); margin-bottom:4px; }
+/* keep the checkbox rows on one clean left-aligned line */
+.ct-check{ text-align:left; line-height:1.35; }
+.ct-check input{ flex:0 0 auto; margin:0; width:15px; height:15px; }
