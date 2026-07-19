@@ -1733,9 +1733,11 @@
         "closer-app/src/index.js",
         "closer-app/public/app.js"
       ],
-      "status": "incomplete",
+      "status": "completed",
       "notes": "Low priority ONLY because there is exactly 1 call in the DB today and TASK-050 (archive) shrinks the default set anyway. Revisit when the DB passes ~300 calls, which at 30/week is about 10 weeks away. Do not pre-optimise this now; do not forget it either.",
-      "test_results": []
+      "test_results": [
+        "2026-07-19 closed by TASK-075: grouped join replaces the per-row correlated subqueries; list bounded at 100 with Load more; search moved server-side."
+      ]
     },
     {
       "id": "TASK-053",
@@ -1959,9 +1961,11 @@
         "closer-app/src/index.js",
         "closer-app/public/app.js"
       ],
-      "status": "incomplete",
+      "status": "completed",
       "notes": "importMeeting currently keeps only client_name/transcript \u2014 store calendar_invitees/participant count/title/duration at import. Nathan is the key test: tagged external, so invitee-only misfires; needs a transcript keyword scan too. Show WHY it thinks sales/internal.",
-      "test_results": []
+      "test_results": [
+        "2026-07-19 implemented as call-type SUGGESTION at import (TASK-073) rather than a sales/not-sales hint \u2014 more useful now that types exist. Free, no API call."
+      ]
     },
     {
       "id": "TASK-060",
@@ -2283,9 +2287,126 @@
         "2026-07-19 guard fails on the broken file with 'renderActivity is not defined (line 184)' and passes (11/11) on the fixed file. node --check passes on BOTH \u2014 demonstrating exactly why this shipped.",
         "2026-07-19 hotfix deployed 6321fc3; live app.js contains renderActivity; app boots and renders in the browser."
       ]
+    },
+    {
+      "id": "TASK-072",
+      "title": "Call-type tag: right-justified, bold, single upper-case word",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [
+        "TASK-065"
+      ],
+      "description": "Ivan 2026-07-19: 'Move the call type label to always justify right and bold so we can quickly see what kind of call it was. Change call type to single name all caps: SALES / CLIENT / INTERNAL / VENDOR.'",
+      "acceptance_criteria": [
+        "Tag sits on the right edge of the row",
+        "Bold",
+        "One upper-case word",
+        "Works for custom types too"
+      ],
+      "testing_criteria": [
+        "Measure the tag's right edge equals the row's right edge",
+        "Confirm the four seeded types render SALES/CLIENT/INTERNAL/VENDOR"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "notes": "Derived from the type name (first word, uppercased) rather than a stored short label, so a user-created 'Discovery call' becomes DISCOVERY with no extra field to fill in. If that ever reads badly for a custom name, add an explicit short_label column.",
+      "test_results": [
+        "2026-07-19 browser: tags render CLIENT / INTERNAL / SALES / VENDOR, font-weight 800, and the tag's right edge (473px) equals the row's right edge (473px) \u2014 measured, after an earlier assertion checked the wrong thing (getComputedStyle resolves margin-left:auto to px)."
+      ]
+    },
+    {
+      "id": "TASK-073",
+      "title": "Make the type system usable: re-type processed calls, stale-output nudge, auto-suggest at import",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-065"
+      ],
+      "description": "Gaps found reviewing the real inbox after TASK-065 shipped: (a) every call was labelled 'Sales call' by the migration default, including ones Gabriel had told us were a client call (Selina) and an India team call (Lokesh); (b) the type picker only rendered on UNPROCESSED calls, so a mislabelled processed call could never be corrected; (c) changing a type left stale outputs on screen with no indication they came from the previous prompt; (d) nothing suggested a type, so everything defaulted to Sales forever.",
+      "acceptance_criteria": [
+        "Type can be changed on a processed call",
+        "Changing it on a call with outputs warns they are stale and offers regeneration",
+        "Types are suggested at import with NO API call",
+        "Suggestion is only a suggestion \u2014 always editable, never null"
+      ],
+      "testing_criteria": [
+        "Browser: change type on a processed call -> chip moves, list tag updates, nudge appears with working regenerate link",
+        "Suggestion picks Internal with no external attendee, Vendor on vendor vocabulary, and falls back to default when ambiguous"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "notes": "Suggestion signals, all free: external-invitee count from Fathom's calendar_invitees (no external attendee at all => internal), then transcript vocabulary scoring for internal/vendor/sales. Deliberately conservative \u2014 it defaults to the account's default type rather than guessing hard, because a wrong label sends the wrong prompt. BUG CAUGHT IN BROWSER, not by tests: the picker markup rendered on processed calls but wireTypePicker was only called from the unprocessed path, so the chips did nothing. Nothing threw, so no test failed \u2014 only clicking it revealed it.",
+      "test_results": [
+        "2026-07-19 35/35 poll suite incl. 5 new suggestion cases (sales vocabulary -> Sales, no external attendee -> Internal, internal vocabulary -> Internal, vendor vocabulary -> Vendor, ambiguous -> default, never null).",
+        "2026-07-19 browser: processed call re-typed Client->Sales, active chip moved, list tag updated CLIENT->SALES, nudge 'These outputs came from the old type \u2014 regenerate to use this prompt' with a working link.",
+        "2026-07-19 data: Selina relabelled Client, Lokesh relabelled Internal per Gabriel's own description on the call."
+      ]
+    },
+    {
+      "id": "TASK-074",
+      "title": "Insights scoped by call type",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [
+        "TASK-065"
+      ],
+      "description": "Once each type defines its own dimensions, averaging every processed call together mixes incompatible scales, and types with no scorecard pad the denominator while contributing nothing.",
+      "acceptance_criteria": [
+        "Insights can be filtered by call type",
+        "Types with no scored calls are not offered",
+        "The subtitle distinguishes processed calls from SCORED calls",
+        "Per-dimension sample size is visible"
+      ],
+      "testing_criteria": [
+        "Browser: type chips show per-type counts; subtitle reports scored vs processed"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "notes": "",
+      "test_results": [
+        "2026-07-19 browser: subtitle 'Averaged across 2 scored calls (1 processed without a scorecard)'; chips 'All types / Sales call (2) / Client call (1)' \u2014 Internal (0 scored) correctly not offered."
+      ]
+    },
+    {
+      "id": "TASK-075",
+      "title": "Spend visibility, transcript search, bulk actions, bounded call list",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [],
+      "description": "Four cheap wins identified from reviewing the running app: no running cost total despite logging tokens; search couldn't reach transcripts and was limited to loaded rows; no way to clear batches of unwanted calls; and the call list was unbounded with two correlated subqueries per row (TASK-052).",
+      "acceptance_criteria": [
+        "Activity shows this-month / all-time / average-per-call spend, labelled an estimate",
+        "Search runs server-side and matches transcript text",
+        "Multi-select to re-label, archive or delete",
+        "Call list is bounded with Load more and no per-row correlated subqueries"
+      ],
+      "testing_criteria": [
+        "Browser: spend cards render real figures; bulk bar appears with a count and actions",
+        "Run the rewritten list SQL against PRODUCTION before deploying"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/index.js",
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "notes": "Spend is estimated from logged tokens at Sonnet 5 list pricing ($3/M in, $15/M out) and SAYS SO \u2014 the real invoice is Anthropic's. TASK-052 is closed by this: two correlated subqueries per row became one grouped join, and the list is capped at 100 with Load more.",
+      "test_results": [
+        "2026-07-19 browser: spend cards render THIS MONTH $0.99 / ALL TIME $1.35 / AVG per call $0.19 (68s avg); bulk bar shows '2 selected' with Set type / Archive / Delete / Cancel and clears correctly.",
+        "2026-07-19 the rewritten list query was executed against PRODUCTION D1 before deploy and returned all 7 rows with correct sms/email counts \u2014 the verification step whose absence caused the earlier outage."
+      ]
     }
   ],
-  "progress_percentage": 73,
+  "progress_percentage": 77,
   "project_principles": [
     "DECISION AUTHORITY (Ivan, 2026-07-19): Ivan is the ultimate authority on what gets built and deployed. Gabriel's input from calls is SUGGESTION and raw material, not specification \u2014 capture it on the potential-features list, but do not treat it as approved work. Ivan's words: 'I trust my instincts and design skills more than his... take it with a grain of salt, though I do expect that he will have great ideas.' PRACTICALLY: never move a Gabriel idea into a build round without Ivan asking for it; when Gabriel's suggestion conflicts with Ivan's design judgement, Ivan wins; surface Gabriel's ideas as options with tradeoffs rather than as requirements."
   ]
