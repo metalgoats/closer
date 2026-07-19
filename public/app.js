@@ -22,6 +22,8 @@ const api = {
 const $ = sel => document.querySelector(sel);
 // The label to show for a call: its Fathom token's custom label (live), else the account name.
 const offerLabel = c => c.source_label || c.account_name;
+// One word, upper-case, so the kind of call reads at a glance from the right edge of the row.
+const typeTag = c => (c.call_type_name || "").trim().split(/[\s/]+/)[0].toUpperCase();
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // Traffic-light rules. Four states, three brand colours: grey stays neutral for
@@ -238,17 +240,25 @@ document.querySelectorAll(".settings-item[data-view]").forEach(el => {
   });
 });
 
-$("#searchInput").addEventListener("input", e => { state.search = e.target.value.toLowerCase(); renderCallList(); });
+let searchTimer;
+$("#searchInput").addEventListener("input", e => {
+  state.search = e.target.value.trim();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => refreshCalls().then(() => { if (!state.search) openRelevantCall(); }), 250);
+});
 $("#newCallBtn").addEventListener("click", () => { renderCompose(); showDetailMobile("New Call"); });
 
 // ---------- call list ----------
-async function refreshCalls() {
-  // The archive is a separate fetch, not a client-side filter: the server excludes archived
-  // calls by default, which is the whole point (the inbox stays small as the DB grows).
+async function refreshCalls({ append = false } = {}) {
   const q = [];
   if (state.accountFilter) q.push(`account=${state.accountFilter}`);
   if (state.filter === "archived") q.push("archived=1");
-  state.calls = (await api.get(`/calls${q.length ? "?" + q.join("&") : ""}`)).calls;
+  // Search runs SERVER-side so it reaches transcripts and isn't limited to the loaded page.
+  if (state.search) q.push(`q=${encodeURIComponent(state.search)}`);
+  q.push(`offset=${append ? (state.calls?.length || 0) : 0}`);
+  const r = await api.get(`/calls${q.length ? "?" + q.join("&") : ""}`);
+  state.calls = append ? [...state.calls, ...r.calls] : r.calls;
+  state.hasMore = r.hasMore;
   renderCallList();
   syncPolling();
 }
@@ -259,7 +269,6 @@ function visibleCalls() {
     // so it needs no outcome filter here.
     if (state.filter === "followup" && c.outcome !== "followup") return false;
     if (state.filter === "closed" && c.outcome !== "closed") return false;
-    if (state.search && !`${c.client_name} ${offerLabel(c)} ${c.outcome || ""}`.toLowerCase().includes(state.search)) return false;
     return true;
   });
 }
@@ -292,15 +301,75 @@ function renderCallList() {
     const flags = [];
     if (c.sms_sent) flags.push("✓ text");
     if (c.email_sent) flags.push("✓ email");
-    return `<div class="call-item ${c.id === state.currentCallId ? "active" : ""}" data-id="${c.id}" tabindex="0" role="button">
+    return `<div class="call-item ${c.id === state.currentCallId ? "active" : ""} ${state.selected?.has(c.id) ? "picked" : ""}" data-id="${c.id}" tabindex="0" role="button">
+      <input type="checkbox" class="call-pick" data-pickid="${c.id}" ${state.selected?.has(c.id) ? "checked" : ""} aria-label="Select ${esc(c.client_name)}">
       <div class="call-row1"><span class="call-name"><span class="dot-${st}" title="${STATE_TITLE[st]}"></span>${esc(c.client_name)}</span><span class="call-time">${fmtTime(c.occurred_at)}</span></div>
-      <div class="call-meta">${pill}<span class="offer-tag">${esc(offerLabel(c))}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}${c.duplicate_of ? `<span class="dup-tag" title="Possible duplicate of call #${c.duplicate_of}">dup?</span>` : ""}${c.call_type_name ? `<span class="offer-tag">${esc(c.call_type_name)}</span>` : ""}</div>
+      <div class="call-meta">${pill}<span class="offer-tag">${esc(offerLabel(c))}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}${c.duplicate_of ? `<span class="dup-tag" title="Possible duplicate of call #${c.duplicate_of}">dup?</span>` : ""}${c.call_type_name ? `<span class="type-tag">${esc(typeTag(c))}</span>` : ""}</div>
     </div>`;
   }).join("") || `<div style="padding:20px 16px; font-size:12px; color:var(--ink-400);">No calls match.</div>`;
+  if (state.hasMore) {
+    const more = document.createElement("button");
+    more.className = "load-more"; more.textContent = "Load more";
+    more.addEventListener("click", () => refreshCalls({ append: true }));
+    wrap.appendChild(more);
+  }
+
+  wrap.querySelectorAll(".call-pick").forEach(cb => cb.addEventListener("click", e => {
+    e.stopPropagation();                       // selecting must not open the call
+    const id = +cb.dataset.pickid;
+    state.selected = state.selected || new Set();
+    cb.checked ? state.selected.add(id) : state.selected.delete(id);
+    cb.closest(".call-item").classList.toggle("picked", cb.checked);
+    renderBulkBar();
+  }));
+
   wrap.querySelectorAll(".call-item").forEach(el => {
     const open = () => { const c = state.calls.find(x => x.id === +el.dataset.id); showDetailMobile(c?.client_name); openCall(+el.dataset.id); };
     el.addEventListener("click", open);
     el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
+}
+
+// ---------- bulk actions ----------
+// Colleague calls and duplicates arrive in batches; clearing them one at a time is the kind of
+// chore that stops getting done.
+function renderBulkBar() {
+  const n = state.selected?.size || 0;
+  let bar = $("#bulkBar");
+  if (!n) { bar?.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "bulkBar"; bar.className = "bulk-bar";
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `<span class="bulk-count">${n} selected</span>
+    <select id="bulkType"><option value="">Set type…</option>${(state.callTypes || [])
+      .map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join("")}</select>
+    <button class="regen-btn" id="bulkArchive">Archive</button>
+    <button class="regen-btn danger-btn" id="bulkDelete">Delete</button>
+    <button class="regen-btn" id="bulkClear">Cancel</button>`;
+
+  $("#bulkClear").addEventListener("click", () => { state.selected.clear(); renderCallList(); renderBulkBar(); });
+  $("#bulkType").addEventListener("change", async e => {
+    const id = e.target.value; if (!id) return;
+    const ids = [...state.selected];
+    for (const cid of ids) await api.patch(`/calls/${cid}`, { call_type_id: +id });
+    toast(`Re-labelled ${ids.length} call${ids.length > 1 ? "s" : ""}`);
+    state.selected.clear(); await refreshCalls(); renderBulkBar();
+  });
+  $("#bulkArchive").addEventListener("click", async () => {
+    const ids = [...state.selected];
+    for (const cid of ids) await api.post(`/calls/${cid}/archive`, { archived: true });
+    toast(`Archived ${ids.length}`);
+    state.selected.clear(); await refreshCalls(); renderBulkBar(); openRelevantCall();
+  });
+  $("#bulkDelete").addEventListener("click", async () => {
+    const ids = [...state.selected];
+    if (!confirm(`Permanently delete ${ids.length} call${ids.length > 1 ? "s" : ""}?\n\nThis erases their transcripts and outputs and cannot be undone.`)) return;
+    let failed = 0;
+    for (const cid of ids) { try { await api.req("DELETE", `/calls/${cid}`); } catch { failed++; } }
+    toast(failed ? `Deleted ${ids.length - failed}, ${failed} refused (still generating)` : `Deleted ${ids.length}`);
+    state.selected.clear(); await refreshCalls(); renderBulkBar(); openRelevantCall();
   });
 }
 
@@ -363,6 +432,32 @@ function processBtnLabel(call) {
 function ctPickHint(call) {
   const t = typeOf(call);
   return t ? `${t.description || ""} ${ctSummary(t)}`.trim() : "Pick a type — it decides which prompt runs.";
+}
+
+// Shared by the processed and unprocessed views. On a call that already has outputs, changing
+// the type makes those outputs stale — they were written by the PREVIOUS type's prompt — so say
+// so rather than letting a client-call debrief keep sales scoring on screen.
+function wireTypePicker(call) {
+  document.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", async () => {
+    const id = +b.dataset.pick;
+    const changed = call.call_type_id !== id;
+    await api.patch(`/calls/${call.id}`, { call_type_id: id });
+    call.call_type_id = id;
+    document.querySelectorAll("[data-pick]").forEach(x => x.classList.toggle("active", +x.dataset.pick === id));
+    const hint = $("#ctPickHint"); if (hint) hint.textContent = ctPickHint(call);
+    const bt = $("#processBtn"); if (bt) bt.innerHTML = `✦ ${processBtnLabel(call)}`;
+    const stale = $("#ctStale");
+    if (stale && changed && callState(call) === "processed") {
+      stale.innerHTML = `These outputs came from the old type — <button class="linklike" id="ctRegen">regenerate</button> to use this prompt.`;
+      $("#ctRegen").addEventListener("click", async () => {
+        await api.post(`/calls/${call.id}/process`);
+        toast("Regenerating with the new call type");
+        await refreshCalls(); openCall(call.id);
+      });
+    }
+    const row = state.calls.find(c => c.id === call.id);
+    if (row) { row.call_type_id = id; row.call_type_name = (state.callTypes.find(t => t.id === id) || {}).name; renderCallList(); }
+  }));
 }
 
 function toneOf(call) { return call.selected_tone || call.suggested_tone || "balanced"; }
@@ -471,6 +566,12 @@ function renderProcessed(call, outputs) {
           <div class="dh-meta">${esc(offerLabel(call))}<span class="sep">·</span>${call.duration_min ? call.duration_min + " min" : ""} ${fmtTime(call.occurred_at)}<span class="sep">·</span>${srcBadge}</div>
         </div>
         <div class="dh-actions">${callActions(call, `<button class="regen-btn" id="regenBtn">↻ Regenerate</button>`)}</div>
+      </div>
+      <div class="tone-row">
+        <span class="tone-label">Call type</span>
+        <div class="ct-picker">${(state.callTypes || []).map(t =>
+          `<button class="ct-chip ${t.id === call.call_type_id ? "active" : ""}" data-pick="${t.id}">${esc(t.name)}</button>`).join("")}</div>
+        <span class="applies-to" id="ctStale"></span>
       </div>
       <div class="tone-row">
         <span class="tone-label">Text &amp; email tone</span>
@@ -676,15 +777,7 @@ function renderUnprocessed(call) {
     </div>`;
   wireRename(call);
   wireCallActions(call);
-  document.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", async () => {
-    const id = +b.dataset.pick;
-    await api.patch(`/calls/${call.id}`, { call_type_id: id });
-    call.call_type_id = id;
-    document.querySelectorAll("[data-pick]").forEach(x => x.classList.toggle("active", +x.dataset.pick === id));
-    $("#ctPickHint").textContent = ctPickHint(call);
-    const bt = $("#processBtn");
-    if (bt) bt.innerHTML = `✦ ${processBtnLabel(call)}`;
-  }));
+  wireTypePicker(call);
   $("#processBtn").addEventListener("click", async () => {
     renderLoading(call.client_name);
     await api.post(`/calls/${call.id}/process`);
@@ -816,17 +909,34 @@ function viewShell(title, sub, bodyHtml) {
 }
 
 async function renderInsights() {
-  const q = state.accountFilter ? `?account=${state.accountFilter}` : "";
-  const data = await api.get(`/insights${q}`);
-  viewShell("Coaching Insights", `Averages across ${data.calls} processed calls`,
-    `<h4>Average Scorecard</h4>
-     <div class="insight-note">Blue ≥ 8 · Violet 6–7 · Pink &lt; 6 — pink dimensions are practice targets.</div>
-     <div class="insight-grid">${data.averages.map(([k, v]) => `
-       <div style="color:var(--ink-600)">${esc(k)}</div>
-       <div style="font-family:var(--font-mono); font-weight:700; text-align:right; color:${tierColor(v)}">${v}</div>
-       <div class="bar"><i style="width:${v * 10}%; background:${tierColor(v)}"></i></div>`).join("")}</div>
-     <h4>Recurring "What Hurt The Sale"</h4><ul>${data.hurt.map(x => `<li>${esc(x)}</li>`).join("")}</ul>
-     <h4>Lessons Worth Keeping</h4><ul>${data.lessons.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`);
+  const parts = [];
+  if (state.accountFilter) parts.push(`account=${state.accountFilter}`);
+  if (state.insightType) parts.push(`type=${state.insightType}`);
+  const data = await api.get(`/insights${parts.length ? "?" + parts.join("&") : ""}`);
+  const scoredTypes = (data.types || []).filter(t => t.n > 0);
+
+  viewShell("Coaching Insights",
+    `Averaged across ${data.scored} scored call${data.scored === 1 ? "" : "s"}${data.calls !== data.scored ? ` (${data.calls - data.scored} processed without a scorecard)` : ""}`,
+    `<div class="ct-picker" style="margin-bottom:14px;">
+       <button class="ct-chip ${!state.insightType ? "active" : ""}" data-insight="">All types</button>
+       ${scoredTypes.map(t => `<button class="ct-chip ${String(state.insightType) === String(t.id) ? "active" : ""}" data-insight="${t.id}">${esc(t.name)} (${t.n})</button>`).join("")}
+     </div>
+     ${data.averages.length ? `
+       <h4>Average Scorecard</h4>
+       <div class="insight-note">Blue ≥ 8 · Violet 6–7 · Pink &lt; 6 — pink dimensions are practice targets.
+         Each type defines its own dimensions, so compare within a type, not across.</div>
+       <div class="insight-grid">${data.averages.map(([k, v, n]) => `
+         <div class="insight-row"><span class="k">${esc(k)}</span>
+           <span class="v" style="color:${tierColor(Math.round(v))}">${v}<span class="insight-n"> · ${n}</span></span>
+           <div class="bar"><i style="width:${v * 10}%; background:${tierColor(Math.round(v))}"></i></div></div>`).join("")}</div>`
+      : `<p style="color:var(--ink-400); font-size:12.5px;">No scored calls for this type yet. Types without scorecard dimensions (client, internal, vendor) never produce one — that's deliberate.</p>`}
+     ${data.hurt.length ? `<h4>Recurring themes — what hurt</h4><ul>${data.hurt.slice(0, 8).map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+     ${data.lessons.length ? `<h4>Recurring lessons</h4><ul>${data.lessons.slice(0, 8).map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}`);
+
+  document.querySelectorAll("[data-insight]").forEach(b => b.addEventListener("click", () => {
+    state.insightType = b.dataset.insight || null;
+    renderInsights();
+  }));
 }
 
 async function renderSuggestions() {
@@ -949,8 +1059,11 @@ function openTypeEditor(t) {
 }
 
 async function renderActivity() {
-  const { events, totals } = await api.get("/events?limit=200");
-  const money = t => t ? `$${(t / 1e6 * 2).toFixed(2)}` : "$0.00";  // Sonnet 5 intro input rate, rough
+  const { events, totals, month } = await api.get("/events?limit=200");
+  // Rough but honest: Sonnet 5 list pricing, input $3/M and output $15/M. Labelled an estimate
+  // because the real invoice is Anthropic's, not ours.
+  const cost = (inp, outp) => `$${((inp || 0) / 1e6 * 3 + (outp || 0) / 1e6 * 15).toFixed(2)}`;
+  const money = t => t ? `$${(t / 1e6 * 2).toFixed(2)}` : "$0.00";
 
   const rows = events.length ? events.map(e => {
     const cls = e.level === "error" ? "ev-error" : e.level === "warn" ? "ev-warn" : "ev-info";
@@ -966,8 +1079,20 @@ async function renderActivity() {
     </tr>`;
   }).join("") : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing logged yet.</td></tr>`;
 
+  const spend = `<div class="spend-row">
+      <div class="spend-card"><div class="spend-k">This month</div>
+        <div class="spend-v">${cost(month?.input_tokens, month?.output_tokens)}</div>
+        <div class="spend-sub">${month?.runs || 0} generation${month?.runs === 1 ? "" : "s"}</div></div>
+      <div class="spend-card"><div class="spend-k">All time</div>
+        <div class="spend-v">${cost(totals?.input_tokens, totals?.output_tokens)}</div>
+        <div class="spend-sub">${totals?.runs || 0} runs · ${totals?.failures || 0} errors</div></div>
+      <div class="spend-card"><div class="spend-k">Avg / call</div>
+        <div class="spend-v">${totals?.runs ? cost((totals.input_tokens || 0) / totals.runs, (totals.output_tokens || 0) / totals.runs) : "$0.00"}</div>
+        <div class="spend-sub">${totals?.avg_ms ? Math.round(totals.avg_ms / 1000) + "s avg" : "—"}</div></div>
+    </div>
+    <div class="insight-note">Estimated from logged tokens at Sonnet 5 list pricing — the real bill is in your Anthropic console.</div>`;
   viewShell("Activity", "Everything the app has done — failures, completions, token spend, and which outputs actually get used",
-    `<div class="ev-summary">
+    spend + `<div class="ev-summary">
        <div><b>${totals.runs || 0}</b><span>generations</span></div>
        <div class="${totals.failures ? "bad" : ""}"><b>${totals.failures || 0}</b><span>failures</span></div>
        <div><b>${(totals.input_tokens || 0).toLocaleString()}</b><span>input tokens</span></div>

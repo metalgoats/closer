@@ -122,15 +122,24 @@ async function route(request, env, url, ctx) {
   // ---- calls ----
   if (path === "/api/calls" && method === "GET") {
     const accountId = url.searchParams.get("account");
-    // Archived calls are excluded by default — that IS the feature. ?archived=1 shows only them.
+    const q = (url.searchParams.get("q") || "").trim();
+    // Bounded by default (TASK-052). Search runs SERVER-side so it can reach the transcript
+    // and isn't limited to whatever page the browser happens to be holding.
+    const limit = Math.min(500, Math.max(1, +(url.searchParams.get("limit") || 100)));
+    const offset = Math.max(0, +(url.searchParams.get("offset") || 0));
     const archived = url.searchParams.get("archived") === "1";
     const where = [archived ? "c.archived_at IS NOT NULL" : "c.archived_at IS NULL"];
     const binds = [];
     if (accountId) { where.push("c.account_id = ?"); binds.push(accountId); }
+    if (q) {
+      where.push("(c.client_name LIKE ? OR c.transcript LIKE ? OR ct.name LIKE ? OR si.label LIKE ?)");
+      const like = `%${q}%`; binds.push(like, like, like, like);
+    }
     const { results } = await env.DB.prepare(
-      `${CALL_LIST_SQL} WHERE ${where.join(" AND ")} ORDER BY c.occurred_at DESC`
-    ).bind(...binds).all();
-    return json({ calls: results });
+      `${CALL_LIST_SQL} WHERE ${where.join(" AND ")} ORDER BY c.occurred_at DESC LIMIT ? OFFSET ?`
+    ).bind(...binds, limit + 1, offset).all();
+    const hasMore = results.length > limit;
+    return json({ calls: hasMore ? results.slice(0, limit) : results, hasMore, offset, limit });
   }
 
   const callMatch = path.match(/^\/api\/calls\/(\d+)$/);
@@ -231,7 +240,7 @@ async function route(request, env, url, ctx) {
   }
 
   // ---- insights ----
-  if (path === "/api/insights" && method === "GET") return insights(env, url.searchParams.get("account"));
+  if (path === "/api/insights" && method === "GET") return insights(env, url.searchParams.get("account"), url.searchParams.get("type"));
 
   // ---- events / activity log ----
   if (path === "/api/events" && method === "GET") {
@@ -249,7 +258,13 @@ async function route(request, env, url, ctx) {
        FROM events WHERE kind = 'generation.succeeded'`
     ).first();
     const fails = await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE level = 'error'").first();
-    return json({ events: results, totals: { ...totals, failures: fails?.n || 0 } });
+    // Rolling spend so cost is visible without exporting the log.
+    const month = await env.DB.prepare(
+      `SELECT COUNT(*) AS runs, COALESCE(SUM(input_tokens),0) AS input_tokens,
+              COALESCE(SUM(output_tokens),0) AS output_tokens
+         FROM events WHERE kind = 'generation.succeeded' AND at >= date('now','start of month')`
+    ).first();
+    return json({ events: results, totals: { ...totals, failures: fails?.n || 0 }, month });
   }
 
   // ---- suggestions ----
@@ -271,13 +286,21 @@ async function route(request, env, url, ctx) {
 
 const CALL_LIST_SQL = `
   SELECT c.id, c.account_id, c.client_name, c.occurred_at, c.duration_min, c.source, c.outcome,
-         c.callback_note, c.processed_at, c.processing_status, c.processing_error, c.archived_at, a.name AS account_name,
-         (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='sms' AND o.sent_at IS NOT NULL) AS sms_sent,
-         (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='email' AND o.sent_at IS NOT NULL) AS email_sent,
-         si.label AS source_label, c.call_type_id, ct.name AS call_type_name, c.duplicate_of
-  FROM calls c JOIN accounts a ON a.id = c.account_id
+         c.callback_note, c.processed_at, c.processing_status, c.processing_error, c.archived_at,
+         a.name AS account_name, si.label AS source_label,
+         c.call_type_id, ct.name AS call_type_name, c.duplicate_of,
+         COALESCE(o.sms_sent, 0) AS sms_sent, COALESCE(o.email_sent, 0) AS email_sent
+  FROM calls c
+  JOIN accounts a ON a.id = c.account_id
+  LEFT JOIN integrations si ON si.id = c.source_integration_id
   LEFT JOIN call_types ct ON ct.id = c.call_type_id
-  LEFT JOIN integrations si ON si.id = c.source_integration_id`;
+  -- One grouped pass instead of two correlated subqueries PER ROW (TASK-052).
+  LEFT JOIN (
+    SELECT call_id,
+           SUM(CASE WHEN kind='sms'   AND sent_at IS NOT NULL THEN 1 ELSE 0 END) AS sms_sent,
+           SUM(CASE WHEN kind='email' AND sent_at IS NOT NULL THEN 1 ELSE 0 END) AS email_sent
+    FROM outputs GROUP BY call_id
+  ) o ON o.call_id = c.id`;
 
 // ---------- auth handlers ----------
 
@@ -521,6 +544,35 @@ const newestFirst = items => items.slice().sort((a, b) => String(meetingWhen(b))
 
 // Inserts one meeting. Idempotent via the unique (account_id, external_id) index.
 // Returns { imported, callId, name, reason }.
+// Suggest a call type from signals we already have — costs nothing, no API call (TASK-059).
+// It only SUGGESTS: whatever it picks is editable, and Generate always shows the chosen type.
+async function suggestCallType(env, accountId, m, transcript) {
+  const types = await env.DB.prepare(
+    "SELECT id, name, is_default FROM call_types WHERE account_id = ? AND archived_at IS NULL"
+  ).bind(accountId).all();
+  const byName = n => (types.results || []).find(t => t.name.toLowerCase().startsWith(n));
+  const fallback = (types.results || []).find(t => t.is_default) || (types.results || [])[0];
+
+  const invitees = m.calendar_invitees || [];
+  const externals = invitees.filter(i => i.is_external).length;
+  const t = (transcript || "").toLowerCase().slice(0, 60000);
+  const hits = words => words.reduce((n, w) => n + (t.split(w).length - 1), 0);
+
+  // No external attendee at all => almost certainly internal.
+  if (invitees.length && externals === 0) return (byName("internal") || fallback)?.id ?? null;
+
+  const internalScore = hits(["standup", "stand-up", "sprint", "roadmap", "our team", "internal",
+    "sync up", "kpi", "headcount", "hiring", "team meeting"]);
+  const vendorScore = hits(["invoice", "contract terms", "sow", "statement of work", "vendor",
+    "supplier", "renewal", "procurement"]);
+  const salesScore = hits(["objection", "investment", "price", "pricing", "sign up", "get started",
+    "guarantee", "close", "deposit", "payment plan", "book a call"]);
+
+  if (internalScore >= 4 && internalScore > salesScore) return (byName("internal") || fallback)?.id ?? null;
+  if (vendorScore >= 3 && vendorScore > salesScore) return (byName("vendor") || fallback)?.id ?? null;
+  return fallback?.id ?? null;
+}
+
 async function importMeeting(env, integ, m) {
   const accountId = integ.account_id;
   const externalId = String(m.recording_id);
@@ -551,10 +603,12 @@ async function importMeeting(env, integ, m) {
       ORDER BY ABS((julianday(occurred_at) - julianday(?)) * 1440) LIMIT 1`
   ).bind(accountId, start, start).first() : null;
 
+  const suggestedType = await suggestCallType(env, accountId, m, transcript);
+
   const ins = await env.DB.prepare(
-    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id, duplicate_of)
-     VALUES (?, ?, ?, ?, ?, 'fathom', ?, ?, ?) RETURNING id`
-  ).bind(accountId, name, start, durationMin, transcript, externalId, integ.id, dup?.id ?? null).first();
+    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id, duplicate_of, call_type_id)
+     VALUES (?, ?, ?, ?, ?, 'fathom', ?, ?, ?, ?) RETURNING id`
+  ).bind(accountId, name, start, durationMin, transcript, externalId, integ.id, dup?.id ?? null, suggestedType).first();
   if (dup) {
     await logEvent(env, { level: "warn", kind: "call.possible_duplicate", call_id: ins.id, account_id: accountId,
       detail: `${name} overlaps call #${dup.id} (within 20 min) — flagged, not discarded` });
@@ -656,22 +710,45 @@ async function testIntegration(env, id) {
 
 // ---------- insights ----------
 
-async function insights(env, accountId) {
-  const q = accountId
-    ? env.DB.prepare("SELECT debrief_json FROM calls WHERE processed_at IS NOT NULL AND account_id = ?").bind(accountId)
-    : env.DB.prepare("SELECT debrief_json FROM calls WHERE processed_at IS NOT NULL");
-  const { results } = await q.all();
+async function insights(env, accountId, callTypeId) {
+  // Scoped BY CALL TYPE. Averaging a client call's scorecard together with a sales call's mixes
+  // incompatible scales now that each type defines its own dimensions — and a type with no
+  // scorecard would otherwise pad the denominator while contributing nothing.
+  const where = ["c.processed_at IS NOT NULL", "c.archived_at IS NULL"];
+  const binds = [];
+  if (accountId) { where.push("c.account_id = ?"); binds.push(accountId); }
+  if (callTypeId) { where.push("c.call_type_id = ?"); binds.push(callTypeId); }
+  const { results } = await env.DB.prepare(
+    `SELECT c.debrief_json, c.call_type_id, ct.name AS call_type_name
+       FROM calls c LEFT JOIN call_types ct ON ct.id = c.call_type_id
+      WHERE ${where.join(" AND ")}`
+  ).bind(...binds).all();
+
   const dims = {}, hurt = [], lessons = [];
+  let scored = 0;
   for (const row of results) {
     if (!row.debrief_json) continue;
-    const d = JSON.parse(row.debrief_json);
+    let d; try { d = JSON.parse(row.debrief_json); } catch { continue; }
+    if ((d.scorecard || []).length) scored++;
     for (const [k, v] of d.scorecard || []) (dims[k] = dims[k] || []).push(v);
     if (d.hurtSale?.[0]) hurt.push(d.hurtSale[0]);
     if (d.lessons?.[0]) lessons.push(d.lessons[0]);
   }
-  const averages = Object.entries(dims).map(([k, vals]) => [k, +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)]);
-  return json({ calls: results.length, averages, hurt, lessons });
+  const averages = Object.entries(dims)
+    .map(([k, vals]) => [k, +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1), vals.length]);
+
+  // Which types actually have scored calls, so the UI can offer a real chooser.
+  const { results: typeCounts } = await env.DB.prepare(
+    `SELECT ct.id, ct.name, COUNT(c.id) AS n
+       FROM call_types ct LEFT JOIN calls c
+         ON c.call_type_id = ct.id AND c.processed_at IS NOT NULL AND c.archived_at IS NULL
+      WHERE ct.archived_at IS NULL GROUP BY ct.id, ct.name ORDER BY ct.sort_order`
+  ).all();
+
+  return json({ calls: results.length, scored, averages, hurt, lessons,
+                types: typeCounts, call_type_id: callTypeId ? +callTypeId : null });
 }
+
 
 // ---------- cron jobs ----------
 
