@@ -3,6 +3,12 @@
 
 const TONES = ["casual", "balanced", "formal"];
 
+// What a call scored on before call types existed. Used ONLY as the fallback for a call with no
+// type, so pre-existing calls keep behaving exactly as they did.
+const LEGACY_DIMENSIONS = ["rapport", "authority", "trust", "emotional connection",
+  "pain amplification", "vision building", "objection handling", "certainty transfer",
+  "close attempt", "follow-up positioning"];
+
 // Resolves an API key for an account+provider. Prefers the key pasted into the
 // Integrations UI (stored in D1); falls back to a Cloudflare secret so anything
 // previously set via `wrangler secret put` keeps working. Returns null if neither
@@ -35,10 +41,29 @@ const EXPECTED_DEBRIEF_CHARS = 14000;   // 9 sections + a GHL note that can reac
 const EXPECTED_MESSAGE_CHARS = 1500;    // one tone's SMS + email
 const DEBRIEF_SHARE = 70;               // debrief is the long pole: 0-70%, messages 70-100%
 
-export async function generateOutputs(env, { account, call, masterPrompt, onStep, onProgress }) {
+// `callType` (from the call's label) supplies the prompt, the scorecard dimensions and which
+// outputs to produce. NOTHING about the output shape is hardcoded here any more — that was the
+// TASK-021 blocker: 10 dimensions incl. "pain amplification" were baked in, so editing a prompt
+// could never change what got scored, and a team call was graded like a sales call.
+export async function generateOutputs(env, { account, call, masterPrompt, callType, onStep, onProgress }) {
   const provider = account.llm_provider || "anthropic";
   const key = await resolveKey(env, account.id, provider);
   if (!key) return mockOutputs(call);
+
+  // Resolve the type config, falling back to legacy sales behaviour if a call has no type.
+  //
+  // NOTE the two different empty cases, they are NOT the same thing:
+  //   • callType exists with dimensions_json '[]'  -> deliberately NO scorecard (internal call)
+  //   • callType missing entirely (legacy/unlabelled) -> the original 10 sales dimensions
+  // Defaulting the legacy case to [] silently stripped the scorecard off every unlabelled call.
+  const dims = (() => {
+    if (!callType) return LEGACY_DIMENSIONS;
+    try { const d = JSON.parse(callType.dimensions_json || "[]"); return Array.isArray(d) ? d : []; }
+    catch { return LEGACY_DIMENSIONS; }
+  })();
+  const wantMessages = callType ? !!callType.produces_messages : true;
+  const wantCrmNote  = callType ? !!callType.produces_crm_note  : true;
+  const prompt = callType?.prompt_body || masterPrompt || "";
 
   // Never let the bar go backwards: parallel tone jobs report independently.
   let lastPct = 0;
@@ -54,8 +79,25 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
   // The ONLY request that carries the transcript (TASK-042). Everything downstream is built
   // from what this pass extracts.
   const t0 = Date.now();
+  const schemaParts = [];
+  if (dims.length) {
+    schemaParts.push(`scorecard (array of [label, score1to10] pairs, one for EACH of exactly these dimensions in this order: ${dims.join(", ")})`);
+  }
+  schemaParts.push(
+    "didWell (string[])",
+    "hurtSale (string[]: what worked against the goal of this call)",
+    "objections (array of {said, meant, felt, should, follow, loop} — use [] if the call had none)",
+    "profile (string[])",
+    "buyingSignals (string[]: notable signals; use [] if not applicable)",
+    "lessons (string[])",
+    'outcome ("closed"|"followup")',
+    'followUp (object: {nextStep (string: the single concrete next action actually agreed), timing (string: when the next contact was agreed, or ""), commitments (string[]: anything the host promised to do or send), personalDetails (string[]: specifics worth referencing in a follow-up)})'
+  );
+  if (wantMessages) schemaParts.push('suggestedTone ("casual"|"balanced"|"formal")', "toneReason (string)");
+  if (wantCrmNote) schemaParts.push("ghlNote (string, under 10000 chars: name, personal details for rapport, profile, objections, next-call guidance)");
+
   const debriefRes = await completeWithRetry(env, provider, key, [
-    { role: "user", content: `${masterPrompt}\n\nReturn ONLY valid JSON with keys: scorecard (array of [label, score1to10] pairs for rapport, authority, trust, emotional connection, pain amplification, vision building, objection handling, certainty transfer, close attempt, follow-up positioning), didWell (string[]), hurtSale (string[]), objections (array of {said, meant, felt, should, follow, loop}), profile (string[]), buyingSignals (string[]), lessons (string[]), suggestedTone ("casual"|"balanced"|"formal"), toneReason (string), outcome ("closed"|"followup"), followUp (object: {nextStep (string: the single concrete next action that was actually agreed on the call), timing (string: when the next contact or call was agreed, or "" if nothing was agreed), commitments (string[]: anything Gabriel promised to do or send), personalDetails (string[]: specifics said on the call worth referencing in a follow-up — names, dates, goals, situations, their own phrasing)}), ghlNote (string, under 10000 chars: client name, personal details for rapport, buying profile, objections, next-call guidance).\n\nTranscript:\n${call.transcript}` }
+    { role: "user", content: `${prompt}\n\nReturn ONLY valid JSON with keys: ${schemaParts.join(", ")}.\n\nTranscript:\n${call.transcript}` }
   ], { effort: "medium", think: false,
        onRetry: r => onStep && onStep({ step: "retry", detail: `debrief attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
        onProgress: chars => report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call") });
@@ -70,10 +112,10 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
 
   // SMS + email in all three tones, generated in parallel so switching the tone slider is
   // instant. Each job is fed the debrief's distillation, NOT the transcript — see draftContext.
-  assertDraftable(parsed);
+  if (wantMessages) assertDraftable(parsed);
   const ctx = draftContext(call, parsed);
   const toneChars = new Map(TONES.map(t => [t, 0]));   // shared so the 3 jobs report one combined bar
-  const msgJobs = TONES.map(async tone => {
+  const msgJobs = !wantMessages ? [] : TONES.map(async tone => {
     const res = await completeWithRetry(env, provider, key, [
       { role: "user", content: `You are drafting a follow-up SMS and email from Gabriel, a high-ticket sales closer, to a client he just got off a call with.\n\nYou are NOT given the transcript. The summary below was extracted from it by a prior analysis pass — treat it as the complete and authoritative record of what happened. Do NOT invent facts, commitments, prices, or dates that are not in it.\n\nTone: ${tone}.\nWrite to the actual outcome (${parsed.outcome}) — do not imply a close that did not happen.\nReference the specific details below — their situation, their own phrasing, what was agreed — so this reads like Gabriel wrote it and not like a template.\n\nCall summary:\n${ctx}\n\nReturn ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
     ], { effort: "low", think: false,
@@ -89,13 +131,14 @@ export async function generateOutputs(env, { account, call, masterPrompt, onStep
   });
   const t1 = Date.now();
   const messages = await Promise.all(msgJobs);
-  if (onStep) await onStep({ step: "messages", duration_ms: Date.now() - t1 });
+  if (wantMessages && onStep) await onStep({ step: "messages", duration_ms: Date.now() - t1 });
+  if (!wantMessages) report(99, "Finishing up");
 
   return {
     model: provider,
     usage: total,
     debrief: parsed,
-    ghlNote: parsed.ghlNote,
+    ghlNote: wantCrmNote ? parsed.ghlNote : null,
     messages,
     suggestedTone: parsed.suggestedTone,
     toneReason: parsed.toneReason,

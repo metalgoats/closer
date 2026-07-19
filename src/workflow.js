@@ -49,6 +49,12 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
           "SELECT body FROM prompt_templates WHERE account_id = ? AND tone IS NULL AND active = 1"
         ).bind(account.id).first();
 
+        // The call's type supplies the prompt, scorecard dimensions and which outputs to make.
+        // Fall back to the account default so an unlabelled call still behaves as before.
+        const callType = await env.DB.prepare(
+          `SELECT * FROM call_types WHERE id = COALESCE(?, (SELECT id FROM call_types WHERE account_id = ? AND is_default = 1 LIMIT 1))`
+        ).bind(call.call_type_id, account.id).first();
+
         // Throttle progress writes: the stream reports on every text delta, far too often
         // for D1. 1.5s is frequent enough to look live and cheap enough to ignore.
         let lastWrite = 0;
@@ -65,7 +71,7 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
         };
 
         const out = await generateOutputs(env, {
-          account, call, masterPrompt: tpl?.body || "",
+          account, call, masterPrompt: tpl?.body || "", callType,
           onStep: ({ step: s, duration_ms, usage }) => logEvent(env, {
             kind: `generation.${s}_done`, call_id: callId, account_id: account.id,
             duration_ms, usage, detail: `${call.client_name} · ${s}`
@@ -86,9 +92,11 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
                     debrief_json = ?, suggested_tone = ?, tone_reason = ?,
                     selected_tone = COALESCE(selected_tone, ?), outcome = COALESCE(outcome, ?) WHERE id = ?`
           ).bind(JSON.stringify(gen.debrief), gen.suggestedTone, gen.toneReason, gen.suggestedTone, gen.outcome, callId),
-          env.DB.prepare("INSERT INTO outputs (call_id, kind, body, model) VALUES (?, 'ghl_note', ?, ?)")
-            .bind(callId, gen.ghlNote, gen.model)
         ];
+        if (gen.ghlNote) {
+          stmts.push(env.DB.prepare("INSERT INTO outputs (call_id, kind, body, model) VALUES (?, 'ghl_note', ?, ?)")
+            .bind(callId, gen.ghlNote, gen.model));
+        }
         for (const m of gen.messages) {
           stmts.push(env.DB.prepare("INSERT INTO outputs (call_id, kind, tone, body, model) VALUES (?, 'sms', ?, ?, ?)")
             .bind(callId, m.tone, m.sms, gen.model));

@@ -74,6 +74,7 @@ async function boot() {
   $("#userEmail").textContent = state.user.email;
   $("#userAvatar").textContent = state.user.email.slice(0, 2).toUpperCase();
   state.accounts = (await api.get("/accounts")).accounts;
+  try { state.callTypes = (await api.get("/call-types")).call_types; } catch { state.callTypes = []; }
   renderAccountNav();
   await refreshCalls();
   if (state.calls.length) openCall(state.calls[0].id);
@@ -190,6 +191,21 @@ document.querySelectorAll(".nav-item[data-view]").forEach(el => {
   });
 });
 
+// ---------- theme (TASK-066) ----------
+// Dark stays the default — Gabriel works in dark and finds it easier on the eyes. Light exists
+// because customers will expect it. Stored per browser.
+function applyTheme(mode) {
+  document.documentElement.setAttribute("data-theme", mode);
+  try { localStorage.setItem("closer-theme", mode); } catch {}
+  const btn = $("#themeToggle");
+  if (btn) btn.textContent = mode === "light" ? "Dark mode" : "Light mode";
+}
+(function initTheme() {
+  let saved = "dark";
+  try { saved = localStorage.getItem("closer-theme") || "dark"; } catch {}
+  applyTheme(saved);
+})();
+
 // ---------- settings menu ----------
 // Activity / Templates / Integrations are setup-and-forget, so they live behind the profile
 // rather than taking up permanent nav space in the nightly loop.
@@ -207,6 +223,10 @@ document.addEventListener("click", e => {
   if (!settingsMenu().contains(e.target)) closeSettings();
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeSettings(); });
+$("#themeToggle")?.addEventListener("click", e => {
+  e.stopPropagation();
+  applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light");
+});
 document.querySelectorAll(".settings-item[data-view]").forEach(el => {
   el.addEventListener("click", () => {
     closeSettings();
@@ -274,7 +294,7 @@ function renderCallList() {
     if (c.email_sent) flags.push("✓ email");
     return `<div class="call-item ${c.id === state.currentCallId ? "active" : ""}" data-id="${c.id}" tabindex="0" role="button">
       <div class="call-row1"><span class="call-name"><span class="dot-${st}" title="${STATE_TITLE[st]}"></span>${esc(c.client_name)}</span><span class="call-time">${fmtTime(c.occurred_at)}</span></div>
-      <div class="call-meta">${pill}<span class="offer-tag">${esc(offerLabel(c))}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}</div>
+      <div class="call-meta">${pill}<span class="offer-tag">${esc(offerLabel(c))}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}${c.duplicate_of ? `<span class="dup-tag" title="Possible duplicate of call #${c.duplicate_of}">dup?</span>` : ""}${c.call_type_name ? `<span class="offer-tag">${esc(c.call_type_name)}</span>` : ""}</div>
     </div>`;
   }).join("") || `<div style="padding:20px 16px; font-size:12px; color:var(--ink-400);">No calls match.</div>`;
   wrap.querySelectorAll(".call-item").forEach(el => {
@@ -327,6 +347,22 @@ async function openCall(id) {
   if (st === "processed") return renderProcessed(call, outputs);
   return renderUnprocessed(call);   // covers 'new' and 'failed'
 
+}
+
+// What the chosen type will actually produce — so the button doesn't promise a CRM note for an
+// internal call that isn't getting one.
+function typeOf(call) { return (state.callTypes || []).find(t => t.id === call.call_type_id); }
+function processBtnLabel(call) {
+  const t = typeOf(call);
+  if (!t) return "Generate Debrief, Text, Email & CRM Note";
+  const parts = ["Debrief"];
+  if (t.produces_messages) parts.push("Text", "Email");
+  if (t.produces_crm_note) parts.push("CRM Note");
+  return "Generate " + parts.join(", ").replace(/,([^,]*)$/, " &$1");
+}
+function ctPickHint(call) {
+  const t = typeOf(call);
+  return t ? `${t.description || ""} ${ctSummary(t)}`.trim() : "Pick a type — it decides which prompt runs.";
 }
 
 function toneOf(call) { return call.selected_tone || call.suggested_tone || "balanced"; }
@@ -629,12 +665,26 @@ function renderUnprocessed(call) {
     </div><div class="dh-actions">${callActions(call)}</div></div></div>
     <div class="compose-body">
       ${call.processing_error ? `<div class="fail-banner"><b>Last attempt failed.</b> ${esc(call.processing_error)}</div>` : ""}
+      ${call.duplicate_of ? `<div class="dup-banner">This looks like a <b>duplicate</b> of call #${call.duplicate_of} — the same meeting recorded by someone else. Check before spending a generation on it.</div>` : ""}
+      <label>What kind of call is this?</label>
+      <div class="ct-picker" id="ctPicker">${(state.callTypes || []).map(t =>
+        `<button class="ct-chip ${t.id === call.call_type_id ? "active" : ""}" data-pick="${t.id}" title="${esc(t.description || "")}">${esc(t.name)}</button>`).join("")}</div>
+      <div class="ct-hint" id="ctPickHint">${ctPickHint(call)}</div>
       <label>Transcript</label>
       <textarea readonly>${esc(call.transcript || "")}</textarea>
-      <button class="primary-btn" id="processBtn">✦ ${call.processing_error ? "Try again" : "Generate Debrief, Text, Email &amp; CRM Note"}</button>
+      <button class="primary-btn" id="processBtn">✦ ${call.processing_error ? "Try again" : processBtnLabel(call)}</button>
     </div>`;
   wireRename(call);
   wireCallActions(call);
+  document.querySelectorAll("[data-pick]").forEach(b => b.addEventListener("click", async () => {
+    const id = +b.dataset.pick;
+    await api.patch(`/calls/${call.id}`, { call_type_id: id });
+    call.call_type_id = id;
+    document.querySelectorAll("[data-pick]").forEach(x => x.classList.toggle("active", +x.dataset.pick === id));
+    $("#ctPickHint").textContent = ctPickHint(call);
+    const bt = $("#processBtn");
+    if (bt) bt.innerHTML = `✦ ${processBtnLabel(call)}`;
+  }));
   $("#processBtn").addEventListener("click", async () => {
     renderLoading(call.client_name);
     await api.post(`/calls/${call.id}/process`);
@@ -800,81 +850,102 @@ async function renderSuggestions() {
 }
 
 async function renderTemplates() {
-  const { templates } = await api.get("/templates");
-  viewShell("Prompt Templates", "The master prompt. Editing saves a new version — the old one is kept.",
-    templates.filter(t => !t.tone).map(t =>
-      `<h4>Master prompt · v${t.version}<span class="tpl-date"> · updated ${t.created_at ? fmtTime(t.created_at) : "—"}</span></h4>
-        <textarea data-tpl="${t.id}">${esc(t.body)}</textarea>
-        <button class="primary-btn" data-savetpl="${t.id}" style="margin:10px 0 20px;">Save as v${t.version + 1}</button>`
-    ).join(""));
-  document.querySelectorAll("[data-savetpl]").forEach(btn => btn.addEventListener("click", async () => {
-    const body = document.querySelector(`textarea[data-tpl="${btn.dataset.savetpl}"]`).value;
-    await api.put(`/templates/${btn.dataset.savetpl}`, { body });
-    toast("Template saved as new version");
-    renderTemplates();
-  }));
+  const [{ call_types }, { templates }] = await Promise.all([
+    api.get("/call-types"), api.get("/templates")
+  ]);
+  state.callTypes = call_types;
+
+  // Pattern borrowed from Grain's Templates settings: a list of types, each a row with name,
+  // description, what it produces, and an Edit action that opens the prompt editor.
+  const row = t => `<div class="ct-row" data-ct="${t.id}">
+      <div class="ct-main">
+        <div class="ct-name">${esc(t.name)}${t.is_default ? '<span class="ct-badge">Default</span>' : ""}</div>
+        <div class="ct-desc">${esc(t.description || "No description")}</div>
+      </div>
+      <div class="ct-meta">${ctSummary(t)}</div>
+      <button class="regen-btn" data-ctedit="${t.id}">Edit</button>
+    </div>`;
+
+  viewShell("Prompt Library",
+    "One prompt per kind of call. Label a call, and Generate uses that prompt — so a team call isn't graded like a sales call.",
+    `<div class="ct-list">${call_types.map(row).join("")}</div>
+     <button class="primary-btn" id="ctNew" style="margin:14px 0 22px;">+ New call type</button>
+     <div id="ctEditor"></div>
+     <details style="margin-top:18px;"><summary style="cursor:pointer; font-size:12px; color:var(--ink-400);">Legacy master prompt (v${templates.filter(t=>!t.tone)[0]?.version ?? "—"}) — kept for reference</summary>
+       <p style="font-size:12px; color:var(--ink-400);">The Sales call type was seeded from this. Editing call types above is what affects generation now.</p>
+     </details>`);
+
+  document.querySelectorAll("[data-ctedit]").forEach(b => b.addEventListener("click", () =>
+    openTypeEditor(call_types.find(t => t.id === +b.dataset.ctedit))));
+  $("#ctNew").addEventListener("click", () => openTypeEditor(null));
 }
 
-// How each provider is actually connected (verified against current provider docs, 2026-07).
-const INTEGRATION_META = {
-  ghl:       { label: "GoHighLevel",          method: "login",   how: "Connect with your GoHighLevel login — OAuth, no key to copy." },
-  fathom:    { label: "Fathom",               method: "selfkey", how: "Generate a key in Fathom → Settings → Integrations → API Access (2 clicks, no dev account)." },
-  anthropic: { label: "Claude (Anthropic)",   method: "key",     how: "API key required — there is no login option for programmatic API access." },
-  openai:    { label: "ChatGPT (OpenAI)",     method: "key",     how: "API key required — there is no login option for programmatic API access." }
-};
-const METHOD_BADGE = {
-  login:   `<span class="status-chip" style="background:var(--blue-100); color:var(--blue-600);">Login (OAuth)</span>`,
-  selfkey: `<span class="status-chip" style="background:var(--violet-100); color:var(--violet-600);">Self-serve key</span>`,
-  key:     `<span class="status-chip status-off">API key</span>`
-};
+function ctSummary(t) {
+  const dims = (() => { try { return JSON.parse(t.dimensions_json || "[]"); } catch { return []; } })();
+  const bits = [];
+  bits.push(dims.length ? `${dims.length}-point scorecard` : "No scorecard");
+  if (t.produces_messages) bits.push("text + email");
+  if (t.produces_crm_note) bits.push("CRM note");
+  return bits.join(" · ");
+}
 
-// Activity log — what ran, what broke, what it cost, and what actually gets used.
-async function renderActivity() {
-  const { events, totals } = await api.get("/events?limit=200");
-  const money = t => t ? `$${(t / 1e6 * 2).toFixed(2)}` : "$0.00";  // Sonnet 5 intro input rate, rough
+// Editor modelled on Sana AI's template modal: identity on the left, the prompt itself given
+// the most room, since that's the thing you actually iterate on.
+function openTypeEditor(t) {
+  const dims = (() => { try { return JSON.parse(t?.dimensions_json || "[]"); } catch { return []; } })();
+  $("#ctEditor").innerHTML = `
+    <div class="ct-editor">
+      <div class="ct-editor-head">${t ? "Edit" : "New"} call type</div>
+      <div class="ct-editor-grid">
+        <div class="ct-editor-side">
+          <label>Name</label>
+          <input type="text" id="ctName" value="${esc(t?.name || "")}" placeholder="e.g. Discovery call">
+          <label>Description</label>
+          <input type="text" id="ctDesc" value="${esc(t?.description || "")}" placeholder="When to use this">
+          <label>Scorecard dimensions</label>
+          <textarea id="ctDims" rows="6" placeholder="One per line. Leave empty for no scorecard.">${esc(dims.join("\n"))}</textarea>
+          <div class="ct-hint">Leave empty and this type gets no scorecard — right for internal and client calls.</div>
+          <label class="ct-check"><input type="checkbox" id="ctMsgs" ${!t || t.produces_messages ? "checked" : ""}> Generate follow-up text + email</label>
+          <label class="ct-check"><input type="checkbox" id="ctCrm" ${!t || t.produces_crm_note ? "checked" : ""}> Generate CRM note</label>
+        </div>
+        <div class="ct-editor-main">
+          <label>Prompt</label>
+          <textarea id="ctPrompt" placeholder="Write the instructions for this kind of call…">${esc(t?.prompt_body || "")}</textarea>
+        </div>
+      </div>
+      <div class="ct-editor-foot">
+        ${t && !t.is_default ? `<button class="regen-btn danger-btn" id="ctDelete">Remove type</button>` : ""}
+        <span style="flex:1"></span>
+        <button class="regen-btn" id="ctCancel">Cancel</button>
+        <button class="primary-btn" id="ctSave">${t ? "Save changes" : "Create type"}</button>
+      </div>
+    </div>`;
+  $("#ctEditor").scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-  const rows = events.length ? events.map(e => {
-    const cls = e.level === "error" ? "ev-error" : e.level === "warn" ? "ev-warn" : "ev-info";
-    const bits = [];
-    if (e.duration_ms) bits.push(`${(e.duration_ms / 1000).toFixed(1)}s`);
-    if (e.input_tokens) bits.push(`${e.input_tokens.toLocaleString()} in / ${(e.output_tokens || 0).toLocaleString()} out`);
-    if (e.cache_read_tokens) bits.push(`${e.cache_read_tokens.toLocaleString()} cached`);
-    return `<tr class="${cls}">
-      <td class="ev-at">${esc(e.at)}</td>
-      <td><span class="ev-kind">${esc(e.kind)}</span></td>
-      <td>${esc(e.detail || "")}</td>
-      <td class="ev-meta">${bits.join(" · ")}</td>
-    </tr>`;
-  }).join("") : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing logged yet.</td></tr>`;
-
-  viewShell("Activity", "Everything the app has done — failures, completions, token spend, and which outputs actually get used",
-    `<div class="ev-summary">
-       <div><b>${totals.runs || 0}</b><span>generations</span></div>
-       <div class="${totals.failures ? "bad" : ""}"><b>${totals.failures || 0}</b><span>failures</span></div>
-       <div><b>${(totals.input_tokens || 0).toLocaleString()}</b><span>input tokens</span></div>
-       <div><b>${(totals.output_tokens || 0).toLocaleString()}</b><span>output tokens</span></div>
-       <div><b>${totals.avg_ms ? (totals.avg_ms / 1000).toFixed(1) + "s" : "—"}</b><span>avg run</span></div>
-       <div><b>~${money(totals.input_tokens)}</b><span>input cost (est.)</span></div>
-     </div>
-     <div class="ev-filters">
-       <button class="chip" data-evfilter="">All</button>
-       <button class="chip" data-evfilter="level=error">Failures only</button>
-       <button class="chip" data-evfilter="kind=generation">Generation</button>
-       <button class="chip" data-evfilter="kind=fathom">Fathom</button>
-       <button class="chip" data-evfilter="kind=output">Copies &amp; sends</button>
-     </div>
-     <div style="overflow-x:auto;"><table class="ev-table"><tbody>${rows}</tbody></table></div>`);
-
-  document.querySelectorAll("[data-evfilter]").forEach(b => b.addEventListener("click", async () => {
-    const q = b.dataset.evfilter;
-    const { events } = await api.get(`/events?limit=200${q ? "&" + q : ""}`);
-    const tb = document.querySelector(".ev-table tbody");
-    tb.innerHTML = events.length ? events.map(e => `<tr class="${e.level === "error" ? "ev-error" : e.level === "warn" ? "ev-warn" : "ev-info"}">
-        <td class="ev-at">${esc(e.at)}</td><td><span class="ev-kind">${esc(e.kind)}</span></td>
-        <td>${esc(e.detail || "")}</td>
-        <td class="ev-meta">${e.duration_ms ? (e.duration_ms/1000).toFixed(1)+"s " : ""}${e.input_tokens ? e.input_tokens.toLocaleString()+" in" : ""}</td></tr>`).join("")
-      : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing matches.</td></tr>`;
-  }));
+  $("#ctCancel").addEventListener("click", () => { $("#ctEditor").innerHTML = ""; });
+  const del = $("#ctDelete");
+  if (del) del.addEventListener("click", async () => {
+    if (!confirm(`Remove "${t.name}"? Calls already labelled with it keep their outputs.`)) return;
+    try { await api.req("DELETE", `/call-types/${t.id}`); toast("Call type removed"); renderTemplates(); }
+    catch (e) { toast(e.message); }
+  });
+  $("#ctSave").addEventListener("click", async () => {
+    const body = {
+      name: $("#ctName").value.trim(),
+      description: $("#ctDesc").value.trim(),
+      prompt_body: $("#ctPrompt").value,
+      dimensions: $("#ctDims").value.split("\n").map(x => x.trim()).filter(Boolean),
+      produces_messages: $("#ctMsgs").checked,
+      produces_crm_note: $("#ctCrm").checked
+    };
+    if (!body.name) return toast("Give it a name");
+    try {
+      if (t) await api.put(`/call-types/${t.id}`, body);
+      else await api.post("/call-types", body);
+      toast(t ? "Call type saved" : "Call type created");
+      renderTemplates();
+    } catch (e) { toast(e.message); }
+  });
 }
 
 async function renderIntegrations() {

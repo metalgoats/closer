@@ -424,3 +424,65 @@ button{ font-family:inherit; }
 .update-banner button{ background:rgba(255,255,255,.18); color:#fff; border:1px solid rgba(255,255,255,.4);
   border-radius:7px; padding:5px 12px; font-size:12px; font-weight:700; cursor:pointer; }
 .update-banner button:hover{ background:rgba(255,255,255,.3); }
+
+/* ============================================================================
+   Light theme (TASK-066). Dark is the default; this re-maps the same tokens so
+   every component follows without per-component work.
+   ============================================================================ */
+:root[data-theme="light"]{
+  --ink-950:#0F1422; --ink-800:#2C3450; --ink-600:#5A6488; --ink-400:#7E88A8;
+  --paper-0:#FFFFFF; --paper-50:#F7F8FC; --paper-100:#F0F2F9; --paper-200:#E4E8F3;
+  --line:#DCE1EE; --line-strong:#C3CADD;
+  --blue-500:#3B62E8; --blue-600:#2A4AC4; --blue-100:#E5EBFF;
+  --violet-500:#8B45E0; --violet-600:#6F2FBF; --violet-100:#F1E7FF;
+  --pink-500:#D6246F; --pink-600:#B01356; --pink-100:#FFE6F0;
+  --shadow: 0 1px 2px rgba(16,22,40,.08), 0 12px 32px rgba(16,22,40,.10);
+}
+:root[data-theme="light"] body{ background:var(--paper-50); }
+:root[data-theme="light"] .new-call-btn{ color:#fff; }
+:root[data-theme="light"] .avatar{ background:var(--ink-800); color:#fff; }
+:root[data-theme="light"] .update-banner{ color:#fff; }
+
+/* ---------- Prompt Library (call types) ---------- */
+.ct-list{ display:flex; flex-direction:column; gap:8px; }
+.ct-row{ display:flex; align-items:center; gap:14px; padding:13px 15px; border:1px solid var(--line);
+  border-radius:10px; background:var(--paper-50); }
+.ct-row:hover{ border-color:var(--line-strong); }
+.ct-main{ flex:1; min-width:0; }
+.ct-name{ font-size:13.5px; font-weight:700; display:flex; align-items:center; gap:8px; }
+.ct-badge{ font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  background:var(--blue-100); color:var(--blue-600); padding:2px 6px; border-radius:100px; }
+.ct-desc{ font-size:12px; color:var(--ink-400); margin-top:3px; }
+.ct-meta{ font-size:11px; color:var(--ink-600); white-space:nowrap; }
+
+.ct-editor{ border:1px solid var(--blue-500); border-radius:12px; background:var(--paper-50); padding:16px; margin-top:6px; }
+.ct-editor-head{ font-size:14px; font-weight:700; margin-bottom:12px; }
+.ct-editor-grid{ display:grid; grid-template-columns:minmax(220px,1fr) minmax(0,1.6fr); gap:18px; }
+.ct-editor-side label, .ct-editor-main label{ display:block; font-size:11px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.05em; color:var(--ink-400); margin:10px 0 5px; }
+.ct-editor-side input, .ct-editor-side textarea, .ct-editor-main textarea{
+  width:100%; background:var(--paper-0); border:1px solid var(--line); border-radius:8px;
+  padding:9px 11px; font-size:12.5px; font-family:inherit; color:var(--ink-950); }
+.ct-editor-main textarea{ min-height:320px; line-height:1.55; resize:vertical; }
+.ct-editor-side textarea{ resize:vertical; font-family:var(--font-mono); font-size:11.5px; }
+.ct-editor-side input:focus, .ct-editor-side textarea:focus, .ct-editor-main textarea:focus{
+  outline:none; border-color:var(--blue-500); }
+.ct-hint{ font-size:11px; color:var(--ink-400); margin-top:6px; line-height:1.45; }
+.ct-check{ display:flex !important; align-items:center; gap:8px; text-transform:none !important;
+  letter-spacing:0 !important; font-size:12px !important; color:var(--ink-800) !important; margin-top:12px !important; }
+.ct-editor-foot{ display:flex; align-items:center; gap:8px; margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+@media (max-width:820px){ .ct-editor-grid{ grid-template-columns:1fr; } .ct-editor-main textarea{ min-height:220px; } }
+
+/* ---------- call-type picker on a call ---------- */
+.ct-picker{ display:flex; flex-wrap:wrap; gap:7px; }
+.ct-chip{ font-size:12px; font-weight:600; color:var(--ink-800); background:var(--paper-100);
+  border:1px solid var(--line); border-radius:100px; padding:7px 13px; cursor:pointer; }
+.ct-chip:hover{ background:var(--paper-200); }
+.ct-chip.active{ background:linear-gradient(90deg, var(--blue-500), var(--violet-500)); color:#fff; border-color:transparent; }
+
+/* ---------- duplicate flags (TASK-064) ---------- */
+.dup-tag{ font-size:9.5px; font-weight:700; text-transform:uppercase; background:var(--violet-100);
+  color:var(--violet-600); padding:2px 6px; border-radius:100px; }
+.dup-banner{ border:1px solid var(--violet-500); border-left:3px solid var(--violet-500);
+  background:var(--violet-100); border-radius:8px; padding:10px 13px; font-size:12.5px;
+  line-height:1.5; color:var(--ink-800); margin-bottom:4px; }

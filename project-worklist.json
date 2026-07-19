@@ -2045,7 +2045,7 @@
       "title": "PARKED ON A BRANCH \u2014 Fathom API returns the WHOLE ORG's recordings; scope polling with recorded_by[]",
       "priority": "high",
       "estimated_complexity": "medium",
-      "status": "incomplete",
+      "status": "completed",
       "dependencies": [],
       "description": "2026-07-17/18: Gabriel reported 'our ai is picking up on other peoples calls'. Dusty Gulleson met with a DIFFERENT rep at the company and her call landed in our inbox; we also got multiple copies of one group call. ROOT CAUSE (confirmed in Fathom's own API docs): GET /external/v1/meetings 'returns team and workspace recordings (not solely the API key owner's)'. Gabriel's LOGIN is not shared, but the API KEY's DATA SCOPE is the whole org. We called the endpoint unfiltered, so we ingested colleagues' calls. The duplicate group calls are the same cause: one meeting recorded by three attendees = three distinct recording_ids, which our external_id dedupe cannot merge. FIX: Fathom's documented recorded_by[]=<email> filter, stored per token as integrations.owner_email, with the poller FAILING CLOSED (a token with no owner email is skipped) because the failure mode is other people's private transcripts entering our database.",
       "acceptance_criteria": [
@@ -2064,11 +2064,12 @@
         "closer-app/src/index.js",
         "closer-app/public/app.js"
       ],
-      "notes": "*** PARKED, NOT ABANDONED \u2014 Ivan 2026-07-18 asked to revert main and keep this ready to redeploy, possibly to share with the rest of the org. *** HOW TO PUT IT BACK: the complete, working, deployed-and-verified fix is on branch `fathom-org-scope-fix` (commit 13d7d86) at github.com/metalgoats/closer. To re-apply: `git cherry-pick 13d7d86` onto main (or merge the branch) and push \u2014 CI deploys it. Migration 0011 (integrations.owner_email) was ALREADY APPLIED to production and the file was deliberately LEFT ON MAIN during the revert, so the column exists and no migration is needed on re-apply; the revert only removed the code that uses it. After re-applying, set each Fathom token's owner email in Integrations or polling stays skipped (fail-closed by design). *** CONSEQUENCE OF THE REVERT: main once again polls Fathom UNSCOPED, so colleagues' calls WILL resume importing (~every 5 min). Auto-processing remains OFF (TASK-058), so nothing is sent to the LLM without a manual click \u2014 the exposure is ingestion/storage, not spend. *** STILL OPEN: five colleagues' calls remain in the DB (Dusty Gulleson, Janet Washburn, Fernando Schneider, Kat Marie Alvarez, Stephen Davis); Janet's and Fernando's transcripts were already sent to Anthropic via manual Generate clicks. Ivan has not yet decided whether to delete them. The hypnosis key is almost certainly org-scoped too (same API, same default) and would carry more sensitive client conversations \u2014 unverified.",
+      "notes": "*** PARKED, NOT ABANDONED \u2014 Ivan 2026-07-18 asked to revert main and keep this ready to redeploy, possibly to share with the rest of the org. *** HOW TO PUT IT BACK: the complete, working, deployed-and-verified fix is on branch `fathom-org-scope-fix` (commit 13d7d86) at github.com/metalgoats/closer. To re-apply: `git cherry-pick 13d7d86` onto main (or merge the branch) and push \u2014 CI deploys it. Migration 0011 (integrations.owner_email) was ALREADY APPLIED to production and the file was deliberately LEFT ON MAIN during the revert, so the column exists and no migration is needed on re-apply; the revert only removed the code that uses it. After re-applying, set each Fathom token's owner email in Integrations or polling stays skipped (fail-closed by design). *** CONSEQUENCE OF THE REVERT: main once again polls Fathom UNSCOPED, so colleagues' calls WILL resume importing (~every 5 min). Auto-processing remains OFF (TASK-058), so nothing is sent to the LLM without a manual click \u2014 the exposure is ingestion/storage, not spend. *** STILL OPEN: five colleagues' calls remain in the DB (Dusty Gulleson, Janet Washburn, Fernando Schneider, Kat Marie Alvarez, Stephen Davis); Janet's and Fernando's transcripts were already sent to Anthropic via manual Generate clicks. Ivan has not yet decided whether to delete them. The hypnosis key is almost certainly org-scoped too (same API, same default) and would carry more sensitive client conversations \u2014 unverified. || 2026-07-19 RE-APPLIED to main via cherry-pick 13d7d86 at Ivan's request and owner emails set + verified by Ivan. No longer parked.",
       "test_results": [
         "2026-07-18 VERIFIED BEFORE REVERT: deployed 13d7d86; cron fired 15:35:56 and logged fathom.poll_skipped for BOTH tokens ('Hypnosis' and 'OSA') \u2014 zero new calls imported after the fix. Fail-closed works.",
         "2026-07-18 root cause confirmed against Fathom's published API reference (developers.fathom.ai): meetings endpoint returns team/workspace recordings; supported filters include recorded_by[], teams[], calendar_invitees_domains_type, meeting_type.",
-        "2026-07-18 PARKED: preserved on branch fathom-org-scope-fix; main reverted at Ivan's request."
+        "2026-07-18 PARKED: preserved on branch fathom-org-scope-fix; main reverted at Ivan's request.",
+        "2026-07-19 Ivan CONFIRMED both owner emails against Fathom's own filtering page: gabriel@onscreenauthority.com (OSA, token 1) and gabriel@domthehypnotist.com (Hypnosis, token 9). Set in production; the cron stopped emitting poll_skipped, so scoped polling is live."
       ],
       "test_results_note": ""
     },
@@ -2077,7 +2078,7 @@
       "title": "Duplicate group-call detection \u2014 one meeting recorded by N attendees arrives N times",
       "priority": "high",
       "estimated_complexity": "medium",
-      "status": "incomplete",
+      "status": "in_progress",
       "dependencies": [
         "TASK-063"
       ],
@@ -2104,7 +2105,7 @@
       "title": "Call-type labels that select the prompt (prompt library) \u2014 THE big feature from the call",
       "priority": "high",
       "estimated_complexity": "high",
-      "status": "incomplete",
+      "status": "in_progress",
       "dependencies": [],
       "description": "Gabriel: 'maybe there's a way to label it, and then that label creates \u2014 once I hit generate \u2014 because of the label that was put before, it's going to change the actual prompt. If it's labeled as a sales call it uses the sales call prompt; because it's an operations call it's labeled that way; because it's a vendor call...' Ivan: 'you have a prompt library ready to go.' Gabriel on why it matters: 'what I don't need is like, how is the emotional connection on this call? That's not important.' So: label a call on arrival (sales / client / internal / vendor / coaching), and the Generate button runs the prompt bound to that label, producing the right OUTPUTS for that type (not always debrief+SMS+email+CRM).",
       "acceptance_criteria": [
@@ -2133,7 +2134,7 @@
       "title": "Light mode / dark mode",
       "priority": "medium",
       "estimated_complexity": "medium",
-      "status": "incomplete",
+      "status": "in_progress",
       "dependencies": [],
       "description": "Ivan proposed, Gabriel agreed: 'there should be a light mode and a dark mode at minimum.' Gabriel prefers dark ('easier on your eyes') but recognises customers may want light. Keep dark as the default.",
       "acceptance_criteria": [
@@ -2246,5 +2247,8 @@
       "test_results": []
     }
   ],
-  "progress_percentage": 66
+  "progress_percentage": 66,
+  "project_principles": [
+    "DECISION AUTHORITY (Ivan, 2026-07-19): Ivan is the ultimate authority on what gets built and deployed. Gabriel's input from calls is SUGGESTION and raw material, not specification \u2014 capture it on the potential-features list, but do not treat it as approved work. Ivan's words: 'I trust my instincts and design skills more than his... take it with a grain of salt, though I do expect that he will have great ideas.' PRACTICALLY: never move a Gabriel idea into a build round without Ivan asking for it; when Gabriel's suggestion conflicts with Ivan's design judgement, Ivan wins; surface Gabriel's ideas as options with tradeoffs rather than as requirements."
+  ]
 }

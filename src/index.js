@@ -169,6 +169,46 @@ async function route(request, env, url, ctx) {
     return json({ ok: true });
   }
 
+  // ---- call types (prompt library) ----
+  if (path === "/api/call-types" && method === "GET") {
+    const { results } = await env.DB.prepare(
+      "SELECT * FROM call_types WHERE archived_at IS NULL ORDER BY sort_order, id"
+    ).all();
+    return json({ call_types: results });
+  }
+  if (path === "/api/call-types" && method === "POST") {
+    const b = await request.json();
+    if (!b.name?.trim()) return json({ error: "name required" }, 400);
+    const r = await env.DB.prepare(
+      `INSERT INTO call_types (account_id, name, description, prompt_body, dimensions_json,
+                               produces_messages, produces_crm_note, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order),0)+1 FROM call_types)) RETURNING id`
+    ).bind(b.account_id || 1, b.name.trim(), b.description || null, b.prompt_body || "",
+           JSON.stringify(b.dimensions || []), b.produces_messages ? 1 : 0, b.produces_crm_note ? 1 : 0).first();
+    await logEvent(env, { kind: "call_type.created", detail: b.name.trim() });
+    return json({ ok: true, id: r.id });
+  }
+  const ctMatch = path.match(/^\/api\/call-types\/(\d+)$/);
+  if (ctMatch && method === "PUT") {
+    const b = await request.json();
+    const sets = [], vals = [];
+    for (const k of ["name", "description", "prompt_body"]) if (k in b) { sets.push(`${k} = ?`); vals.push(b[k]); }
+    if ("dimensions" in b) { sets.push("dimensions_json = ?"); vals.push(JSON.stringify(b.dimensions || [])); }
+    for (const k of ["produces_messages", "produces_crm_note"]) if (k in b) { sets.push(`${k} = ?`); vals.push(b[k] ? 1 : 0); }
+    if (!sets.length) return json({ error: "nothing to update" }, 400);
+    sets.push("updated_at = datetime('now')");
+    await env.DB.prepare(`UPDATE call_types SET ${sets.join(", ")} WHERE id = ?`).bind(...vals, +ctMatch[1]).run();
+    await logEvent(env, { kind: "call_type.updated", detail: `#${ctMatch[1]}${b.name ? " " + b.name : ""}` });
+    return json({ ok: true });
+  }
+  if (ctMatch && method === "DELETE") {
+    // Archive, never hard-delete: existing calls reference this type.
+    const t = await env.DB.prepare("SELECT is_default FROM call_types WHERE id = ?").bind(+ctMatch[1]).first();
+    if (t?.is_default) return json({ error: "Can't remove the default call type — make another one the default first." }, 400);
+    await env.DB.prepare("UPDATE call_types SET archived_at = datetime('now') WHERE id = ?").bind(+ctMatch[1]).run();
+    return json({ ok: true });
+  }
+
   // ---- templates ----
   if (path === "/api/templates" && method === "GET") {
     const { results } = await env.DB.prepare(
@@ -234,8 +274,9 @@ const CALL_LIST_SQL = `
          c.callback_note, c.processed_at, c.processing_status, c.processing_error, c.archived_at, a.name AS account_name,
          (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='sms' AND o.sent_at IS NOT NULL) AS sms_sent,
          (SELECT COUNT(*) FROM outputs o WHERE o.call_id = c.id AND o.kind='email' AND o.sent_at IS NOT NULL) AS email_sent,
-         si.label AS source_label
+         si.label AS source_label, c.call_type_id, ct.name AS call_type_name, c.duplicate_of
   FROM calls c JOIN accounts a ON a.id = c.account_id
+  LEFT JOIN call_types ct ON ct.id = c.call_type_id
   LEFT JOIN integrations si ON si.id = c.source_integration_id`;
 
 // ---------- auth handlers ----------
@@ -278,7 +319,7 @@ async function logout(request, env) {
 
 async function getCall(env, id) {
   const call = await env.DB.prepare(
-    "SELECT c.*, a.name AS account_name, a.llm_provider, si.label AS source_label FROM calls c JOIN accounts a ON a.id = c.account_id LEFT JOIN integrations si ON si.id = c.source_integration_id WHERE c.id = ?"
+    "SELECT c.*, a.name AS account_name, a.llm_provider, si.label AS source_label, ct.name AS call_type_name FROM calls c JOIN accounts a ON a.id = c.account_id LEFT JOIN integrations si ON si.id = c.source_integration_id LEFT JOIN call_types ct ON ct.id = c.call_type_id WHERE c.id = ?"
   ).bind(id).first();
   if (!call) return json({ error: "not found" }, 404);
   const { results: outputs } = await env.DB.prepare("SELECT * FROM outputs WHERE call_id = ?").bind(id).all();
@@ -287,7 +328,7 @@ async function getCall(env, id) {
 
 async function patchCall(request, env, id) {
   const body = await request.json();
-  const allowed = ["selected_tone", "outcome", "callback_note", "client_name"];
+  const allowed = ["selected_tone", "outcome", "callback_note", "client_name", "call_type_id"];
   const sets = [], vals = [];
   for (const k of allowed) if (k in body) { sets.push(`${k} = ?`); vals.push(body[k]); }
   if (!sets.length) return json({ error: "nothing to update" }, 400);
@@ -499,10 +540,25 @@ async function importMeeting(env, integ, m) {
   const durationMin = start && end ? Math.max(1, Math.round((new Date(end) - new Date(start)) / 60000)) : null;
   const name = deriveClientName(m);
 
+  // Possible duplicate? (TASK-064) One group call recorded by several attendees arrives as
+  // several recordings with DIFFERENT recording_ids, so external_id dedupe cannot see it.
+  // Flag, never auto-discard — Gabriel: "maybe it tells you, hey, this is a duplicate".
+  // recorded_by[] scoping (TASK-063) removes most of these; this catches the residue.
+  const dup = start ? await env.DB.prepare(
+    `SELECT id FROM calls
+      WHERE account_id = ? AND archived_at IS NULL
+        AND ABS((julianday(occurred_at) - julianday(?)) * 1440) <= 20
+      ORDER BY ABS((julianday(occurred_at) - julianday(?)) * 1440) LIMIT 1`
+  ).bind(accountId, start, start).first() : null;
+
   const ins = await env.DB.prepare(
-    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id)
-     VALUES (?, ?, ?, ?, ?, 'fathom', ?, ?) RETURNING id`
-  ).bind(accountId, name, start, durationMin, transcript, externalId, integ.id).first();
+    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id, duplicate_of)
+     VALUES (?, ?, ?, ?, ?, 'fathom', ?, ?, ?) RETURNING id`
+  ).bind(accountId, name, start, durationMin, transcript, externalId, integ.id, dup?.id ?? null).first();
+  if (dup) {
+    await logEvent(env, { level: "warn", kind: "call.possible_duplicate", call_id: ins.id, account_id: accountId,
+      detail: `${name} overlaps call #${dup.id} (within 20 min) — flagged, not discarded` });
+  }
 
   await logEvent(env, { kind: "fathom.imported", call_id: ins.id, account_id: accountId,
     detail: `${name} · ${transcript.length.toLocaleString()} chars · ${durationMin ?? "?"} min`,
