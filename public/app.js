@@ -713,6 +713,7 @@ function wireDetail(call, outs) {
 
   wireRename(call);
   wireCallActions(call);
+  wireTypePicker(call);   // processed calls can be re-typed too, not just new ones
 
   // regenerate
   $("#regenBtn").addEventListener("click", async () => {
