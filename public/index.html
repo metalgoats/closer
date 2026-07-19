@@ -53,7 +53,10 @@
       </div>
       <div class="nav-group">
         <div class="nav-label">Calls</div>
-        <div class="nav-item active" data-filter="all">All Calls<span class="count" id="countAll"></span></div>
+        <!-- .new-badge hides itself via :empty in CSS rather than a toggled class. The mobile
+             menu was a trap for weeks because a class-toggle and an !important rule disagreed;
+             an empty element that cannot render is one less thing to get wrong. -->
+        <div class="nav-item active" data-filter="all">All Calls<span class="new-badge" id="newBadge"></span><span class="count" id="countAll"></span></div>
         <div class="nav-item" data-filter="followup">Needs Follow-up<span class="count" id="countFollowup"></span></div>
         <div class="nav-item" data-filter="closed">Closed<span class="count" id="countClosed"></span></div>
         <div class="nav-item" data-filter="archived">Archived<span class="count" id="countArchived"></span></div>

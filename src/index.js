@@ -139,7 +139,22 @@ async function route(request, env, url, ctx) {
       `${CALL_LIST_SQL} WHERE ${where.join(" AND ")} ORDER BY c.occurred_at DESC LIMIT ? OFFSET ?`
     ).bind(...binds, limit + 1, offset).all();
     const hasMore = results.length > limit;
-    return json({ calls: hasMore ? results.slice(0, limit) : results, hasMore, offset, limit });
+    // Sidebar counts (TASK-079). Deliberately computed server-side and independently of q /
+    // offset / archived: counting the loaded page would undercount as soon as there are more
+    // than `limit` calls, would report 0 archived unless the archived filter happened to be
+    // open, and would swing wildly while you type in the search box. Only the account filter
+    // applies. One aggregate pass, not four queries.
+    const cWhere = accountId ? "WHERE account_id = ?" : "";
+    const cBinds = accountId ? [accountId] : [];
+    const counts = await env.DB.prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN archived_at IS NULL THEN 1 ELSE 0 END),0) AS all_n,
+         COALESCE(SUM(CASE WHEN archived_at IS NULL AND outcome = 'followup' THEN 1 ELSE 0 END),0) AS followup_n,
+         COALESCE(SUM(CASE WHEN archived_at IS NULL AND outcome = 'closed'   THEN 1 ELSE 0 END),0) AS closed_n,
+         COALESCE(SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END),0) AS archived_n
+       FROM calls ${cWhere}`
+    ).bind(...cBinds).first();
+    return json({ calls: hasMore ? results.slice(0, limit) : results, hasMore, offset, limit, counts });
   }
 
   const callMatch = path.match(/^\/api\/calls\/(\d+)$/);

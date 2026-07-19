@@ -83,6 +83,14 @@ body.sb-collapsed .sidebar{ opacity:0; margin-left:0; padding-left:0; padding-ri
 .nav-label{ font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-400); padding:0 8px 6px; }
 .nav-item{ display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:6px; font-size:12.5px; color:var(--ink-800); cursor:pointer; user-select:none; }
 .nav-item .count{ margin-left:auto; font-family:var(--font-mono); font-variant-numeric:tabular-nums; font-size:11px; color:var(--ink-400); }
+/* "Arrived since you last looked". Violet because blue means active/selected and pink means
+   primary action — this needed a colour that wasn't already saying something else. Hides
+   itself when empty, so there is no visibility class that can drift out of sync with content. */
+.nav-item .new-badge{ margin-left:auto; background:var(--violet-500); color:#fff; font-size:10px;
+  font-weight:700; font-variant-numeric:tabular-nums; line-height:1; padding:3px 6px;
+  border-radius:999px; }
+.nav-item .new-badge:empty{ display:none; }
+.nav-item .new-badge + .count{ margin-left:6px; }
 .nav-item:hover{ background:var(--paper-200); }
 .nav-item.active{ background:var(--blue-100); color:var(--blue-600); font-weight:600; }
 .nav-item.active .count{ color:var(--blue-600); }
@@ -422,8 +430,13 @@ body.sb-collapsed .sidebar{ opacity:0; margin-left:0; padding-left:0; padding-ri
      left the slide-over stuck off-screen. Same-type interpolation is reliable. */
   .sidebar.open{ transform:translateX(0); box-shadow:0 0 40px rgba(0,0,0,.6); }
   @media (prefers-reduced-motion: reduce){ .sidebar{ transition:none; } }
-  .sidebar .brand-name, .sidebar .nav-label, .sidebar .nav-item,
+  .sidebar .brand-name, .sidebar .nav-label,
   .sidebar-foot span, .sidebar-foot .linklike{ display:revert; }
+  /* nav-item is restored to flex, NOT `revert`. `revert` undoes the 900px icon-rail
+     display:none, but it also throws away the base rule's display:flex — which kills the
+     count's margin-left:auto and leaves "Needs Follow-up6" run together. Harmless while the
+     counts were never populated; visible the moment they were. */
+  .sidebar .nav-item{ display:flex; }
   /* cursor:pointer is load-bearing, not decoration. iOS Safari does not reliably dispatch
      `click` on a non-interactive element without it, so tap-to-dismiss silently did nothing
      on an iPhone and the slide-over could only be escaped by reloading the page. */
@@ -566,6 +579,13 @@ body.sb-collapsed .sidebar{ opacity:0; margin-left:0; padding-left:0; padding-ri
 .type-tag{ margin-left:auto; font-size:10.5px; font-weight:800; letter-spacing:.06em;
   color:var(--ink-800); white-space:nowrap; }
 .call-item.active .type-tag{ color:var(--blue-600); }
+
+/* Unread marker. A ::before bar rather than .picked's inset box-shadow, so a call can be both
+   new and selected without the two fighting over the same left edge. */
+.call-item.is-new::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:var(--violet-500); }
+.call-item.is-new .call-name{ color:var(--violet-500); }
+.call-item.is-new.active .call-name{ color:var(--blue-600); }   /* open beats unread */
 
 /* ---------- multi-select + bulk bar ---------- */
 .call-item{ position:relative; }

@@ -2468,6 +2468,30 @@
         "Verified in a real browser at 1280x800 and 375x812, not only by unit test"
       ],
       "notes": "LESSON: the first version of nav.test.mjs asserted classList state and passed with the bug fully present \u2014 every class was correct, only the computed style was wrong. Class-level assertions cannot see `display:none !important`. The bug was found by serving public/ with a stubbed API (scratchpad/uiserver.mjs) and reading getComputedStyle in a real browser. For any future UI state bug, render it; do not reason about it from the source. The suite now asserts the markup directly and was verified to fail when the bug is reintroduced."
+    },
+    {
+      "id": "TASK-079",
+      "title": "Sidebar counts and new-call marks (chosen over a separate dashboard screen)",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-052",
+        "TASK-077"
+      ],
+      "description": "Ivan asked whether a dashboard screen would serve the nightly loop better. Recommended against it and he agreed: All Calls already IS the dashboard, and a separate screen inserts a click before the work every single time. What a dashboard would actually add is narrower than it sounds \u2014 'what arrived since I last looked' and 'what is waiting on me' \u2014 so both went into the sidebar he already looks at. Counts are computed SERVER-side in one aggregate pass and deliberately ignore the q/offset/archived list filters: counting the loaded page would undercount past the 100-row limit, always report 0 archived, and swing while typing in search. New-call marks are per-browser (localStorage), same constraint as the release notes \u2014 Ivan and Gabriel share one login, so read-state on the account row would mean one clearing the other's badge. Semantics are unread-mail: a call stays marked until opened on that machine.",
+      "acceptance_criteria": [
+        "Counts render for All/Follow-up/Closed/Archived, including Archived which is not in the loaded list",
+        "Counts unaffected by search text or pagination",
+        "A fresh browser adopts existing calls as read rather than lighting up the whole history",
+        "New calls show a violet left bar + violet name; opening clears it",
+        "Badge count on All Calls, hidden via :empty rather than a toggled class",
+        "One user reading a call does NOT clear the other user's mark",
+        "Stored id set capped at 500 with a floor guard so pruning cannot resurrect old calls as new",
+        "Blocked localStorage degrades quietly, marking nothing new",
+        "counts.test.mjs (35 assertions) passes and was verified to fail when the mobile bug is reintroduced"
+      ],
+      "notes": "FOUND BY RENDERING, not by reading: the 640px sidebar rule used `display:revert` on .nav-item to undo the 900px icon-rail's display:none, but revert also discards the base rule's display:flex \u2014 killing the count's margin-left:auto so counts collided with labels ('Needs Follow-up6'). Latent since the mobile layout shipped; invisible only because the .count spans had never been populated by anything. Second UI bug in two rounds that unit tests could not see and a browser found immediately. Colour choice: violet for unread because blue already means active/selected and pink means primary action."
     }
   ],
   "progress_percentage": 77,

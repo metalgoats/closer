@@ -132,6 +132,16 @@ function showUpdateBanner() {
 // only when there is something worth a interruption.
 const RELEASES = [
   {
+    v: "2026.07.21",
+    date: "21 July 2026",
+    title: "Sidebar counts and new-call marks",
+    items: [
+      "The sidebar now shows live counts for All Calls, Needs Follow-up, Closed and Archived — real totals from the server, not just what's loaded on screen.",
+      "Calls that arrived since you last looked are marked with a violet bar and counted in a badge on All Calls. Opening a call clears its mark, like unread mail.",
+      "The marks are per-browser, so you and Gabriel each track your own — one of you reading a call doesn't clear it for the other."
+    ]
+  },
+  {
     v: "2026.07.20",
     date: "20 July 2026",
     title: "CloserAI, a collapsible sidebar, and the mobile menu escape",
@@ -350,8 +360,75 @@ async function refreshCalls({ append = false } = {}) {
   const r = await api.get(`/calls${q.length ? "?" + q.join("&") : ""}`);
   state.calls = append ? [...state.calls, ...r.calls] : r.calls;
   state.hasMore = r.hasMore;
+  if (r.counts) state.counts = r.counts;
+  seedSeenCalls();          // no-op after the first run on this browser
   renderCallList();
+  renderNavCounts();
   syncPolling();
+}
+
+// ---------- "arrived since I last looked" (TASK-079) ----------
+// Same constraint as the release notes: you and Gabriel share one login, so read-state cannot
+// live on the account row — you opening a call would clear Gabriel's badge. It is per-browser.
+// Semantics are unread-email: a call stays new until it is opened on THIS machine.
+const SEEN_CALLS_KEY = "closer-seen-calls";
+const SEEN_CAP = 500;
+let seenCalls;   // undefined = not read from storage yet; null = storage has no record
+
+function loadSeenCalls() {
+  if (seenCalls !== undefined) return seenCalls;
+  let raw = null;
+  try { raw = localStorage.getItem(SEEN_CALLS_KEY); } catch { /* private mode */ }
+  if (!raw) return (seenCalls = null);
+  try {
+    const ids = JSON.parse(raw).filter(n => Number.isInteger(n));
+    seenCalls = { ids: new Set(ids), floor: ids.length ? Math.min(...ids) : 0 };
+  } catch { seenCalls = { ids: new Set(), floor: 0 }; }
+  return seenCalls;
+}
+function persistSeenCalls(ids) {
+  // Keep only the newest SEEN_CAP ids so this can't grow without bound. `floor` then lets
+  // isNewCall treat anything older than what we still remember as already read — without it,
+  // pruning would make ancient calls light up as new again.
+  const kept = [...new Set(ids)].sort((a, b) => b - a).slice(0, SEEN_CAP);
+  seenCalls = { ids: new Set(kept), floor: kept.length ? Math.min(...kept) : 0 };
+  try { localStorage.setItem(SEEN_CALLS_KEY, JSON.stringify(kept)); } catch {}
+}
+// First run on a browser: adopt everything already on screen as read. Otherwise the entire
+// back catalogue lights up as "new", which is noise, not signal.
+function seedSeenCalls() {
+  if (loadSeenCalls()) return;
+  persistSeenCalls((state.calls || []).map(c => c.id));
+}
+function markCallSeen(id) {
+  const s = loadSeenCalls();
+  if (!s) return;                    // pre-seed; seedSeenCalls will adopt it
+  if (s.ids.has(id)) return;
+  persistSeenCalls([...s.ids, id]);
+}
+function isNewCall(c) {
+  const s = loadSeenCalls();
+  if (!s) return false;              // nothing is "new" until we have a baseline
+  if (s.ids.has(c.id)) return false;
+  return c.id > s.floor;             // older than what we remember => treat as already read
+}
+function newCallCount() {
+  return (state.calls || []).filter(c => !c.archived_at && isNewCall(c)).length;
+}
+
+// ---------- sidebar counts ----------
+// Totals come from the server (see /api/calls), because the loaded page is capped and excludes
+// archived rows — counting what the browser holds would quietly undercount.
+function renderNavCounts() {
+  const c = state.counts || {};
+  const set = (sel, n) => { const el = $(sel); if (el) el.textContent = Number.isFinite(n) ? String(n) : ""; };
+  set("#countAll", c.all_n);
+  set("#countFollowup", c.followup_n);
+  set("#countClosed", c.closed_n);
+  set("#countArchived", c.archived_n);
+  const n = newCallCount();
+  const badge = $("#newBadge");
+  if (badge) badge.textContent = n ? String(n) : "";   // :empty hides it — no class to desync
 }
 
 function visibleCalls() {
@@ -392,7 +469,7 @@ function renderCallList() {
     const flags = [];
     if (c.sms_sent) flags.push("✓ text");
     if (c.email_sent) flags.push("✓ email");
-    return `<div class="call-item ${c.id === state.currentCallId ? "active" : ""} ${state.selected?.has(c.id) ? "picked" : ""}" data-id="${c.id}" tabindex="0" role="button">
+    return `<div class="call-item ${c.id === state.currentCallId ? "active" : ""} ${state.selected?.has(c.id) ? "picked" : ""} ${isNewCall(c) ? "is-new" : ""}" data-id="${c.id}" tabindex="0" role="button">
       <input type="checkbox" class="call-pick" data-pickid="${c.id}" ${state.selected?.has(c.id) ? "checked" : ""} aria-label="Select ${esc(c.client_name)}">
       <div class="call-row1"><span class="call-name"><span class="dot-${st}" title="${STATE_TITLE[st]}"></span>${esc(c.client_name)}</span><span class="call-time">${fmtTime(c.occurred_at)}</span></div>
       <div class="call-meta">${pill}<span class="offer-tag">${esc(offerLabel(c))}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}${c.duplicate_of ? `<span class="dup-tag" title="Possible duplicate of call #${c.duplicate_of}">dup?</span>` : ""}${c.call_type_name ? `<span class="type-tag">${esc(typeTag(c))}</span>` : ""}</div>
@@ -553,7 +630,9 @@ function fmtTime(iso) {
 async function openCall(id) {
   state.currentCallId = id;
   document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
+  markCallSeen(id);          // opening it is what clears the "new" mark, like unread mail
   renderCallList();
+  renderNavCounts();
   const { call, outputs } = await api.get(`/calls/${id}`);
   const st = callState(call);
   if (st === "processing") return renderWorking(call);
