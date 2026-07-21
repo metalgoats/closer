@@ -119,6 +119,14 @@ async function route(request, env, url, ctx) {
     return fathomPullLatest(env, +pullMatch[1], days);
   }
 
+  // Read-only: what does Fathom have that we don't, and why was it skipped? Answers
+  // "are we missing calls?" without importing anything or pulling a single transcript.
+  const peekMatch = path.match(/^\/api\/integrations\/(\d+)\/preview$/);
+  if (peekMatch && method === "GET") {
+    const days = Math.min(90, Math.max(1, +(url.searchParams.get("days") || 3)));
+    return fathomPreview(env, +peekMatch[1], days);
+  }
+
   // ---- calls ----
   if (path === "/api/calls" && method === "GET") {
     const accountId = url.searchParams.get("account");
@@ -651,6 +659,63 @@ async function importMeeting(env, integ, m) {
     detail: `${name} · ${transcript.length.toLocaleString()} chars · ${durationMin ?? "?"} min`,
     meta: { recording_id: externalId, occurred_at: start } });
   return { imported: true, callId: ins.id, name, occurred_at: start };
+}
+
+// Read-only diagnostic (TASK-081). Lists what Fathom holds for this key over `days`, WITHOUT
+// the recorded_by[] scope, and marks each row imported / not-imported and who recorded it.
+// Deliberately:
+//   - include_transcript=false — a colleague's transcript is never fetched, held, or stored
+//   - no INSERTs of any kind
+//   - metadata only (when, title, who recorded, duration)
+// This exists so "are we missing calls?" can be answered by looking, instead of by widening the
+// import and hoovering up the whole org — which is the thing Gabriel noticed and objected to.
+async function fathomPreview(env, id, days = 3) {
+  const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
+  if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
+  const key = keyForRow(env, row);
+  if (!key) return json({ ok: false, message: "No Fathom key saved yet." });
+
+  const sinceIso = new Date(Date.now() - days * 86400_000).toISOString();
+  const url = `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(sinceIso)}&include_transcript=false`;
+  let data;
+  try {
+    const res = await fetch(url, { headers: { "X-Api-Key": key }, signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) return json({ ok: false, message: `Fathom returned ${res.status}.` });
+    data = await res.json();
+  } catch (err) {
+    return json({ ok: false, message: `Could not reach Fathom: ${err.message}` });
+  }
+  const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+
+  const owner = (row.owner_email || "").toLowerCase();
+  const out = [];
+  for (const m of items) {
+    const externalId = String(m.recording_id ?? m.id ?? "");
+    const hit = externalId
+      ? await env.DB.prepare("SELECT id FROM calls WHERE external_id = ? LIMIT 1").bind(externalId).first()
+      : null;
+    const by = m.recorded_by || {};
+    const byEmail = (by.email || "").toLowerCase();
+    out.push({
+      external_id: externalId,
+      title: m.title || m.meeting_title || "(untitled)",
+      occurred_at: m.scheduled_start_time || m.started_at || m.created_at || null,
+      duration_min: m.duration_minutes ?? null,
+      recorded_by: by.email || by.name || "(unknown)",
+      imported: !!hit,
+      call_id: hit?.id ?? null,
+      // The two reasons a call legitimately never arrives.
+      skipped_reason: hit ? null
+        : (owner && byEmail && byEmail !== owner) ? `recorded by someone else (${by.email})`
+        : null
+    });
+  }
+  out.sort((a, b) => String(b.occurred_at).localeCompare(String(a.occurred_at)));
+  return json({ ok: true, label: row.label, owner_email: row.owner_email, days,
+                total: out.length,
+                imported: out.filter(x => x.imported).length,
+                missing: out.filter(x => !x.imported).length,
+                meetings: out });
 }
 
 async function fathomPullLatest(env, id, days = 7) {
