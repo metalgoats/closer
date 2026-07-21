@@ -765,6 +765,13 @@ async function fathomBackfillTitles(env, id, days = 30, dry = false) {
     const title = deriveClientName(m);
     const attendee = deriveAttendeeName(m);
     if (!title || title === call.client_name) continue;
+    // Never trade a real name for a generic one. deriveClientName falls back to the auto-title
+    // when Fathom lists no external invitee — which is how "Kyle" and "Evette" were both still
+    // headed for "Impromptu Zoom Meeting". Whatever the row is called now beats that.
+    if (isGenericTitle(title)) {
+      skipped.push({ id: call.id, name: call.client_name, why: `Fathom's title is generic ("${title}") — keeping the current name` });
+      continue;
+    }
     if (call.renamed_at) { skipped.push({ id: call.id, name: call.client_name, why: "renamed by hand" }); continue; }
     if (attendee && call.client_name !== attendee) {
       skipped.push({ id: call.id, name: call.client_name, why: "name is not the auto-derived attendee" });
