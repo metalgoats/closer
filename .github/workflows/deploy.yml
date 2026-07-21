@@ -15,7 +15,7 @@ jobs:
       # Gate the deploy on the UI smoke tests. Integrations shipped broken for weeks because
       # nothing executed the views; a blank-app outage shipped because nothing executed app.js.
       # If this step fails, nothing is deployed.
-      - run: node tests/ui-smoke.test.mjs
+      - run: npm test
       # Migrations run first and are additive-only; they never delete user data.
       - run: npx wrangler d1 migrations apply closer --remote
         env:

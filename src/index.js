@@ -1,4 +1,5 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
+import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow } from "./llm.js";
 import { logEvent } from "./log.js";
 
@@ -551,16 +552,7 @@ function flattenTranscript(t) {
 }
 
 // The client is the external invitee — Gabriel is the internal one recording.
-// The MEETING TITLE is the label — it is what Gabriel and Ivan actually call the call. The
-// external invitee is kept alongside it as context, not used as the name: preferring the
-// invitee turned "OSA Sales Training" into "Nathan Macias" and made real calls unrecognisable.
-function deriveClientName(m) {
-  return (m.meeting_title || m.title || "").trim() || deriveAttendeeName(m) || "Untitled call";
-}
-function deriveAttendeeName(m) {
-  const ext = (m.calendar_invitees || []).find(i => i.is_external && i.name);
-  return ext?.name || null;
-}
+// Naming rules live in ./naming.js so they can be unit-tested — see that file for why.
 
 // Imports EXACTLY ONE call: the most recent within `days`. Bounded by created_after
 // so it is structurally incapable of pulling full history. Lands unprocessed —
