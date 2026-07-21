@@ -128,6 +128,11 @@ async function route(request, env, url, ctx) {
     return fathomPreview(env, +peekMatch[1], days);
   }
 
+  const importOneMatch = path.match(/^\/api\/integrations\/(\d+)\/import\/([\w-]+)$/);
+  if (importOneMatch && method === "POST") {
+    return fathomImportOne(env, +importOneMatch[1], importOneMatch[2]);
+  }
+
   const titleMatch = path.match(/^\/api\/integrations\/(\d+)\/backfill-titles$/);
   if (titleMatch && method === "POST") {
     const days = Math.min(365, Math.max(1, +(url.searchParams.get("days") || 30)));
@@ -712,8 +717,10 @@ async function fathomPreview(env, id, days = 3) {
       imported: !!hit,
       call_id: hit?.id ?? null,
       // The two reasons a call legitimately never arrives.
+      // Who recorded it is already its own column — repeating it here just made the row noisy.
+      // The useful signal is simply that it isn't Gabriel's, so it wasn't pulled automatically.
       skipped_reason: hit ? null
-        : (owner && byEmail && byEmail !== owner) ? `recorded by someone else (${by.email})`
+        : (owner && byEmail && byEmail !== owner) ? "not yours — import if you want it"
         : null
     });
   }
@@ -733,6 +740,53 @@ async function fathomPreview(env, id, days = 3) {
 //   - never touches a row whose current name isn't exactly the attendee name we would have
 //     derived — i.e. it only "un-does" its own old behaviour and leaves anything else alone
 // Returns what it changed and what it deliberately left, so the result is auditable.
+// Import ONE specific recording, chosen by hand from the preview (TASK-083).
+//
+// This is the deliberate alternative to dropping recorded_by[] from the poller. The cron stays
+// scoped to Gabriel's own recordings; when Ivan sees a colleague's call he actually wants, he
+// imports that one. Nothing arrives because it happened to be in the org.
+async function fathomImportOne(env, id, externalId) {
+  const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
+  if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
+  const key = keyForRow(env, row);
+  if (!key) return json({ ok: false, message: "No Fathom key saved yet." });
+
+  const existing = await env.DB.prepare(
+    "SELECT id, client_name FROM calls WHERE account_id = ? AND external_id = ?"
+  ).bind(row.account_id, String(externalId)).first();
+  if (existing) return json({ ok: true, imported: false, call_id: existing.id,
+                              message: `Already in the app: ${existing.client_name}` });
+
+  // Deliberately unscoped: the whole point is to reach a recording the automatic poll skips.
+  // Bounded to 30 days so this can't become a whole-history pull.
+  const sinceIso = new Date(Date.now() - 30 * 86400_000).toISOString();
+  let data;
+  try {
+    const res = await fetch(
+      `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(sinceIso)}&include_transcript=true`,
+      { headers: { "X-Api-Key": key }, signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) return json({ ok: false, message: `Fathom returned ${res.status}.` });
+    data = await res.json();
+  } catch (err) { return json({ ok: false, message: `Could not reach Fathom: ${err.message}` }); }
+
+  const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+  const m = items.find(x => String(x.recording_id ?? x.id ?? "") === String(externalId));
+  if (!m) return json({ ok: false, message: "Fathom no longer lists that recording." });
+
+  const r = await importMeeting(env, row, m);
+  if (!r.imported) {
+    return json({ ok: true, imported: false, call_id: r.callId ?? null,
+                  message: r.reason === "no transcript yet"
+                    ? "Fathom hasn't finished transcribing this one yet — try again shortly."
+                    : `Not imported: ${r.reason}` });
+  }
+  // Log it as a human decision, not a poll result — this one was chosen, and by whom matters
+  // if a colleague's call ever needs accounting for.
+  await logEvent(env, { kind: "fathom.imported_manually", call_id: r.callId, account_id: row.account_id,
+    detail: `${r.name} — imported by hand from ${row.label || "Fathom"} (recorded by ${m.recorded_by?.email || "unknown"})` });
+  return json({ ok: true, imported: true, call_id: r.callId, message: `Imported ${r.name}`, name: r.name });
+}
+
 async function fathomBackfillTitles(env, id, days = 30, dry = false) {
   const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
   if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);

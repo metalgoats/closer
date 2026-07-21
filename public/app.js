@@ -1553,6 +1553,30 @@ async function renderIntegrations() {
   }));
 
   // Pull exactly one call — the most recent. Lands unprocessed; you choose when to spend tokens.
+  // Import one specific recording the automatic poll skipped. Deliberately per-call: the cron
+  // stays scoped to Gabriel's own recordings, so nothing arrives just because it exists in the org.
+  function wirePeekActions(panel) {
+    panel.querySelectorAll("[data-imp]").forEach(b => b.addEventListener("click", async () => {
+      const cell = b.closest("td");
+      b.disabled = true; b.textContent = "Importing…";
+      try {
+        const r = await api.post(`/integrations/${b.dataset.int}/import/${encodeURIComponent(b.dataset.imp)}`);
+        if (!r.ok) { b.disabled = false; b.textContent = "Import"; toast(r.message); return; }
+        const row = b.closest("tr");
+        row.classList.remove("peek-skip");
+        row.querySelector("td").innerHTML = `<span class="peek-yes">In app</span>`;
+        cell.innerHTML = `<button class="peek-open" data-openid="${r.call_id}">Open</button>`;
+        wirePeekActions(panel);                    // the new Open button needs its handler
+        toast(r.message);
+        await refreshCalls();
+      } catch (err) { b.disabled = false; b.textContent = "Import"; toast(err.message); }
+    }));
+    panel.querySelectorAll("[data-openid]").forEach(b => b.addEventListener("click", () => {
+      openCall(+b.dataset.openid);
+      showDetailMobile();
+    }));
+  }
+
   // "What's in Fathom?" — read-only. Shows everything the key can see, including recordings we
   // deliberately skip, so "are we missing calls?" is answered by looking instead of by widening
   // the import and hoovering up the whole org. Fetches no transcripts and writes nothing.
@@ -1570,21 +1594,25 @@ async function renderIntegrations() {
       const r = await api.get(`/integrations/${id}/preview?days=${days}`);
       if (!r.ok) { panel.innerHTML = `<div class="peek-loading">${esc(r.message)}</div>`; return; }
       const rows = r.meetings.map(m => `
-        <tr class="${m.imported ? "" : "peek-skip"}">
-          <td>${m.imported ? `<span class="peek-yes">In app</span>` : `<span class="peek-no">Skipped</span>`}</td>
+        <tr class="${m.imported ? "" : "peek-skip"}" data-row="${esc(m.external_id)}">
+          <td>${m.imported ? `<span class="peek-yes">In app</span>` : `<span class="peek-no">Not imported</span>`}</td>
           <td class="peek-when">${esc(String(m.occurred_at || "").slice(0, 16).replace("T", " "))}</td>
           <td>${esc(m.title)}</td>
           <td class="peek-by">${esc(m.recorded_by)}</td>
-          <td class="peek-why">${m.skipped_reason ? esc(m.skipped_reason) : m.imported ? "" : "not imported yet"}</td>
+          <td class="peek-act">${m.imported
+            ? `<button class="peek-open" data-openid="${m.call_id}">Open</button>`
+            : `<button class="peek-import" data-imp="${esc(m.external_id)}" data-int="${id}">Import</button>`}</td>
         </tr>`).join("");
       panel.innerHTML = `
         <div class="peek-head">Last ${days} days · <b>${r.total}</b> recording${r.total === 1 ? "" : "s"} visible to this key —
           <b>${r.imported}</b> in the app, <b>${r.missing}</b> skipped.
           Importing only <i>${esc(r.owner_email || "—")}</i>'s own recordings.</div>
         <div style="overflow-x:auto;"><table class="peek-table"><tbody>${rows || `<tr><td>Nothing in this window.</td></tr>`}</tbody></table></div>
-        <div class="peek-foot">Skipped rows are colleagues' own recordings. Importing them would store their client
-          transcripts here — and a meeting several people recorded arrives once per recorder, so it would also duplicate.</div>`;
+        <div class="peek-foot">Only ${esc(r.owner_email || "this person")}'s own recordings import automatically.
+          Anything else is here to import by hand if you want it — note that a meeting several people recorded
+          appears once per recorder, so importing more than one copy will duplicate it.</div>`;
       panel.dataset.loaded = "1";
+      wirePeekActions(panel);
     } catch (err) {
       panel.innerHTML = `<div class="peek-loading">${esc(err.message)}</div>`;
     } finally { btn.disabled = false; }

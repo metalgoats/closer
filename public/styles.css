@@ -553,7 +553,11 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
 .peek-no{ color:var(--ink-400); font-weight:700; white-space:nowrap; }
 .peek-when{ font-family:var(--font-mono); font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--ink-400); }
 .peek-by{ color:var(--ink-400); }
-.peek-why{ color:var(--ink-400); font-style:italic; }
+.peek-act{ text-align:right; white-space:nowrap; }
+.peek-import, .peek-open{ background:var(--paper-200); color:var(--ink-800); border:1px solid var(--line);
+  border-radius:6px; padding:3px 10px; font-size:11px; font-weight:600; font-family:inherit; cursor:pointer; }
+.peek-import:hover, .peek-open:hover{ background:var(--blue-100); color:var(--blue-600); border-color:var(--blue-500); }
+.peek-import:disabled{ opacity:.6; cursor:default; }
 
 /* ---------- Prompt Library (call types) ---------- */
 .ct-list{ display:flex; flex-direction:column; gap:8px; }
