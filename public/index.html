@@ -83,6 +83,11 @@
          it — every one of them unreachable, with no other route. Anchored in JS to whichever
          button opened it. -->
     <div class="settings-menu hidden" id="settingsMenu" role="menu">
+      <!-- An action, not a destination — styled as a button so it reads differently from the
+           menu items below it. Lives here because Fathom imports everything automatically now;
+           pasting a transcript by hand is the rare fallback, not part of the nightly loop. -->
+      <button class="settings-action" id="newCallBtn" role="menuitem">+ New call from transcript</button>
+      <div class="settings-sep"></div>
       <button class="settings-item" data-view="activity" role="menuitem">Activity</button>
       <button class="settings-item" data-view="templates" role="menuitem">Prompt Library</button>
       <button class="settings-item" data-view="integrations" role="menuitem">Integrations</button>
@@ -103,7 +108,6 @@
                 aria-label="Account and settings" title="Account &amp; settings">
           <span class="avatar" id="userAvatarMini">?</span>
         </button>
-        <button class="new-call-btn" id="newCallBtn">+ New</button>
       </div>
       <div class="search-row"><div class="search-box">
         <input type="search" id="searchInput" placeholder="Search calls" aria-label="Search calls">

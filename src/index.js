@@ -114,12 +114,6 @@ async function route(request, env, url, ctx) {
   const intTestMatch = path.match(/^\/api\/integrations\/(\d+)\/test$/);
   if (intTestMatch && method === "POST") return testIntegration(env, +intTestMatch[1]);
 
-  const pullMatch = path.match(/^\/api\/integrations\/(\d+)\/pull-latest$/);
-  if (pullMatch && method === "POST") {
-    const days = Math.min(90, Math.max(1, +(url.searchParams.get("days") || 7)));
-    return fathomPullLatest(env, +pullMatch[1], days);
-  }
-
   // Read-only: what does Fathom have that we don't, and why was it skipped? Answers
   // "are we missing calls?" without importing anything or pulling a single transcript.
   const peekMatch = path.match(/^\/api\/integrations\/(\d+)\/preview$/);
@@ -844,37 +838,6 @@ async function fathomBackfillTitles(env, id, days = 30, dry = false) {
   return json({ ok: true, dry, label: row.label, changed, skipped });
 }
 
-async function fathomPullLatest(env, id, days = 7) {
-  const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
-  if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
-
-  const key = keyForRow(env, row);
-  if (!key) return json({ ok: false, message: "No Fathom key saved yet — paste one and hit Save first." });
-
-  const fetched = await fetchFathomMeetings(key, new Date(Date.now() - days * 86400_000).toISOString(), row.owner_email);
-  if (!fetched.ok) return json({ ok: false, message: fetched.message });
-  if (!fetched.items.length) {
-    await logEvent(env, { kind: "fathom.pull", account_id: row.account_id, detail: `No calls in the last ${days} days` });
-    return json({ ok: true, imported: false, message: `No Fathom calls in the last ${days} days.` });
-  }
-
-  const m = newestFirst(fetched.items)[0];
-  const r = await importMeeting(env, row, m);
-  if (!r.imported) {
-    return json({ ok: r.reason !== "no transcript yet", imported: false, call_id: r.callId,
-      message: r.reason === "no transcript yet"
-        ? "Fathom returned that call without a transcript — it may still be processing."
-        : `Already imported: ${r.name}. Nothing new to pull.` });
-  }
-  return json({ ok: true, imported: true, call_id: r.callId, client_name: r.name, occurred_at: r.occurred_at,
-    message: `Imported "${r.name}" — open it and hit Generate when you're ready.` });
-}
-
-// ---------- integration test ----------
-
-// Verifies a key actually authenticates, so a bad paste fails here rather than
-// silently surfacing as a failed generation later. Uses each provider's models
-// endpoint: a real auth check that costs zero tokens.
 async function testIntegration(env, id) {
   const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
   if (!row) return json({ error: "not found" }, 404);

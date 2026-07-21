@@ -386,7 +386,14 @@ $("#searchInput").addEventListener("input", e => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => refreshCalls().then(() => { if (!state.search) openRelevantCall(); }), 250);
 });
-$("#newCallBtn").addEventListener("click", () => { renderCompose(); showDetailMobile("New Call"); });
+// Lives inside the profile menu now, so it must stop the click bubbling (the document handler
+// closes the menu) and close the menu itself once it has opened the composer.
+$("#newCallBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  closeSettings();
+  renderCompose();
+  showDetailMobile("New Call");
+});
 
 // ---------- call list ----------
 async function refreshCalls({ append = false } = {}) {
@@ -502,7 +509,12 @@ function renderCallList() {
   const wrap = $("#callScroll");
   wrap.innerHTML = visibleCalls().map(c => {
     const st = callState(c);
-    const pill = st !== "processed" ? `<span class="pill pill-new">${STATE_LABEL[st]}</span>`
+    // No pill for "new". The hollow dot beside the name already says "not run yet", and a pill
+    // reading NEW collided with the violet "arrived since you last looked" marker — two
+    // different meanings of new on the same row. Working/Failed keep theirs: those are events,
+    // not a resting state, and you want them to shout.
+    const pill = st === "new" ? ""
+      : st !== "processed" ? `<span class="pill pill-${st === "failed" ? "failed" : "new"}">${STATE_LABEL[st]}</span>`
       : c.outcome === "closed" ? `<span class="pill pill-closed">Closed</span>`
       : `<span class="pill pill-followup">Follow-up</span>`;
     const flags = [];
@@ -818,14 +830,16 @@ function renderProcessed(call, outputs) {
   const email = outputs.find(o => o.kind === "email" && o.tone === tone);
   const ghl = outputs.find(o => o.kind === "ghl_note");
   const pill = call.outcome === "closed" ? `<span class="pill pill-closed">Closed</span>` : `<span class="pill pill-followup">Follow-up</span>`;
-  const srcBadge = call.source === "fathom" ? `<span class="fathom-badge">Synced from Fathom</span>` : `<span class="fathom-badge" style="color:var(--ink-600); background:var(--paper-200);">Pasted manually</span>`;
+  // Fathom is the norm, so saying so on every call is noise. A hand-pasted transcript is the
+  // exception and still says so.
+  const srcBadge = call.source === "fathom" ? "" : `<span class="fathom-badge" style="color:var(--ink-600); background:var(--paper-200);">Pasted manually</span>`;
 
   $("#detailPane").innerHTML = `
     <div class="detail-header">
       <div class="dh-top">
         <div>
           ${callTitle(call, pill)}
-          <div class="dh-meta">${esc(offerLabel(call))}<span class="sep">·</span>${call.duration_min ? call.duration_min + " min" : ""} ${fmtTime(call.occurred_at)}<span class="sep">·</span>${srcBadge}</div>
+          <div class="dh-meta">${esc(offerLabel(call))}<span class="sep">·</span>${call.duration_min ? call.duration_min + " min" : ""} ${fmtTime(call.occurred_at)}${srcBadge ? `<span class="sep">·</span>${srcBadge}` : ""}</div>
         </div>
         <div class="dh-actions">${callActions(call, `<button class="regen-btn" id="regenBtn">↻ Regenerate</button>`)}</div>
       </div>
@@ -839,7 +853,7 @@ function renderProcessed(call, outputs) {
         <span class="tone-label">Text &amp; email tone</span>
         <div class="tone-seg">${["casual", "balanced", "formal"].map(t =>
           `<button class="tone-opt ${t === tone ? "selected" : ""}" data-tone="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
-        ${call.suggested_tone ? `<span class="tone-suggested">✦ Suggested: ${call.suggested_tone}</span>` : ""}
+        ${call.suggested_tone && call.suggested_tone !== tone ? `<span class="tone-suggested">✦ Suggested: ${call.suggested_tone}</span>` : ""}
         <span class="applies-to">${esc(call.tone_reason || "")}</span>
       </div>
     </div>
@@ -935,13 +949,11 @@ function scorecard(rows) {
 }
 
 function outputPanel(title, out, opts) {
-  if (!out) return `<div class="panel"><div class="panel-head"><div class="panel-chrome"><span class="chrome-dot d1"></span><span class="chrome-dot d2"></span><span class="chrome-dot d3"></span></div>
-    <div class="panel-head-row"><span class="panel-title">${title}</span></div></div>
+  if (!out) return `<div class="panel"><div class="panel-head"><div class="panel-head-row"><span class="panel-title">${title}</span></div></div>
     <div class="panel-body"><span class="edit-note">Not generated yet — hit Regenerate.</span></div></div>`;
   return `<div class="panel" data-output="${out.id}">
     <div class="panel-head">
-      <div class="panel-chrome"><span class="chrome-dot d1"></span><span class="chrome-dot d2"></span><span class="chrome-dot d3"></span></div>
-      <div class="panel-head-row"><span class="panel-title">${title}</span>
+        <div class="panel-head-row"><span class="panel-title">${title}</span>
         <div class="panel-actions">
           ${opts.sent ? `<button class="sent-btn ${out.sent_at ? "is-sent" : ""}" data-out="${out.id}">${out.sent_at ? "✓ Sent" : "Mark sent"}</button>` : ""}
           <button class="copy-btn" data-out="${out.id}">⧉ Copy</button>
@@ -1457,8 +1469,7 @@ async function renderIntegrations() {
           <button class="key-reveal" data-reveal="${i.id}" title="Show what you typed">Show</button>
           <button class="primary-btn key-save" data-save="${i.id}">Save</button>
           <button class="regen-btn" data-test="${i.id}">Test</button>
-          ${i.kind === "fathom" && i.has_key ? `<button class="regen-btn" data-pull="${i.id}">Pull latest call</button>
-          <button class="regen-btn" data-peek="${i.id}">What's in Fathom?</button>` : ""}
+          ${i.kind === "fathom" && i.has_key ? `<button class="regen-btn" data-peek="${i.id}">What's in Fathom?</button>` : ""}
           ${i.has_key ? `<button class="regen-btn key-remove" data-remove="${i.id}">Remove</button>` : ""}
         </div>
         <div class="key-foot">${state}<span class="key-msg" data-msg="${i.id}"></span></div>
@@ -1618,26 +1629,7 @@ async function renderIntegrations() {
     } finally { btn.disabled = false; }
   }));
 
-  document.querySelectorAll("[data-pull]").forEach(btn => btn.addEventListener("click", async () => {
-    const id = btn.dataset.pull;
-    setMsg(id, "Looking for your most recent call…");
-    btn.disabled = true;
-    try {
-      const r = await api.post(`/integrations/${id}/pull-latest`);
-      setMsg(id, r.message, r.ok);
-      if (r.imported) {
-        await refreshCalls();
-        toast(`Imported ${r.client_name}`);
-        openCall(r.call_id);
-      } else {
-        toast(r.message);
-      }
-    } catch (err) {
-      setMsg(id, err.message, false);
-    } finally {
-      btn.disabled = false;
-    }
-  }));
+
 }
 
 // ---------- utilities ----------

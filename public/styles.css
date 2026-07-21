@@ -122,6 +122,8 @@ body.sb-collapsed .sidebar{ opacity:0; margin-left:0; padding-left:0; padding-ri
 .pill-closed{ background:var(--blue-100); color:var(--blue-600); }
 .pill-followup{ background:var(--violet-100); color:var(--violet-600); }
 .pill-new{ background:var(--paper-200); color:var(--ink-600); }
+/* A failed run must not read as a neutral status chip. */
+.pill-failed{ background:var(--pink-100); color:var(--pink-500); }
 .offer-tag{ font-size:10.5px; color:var(--ink-400); }
 /* The external attendee, shown beside the meeting title rather than instead of it. */
 .attendee-tag{ font-size:10.5px; color:var(--ink-600); }
@@ -381,6 +383,12 @@ body.sb-collapsed .sidebar{ opacity:0; margin-left:0; padding-left:0; padding-ri
   border-radius:999px; margin-right:2px; }
 .user-btn-mini:hover{ background:var(--paper-200); }
 body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
+/* An action inside the menu, deliberately styled as a button so it doesn't read as another
+   navigation row. */
+.settings-action{ text-align:center; background:var(--pink-500); color:#0A0D13; border:none;
+  border-radius:7px; padding:8px 10px; font-size:11.5px; font-weight:700; font-family:inherit;
+  cursor:pointer; margin:1px 0 2px; }
+.settings-action:hover{ background:var(--pink-600); }
 .settings-item{ text-align:left; background:none; border:none; cursor:pointer; font-family:inherit;
   font-size:11.5px; color:var(--ink-800); padding:7px 9px; border-radius:6px; }
 .settings-item:hover{ background:var(--paper-200); color:var(--ink-950); }
