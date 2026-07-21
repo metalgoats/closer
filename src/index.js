@@ -759,7 +759,10 @@ async function fathomBackfillTitles(env, id, days = 30, dry = false) {
     ).bind(externalId).first();
     if (!call) continue;
 
-    const title = (m.meeting_title || m.title || "").trim();
+    // Go through deriveClientName, NOT a local copy of the rule — an earlier version of this
+    // function had its own logic and would still have renamed "Kyle" and "Evette" both to
+    // "Impromptu Zoom Meeting" after the generic-title guard was added elsewhere.
+    const title = deriveClientName(m);
     const attendee = deriveAttendeeName(m);
     if (!title || title === call.client_name) continue;
     if (call.renamed_at) { skipped.push({ id: call.id, name: call.client_name, why: "renamed by hand" }); continue; }
