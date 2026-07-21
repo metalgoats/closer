@@ -69,16 +69,6 @@
       <!-- Activity / Templates / Integrations live behind the profile, not in the main nav:
            they are setup-and-forget, not part of the nightly loop. -->
       <div class="sidebar-foot">
-        <div class="settings-menu hidden" id="settingsMenu" role="menu">
-          <button class="settings-item" data-view="activity" role="menuitem">Activity</button>
-          <button class="settings-item" data-view="templates" role="menuitem">Prompt Library</button>
-          <button class="settings-item" data-view="integrations" role="menuitem">Integrations</button>
-          <div class="settings-sep"></div>
-          <button class="settings-item" id="whatsNewBtn" role="menuitem">What's new</button>
-          <button class="settings-item" id="themeToggle" role="menuitem">Light mode</button>
-          <div class="settings-sep"></div>
-          <button class="settings-item danger" id="logoutBtn" role="menuitem">Log out</button>
-        </div>
         <button class="user-btn" id="userBtn" aria-haspopup="menu" aria-expanded="false">
           <div class="avatar" id="userAvatar">?</div>
           <span id="userEmail"></span>
@@ -87,10 +77,32 @@
       </div>
     </div>
 
+    <!-- The settings menu lives OUTSIDE the sidebar on purpose. It used to be a child of
+         .sidebar-foot, so collapsing the sidebar (opacity:0 + pointer-events:none) took
+         Integrations, Prompt Library, Activity, What's new, the theme toggle and Log out with
+         it — every one of them unreachable, with no other route. Anchored in JS to whichever
+         button opened it. -->
+    <div class="settings-menu hidden" id="settingsMenu" role="menu">
+      <button class="settings-item" data-view="activity" role="menuitem">Activity</button>
+      <button class="settings-item" data-view="templates" role="menuitem">Prompt Library</button>
+      <button class="settings-item" data-view="integrations" role="menuitem">Integrations</button>
+      <div class="settings-sep"></div>
+      <button class="settings-item" id="whatsNewBtn" role="menuitem">What's new</button>
+      <button class="settings-item" id="themeToggle" role="menuitem">Light mode</button>
+      <div class="settings-sep"></div>
+      <button class="settings-item danger" id="logoutBtn" role="menuitem">Log out</button>
+    </div>
+
     <div class="call-list">
       <div class="list-header">
         <button class="sb-toggle" id="sbToggle" aria-label="Hide sidebar" title="Hide sidebar"></button>
         <div class="list-title" id="listTitle">All Calls</div>
+        <!-- Only visible while the sidebar is hidden: keeps account/settings reachable, the way
+             a macOS toolbar keeps its controls when the sidebar collapses. -->
+        <button class="user-btn-mini" id="userBtnMini" aria-haspopup="menu" aria-expanded="false"
+                aria-label="Account and settings" title="Account &amp; settings">
+          <span class="avatar" id="userAvatarMini">?</span>
+        </button>
         <button class="new-call-btn" id="newCallBtn">+ New</button>
       </div>
       <div class="search-row"><div class="search-box">

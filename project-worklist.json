@@ -2492,6 +2492,26 @@
         "counts.test.mjs (35 assertions) passes and was verified to fail when the mobile bug is reintroduced"
       ],
       "notes": "FOUND BY RENDERING, not by reading: the 640px sidebar rule used `display:revert` on .nav-item to undo the 900px icon-rail's display:none, but revert also discards the base rule's display:flex \u2014 killing the count's margin-left:auto so counts collided with labels ('Needs Follow-up6'). Latent since the mobile layout shipped; invisible only because the .count spans had never been populated by anything. Second UI bug in two rounds that unit tests could not see and a browser found immediately. Colour choice: violet for unread because blue already means active/selected and pink means primary action."
+    },
+    {
+      "id": "TASK-080",
+      "title": "Fix: collapsed sidebar locked out all settings; Integrations dead since 4f66512",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-078"
+      ],
+      "description": "Ivan reported the site 'not coming up properly' in his normal browser but fine in a private window and on iPhone. That split pointed at persisted state, not the deploy. TWO independent bugs. (1) MINE, from TASK-078: the sidebar collapse used opacity:0 + pointer-events:none while #settingsMenu was a CHILD of .sidebar-foot \u2014 so hiding the sidebar took Integrations, Prompt Library, Activity, What's new, the theme toggle and Log out with it, with no other route. His browser had closer-sidebar-collapsed='1' saved; a private window had no such key, which is exactly why it worked there. Fixed by moving #settingsMenu out of .sidebar (position:fixed, JS-anchored to whichever button opened it) and adding #userBtnMini in the list header, shown only while collapsed \u2014 the macOS pattern where the toolbar keeps its controls. (2) OLDER AND WORSE: INTEGRATION_META and METHOD_BADGE were deleted in 4f66512 \u2014 the same commit that dropped renderActivity and caused the blank-app outage. The renderActivity casualty was caught and hotfixed in 6321fc3; these two were not, because they are referenced INSIDE renderIntegrations, so the module loads clean and only throws on click. Integrations had been dead for weeks in every browser. Restored from 17a29fe.",
+      "acceptance_criteria": [
+        "Settings reachable with the sidebar collapsed AND expanded",
+        "Menu never renders off-screen, including when viewport metrics report 0",
+        "renderIntegrations runs and renders Fathom/GoHighLevel rows",
+        "All five VIEWS execute without throwing",
+        "tests/ui-smoke.test.mjs lives in the REPO and gates the CI deploy",
+        "Both faults verified to FAIL the suite when reintroduced, then pass when fixed"
+      ],
+      "notes": "THE STRUCTURAL LESSON, third occurrence of the same class: node --check passes, the module executes, and 'renderIntegrations is defined' passes \u2014 all while the view is dead, because the missing constant is referenced inside the function body. Only CALLING every view catches it. Tests previously lived in the session scratchpad and were wiped; they now live in tests/ and run in CI before deploy (npm test). Also fixed a latent fragility in the menu anchor: innerHeight can report 0 in embedded contexts, and without a floor clamp that flung the menu to y=-210. Diagnosis note: my first hypothesis was the new .bind() with zero args in /api/calls \u2014 disproved by running the worker locally against real D1 before changing anything."
     }
   ],
   "progress_percentage": 77,

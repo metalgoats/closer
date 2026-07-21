@@ -74,7 +74,9 @@ $("#logoutBtn").addEventListener("click", async () => { await api.post("/logout"
 async function boot() {
   showMain();
   $("#userEmail").textContent = state.user.email;
-  $("#userAvatar").textContent = state.user.email.slice(0, 2).toUpperCase();
+  const initials = state.user.email.slice(0, 2).toUpperCase();
+  $("#userAvatar").textContent = initials;
+  if ($("#userAvatarMini")) $("#userAvatarMini").textContent = initials;
   state.accounts = (await api.get("/accounts")).accounts;
   try { state.callTypes = (await api.get("/call-types")).call_types; } catch { state.callTypes = []; }
   renderAccountNav();
@@ -131,6 +133,16 @@ function showUpdateBanner() {
 // unread, and then the one that matters gets dismissed unread too. A release earns an entry here
 // only when there is something worth a interruption.
 const RELEASES = [
+  {
+    v: "2026.07.22",
+    date: "22 July 2026",
+    title: "Fixes: hidden sidebar locked you out, Integrations was dead",
+    items: [
+      "Fixed: hiding the sidebar also hid the only way into Integrations, Prompt Library, Activity, What's new, the theme toggle and Log out — they all lived inside it. There's now an account button in the header whenever the sidebar is hidden.",
+      "Fixed: Integrations had been silently broken for weeks — clicking it did nothing at all. Two constants it depended on were deleted by accident in an earlier release.",
+      "Your call imports were never affected: Fathom kept importing throughout."
+    ]
+  },
   {
     v: "2026.07.21",
     date: "21 July 2026",
@@ -308,15 +320,42 @@ function applyTheme(mode) {
 // Activity / Templates / Integrations are setup-and-forget, so they live behind the profile
 // rather than taking up permanent nav space in the nightly loop.
 const settingsMenu = () => $("#settingsMenu");
+const settingsTriggers = () => [$("#userBtn"), $("#userBtnMini")].filter(Boolean);
 function closeSettings() {
   settingsMenu().classList.add("hidden");
-  $("#userBtn").setAttribute("aria-expanded", "false");
+  settingsTriggers().forEach(b => b.setAttribute("aria-expanded", "false"));
 }
-$("#userBtn").addEventListener("click", e => {
-  e.stopPropagation();
-  const open = settingsMenu().classList.toggle("hidden");
-  $("#userBtn").setAttribute("aria-expanded", String(!open));
-});
+// The menu is a sibling of the sidebar, so it must be positioned against whichever button
+// opened it. Anchored above the trigger when there is room, below it otherwise, and always
+// clamped into the viewport so it cannot end up off-screen.
+function openSettingsFrom(trigger) {
+  const menu = settingsMenu();
+  menu.classList.remove("hidden");
+  // clientHeight/Width first: innerHeight can report 0 in embedded/automated contexts, and a
+  // bad viewport number must not be able to fling the menu off-screen. Every branch below is
+  // floored at 8px so the menu is always reachable no matter what the metrics say.
+  const vh = document.documentElement.clientHeight || window.innerHeight || 0;
+  const vw = document.documentElement.clientWidth || window.innerWidth || 0;
+  const t = trigger.getBoundingClientRect();
+  const h = menu.offsetHeight, w = menu.offsetWidth;
+  const above = t.top - h - 6;
+  let top = above >= 8 ? above : t.bottom + 6;
+  if (vh) top = Math.min(top, vh - h - 8);
+  top = Math.max(8, top);
+  let left = t.left;
+  if (vw) left = Math.min(left, vw - w - 8);
+  left = Math.max(8, left);
+  menu.style.top = `${top}px`;
+  menu.style.left = `${left}px`;
+  trigger.setAttribute("aria-expanded", "true");
+}
+for (const sel of ["#userBtn", "#userBtnMini"]) {
+  $(sel)?.addEventListener("click", e => {
+    e.stopPropagation();   // stops the document handler below from closing it immediately
+    if (settingsMenu().classList.contains("hidden")) openSettingsFrom($(sel));
+    else closeSettings();
+  });
+}
 document.addEventListener("click", e => {
   if (!settingsMenu().contains(e.target)) closeSettings();
 });
@@ -1351,6 +1390,23 @@ async function renderActivity() {
       : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing matches.</td></tr>`;
   }));
 }
+
+// Restored: these were deleted by accident in 4f66512 (the same commit that dropped
+// renderActivity and took the app down). The renderActivity casualty was spotted and hotfixed;
+// these two were not, because they are referenced INSIDE renderIntegrations — so the module
+// still loads fine and only throws when you actually click Integrations. Integrations has been
+// dead since that commit.
+const INTEGRATION_META = {
+  ghl:       { label: "GoHighLevel",          method: "login",   how: "Connect with your GoHighLevel login — OAuth, no key to copy." },
+  fathom:    { label: "Fathom",               method: "selfkey", how: "Generate a key in Fathom → Settings → Integrations → API Access (2 clicks, no dev account)." },
+  anthropic: { label: "Claude (Anthropic)",   method: "key",     how: "API key required — there is no login option for programmatic API access." },
+  openai:    { label: "ChatGPT (OpenAI)",     method: "key",     how: "API key required — there is no login option for programmatic API access." }
+};
+const METHOD_BADGE = {
+  login:   `<span class="status-chip" style="background:var(--blue-100); color:var(--blue-600);">Login (OAuth)</span>`,
+  selfkey: `<span class="status-chip" style="background:var(--violet-100); color:var(--violet-600);">Self-serve key</span>`,
+  key:     `<span class="status-chip status-off">API key</span>`
+};
 
 async function renderIntegrations() {
   const { integrations } = await api.get("/integrations");
