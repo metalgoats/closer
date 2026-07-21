@@ -127,6 +127,12 @@ async function route(request, env, url, ctx) {
     return fathomPreview(env, +peekMatch[1], days);
   }
 
+  const titleMatch = path.match(/^\/api\/integrations\/(\d+)\/backfill-titles$/);
+  if (titleMatch && method === "POST") {
+    const days = Math.min(365, Math.max(1, +(url.searchParams.get("days") || 30)));
+    return fathomBackfillTitles(env, +titleMatch[1], days, url.searchParams.get("dry") === "1");
+  }
+
   // ---- calls ----
   if (path === "/api/calls" && method === "GET") {
     const accountId = url.searchParams.get("account");
@@ -328,6 +334,7 @@ async function route(request, env, url, ctx) {
 const CALL_LIST_SQL = `
   SELECT c.id, c.account_id, c.client_name, c.occurred_at, c.duration_min, c.source, c.outcome,
          c.callback_note, c.processed_at, c.processing_status, c.processing_error, c.archived_at,
+         c.attendee_name,
          a.name AS account_name, si.label AS source_label,
          c.call_type_id, ct.name AS call_type_name, c.duplicate_of,
          COALESCE(o.sms_sent, 0) AS sms_sent, COALESCE(o.email_sent, 0) AS email_sent
@@ -396,6 +403,8 @@ async function patchCall(request, env, id) {
   const sets = [], vals = [];
   for (const k of allowed) if (k in body) { sets.push(`${k} = ?`); vals.push(body[k]); }
   if (!sets.length) return json({ error: "nothing to update" }, 400);
+  // Stamp a manual rename so the title backfill can never overwrite a name a human chose.
+  if ("client_name" in body) sets.push("renamed_at = datetime('now')");
   await env.DB.prepare(`UPDATE calls SET ${sets.join(", ")} WHERE id = ?`).bind(...vals, id).run();
   return json({ ok: true });
 }
@@ -542,9 +551,15 @@ function flattenTranscript(t) {
 }
 
 // The client is the external invitee — Gabriel is the internal one recording.
+// The MEETING TITLE is the label — it is what Gabriel and Ivan actually call the call. The
+// external invitee is kept alongside it as context, not used as the name: preferring the
+// invitee turned "OSA Sales Training" into "Nathan Macias" and made real calls unrecognisable.
 function deriveClientName(m) {
+  return (m.meeting_title || m.title || "").trim() || deriveAttendeeName(m) || "Untitled call";
+}
+function deriveAttendeeName(m) {
   const ext = (m.calendar_invitees || []).find(i => i.is_external && i.name);
-  return ext?.name || m.meeting_title || m.title || "Unknown client";
+  return ext?.name || null;
 }
 
 // Imports EXACTLY ONE call: the most recent within `days`. Bounded by created_after
@@ -647,9 +662,9 @@ async function importMeeting(env, integ, m) {
   const suggestedType = await suggestCallType(env, accountId, m, transcript);
 
   const ins = await env.DB.prepare(
-    `INSERT INTO calls (account_id, client_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id, duplicate_of, call_type_id)
-     VALUES (?, ?, ?, ?, ?, 'fathom', ?, ?, ?, ?) RETURNING id`
-  ).bind(accountId, name, start, durationMin, transcript, externalId, integ.id, dup?.id ?? null, suggestedType).first();
+    `INSERT INTO calls (account_id, client_name, attendee_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id, duplicate_of, call_type_id)
+     VALUES (?, ?, ?, ?, ?, ?, 'fathom', ?, ?, ?, ?) RETURNING id`
+  ).bind(accountId, name, deriveAttendeeName(m), start, durationMin, transcript, externalId, integ.id, dup?.id ?? null, suggestedType).first();
   if (dup) {
     await logEvent(env, { level: "warn", kind: "call.possible_duplicate", call_id: ins.id, account_id: accountId,
       detail: `${name} overlaps call #${dup.id} (within 20 min) — flagged, not discarded` });
@@ -716,6 +731,61 @@ async function fathomPreview(env, id, days = 3) {
                 imported: out.filter(x => x.imported).length,
                 missing: out.filter(x => !x.imported).length,
                 meetings: out });
+}
+
+// One-off repair for calls imported before titles were stored (TASK-082). Fetches METADATA
+// ONLY (include_transcript=false) and rewrites client_name to the Fathom meeting title.
+//
+// Two guards, because this rewrites a user-visible field:
+//   - never touches a row with renamed_at set (a human chose that name)
+//   - never touches a row whose current name isn't exactly the attendee name we would have
+//     derived — i.e. it only "un-does" its own old behaviour and leaves anything else alone
+// Returns what it changed and what it deliberately left, so the result is auditable.
+async function fathomBackfillTitles(env, id, days = 30, dry = false) {
+  const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
+  if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
+  const key = keyForRow(env, row);
+  if (!key) return json({ ok: false, message: "No Fathom key saved yet." });
+
+  const sinceIso = new Date(Date.now() - days * 86400_000).toISOString();
+  let data;
+  try {
+    const res = await fetch(
+      `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(sinceIso)}&include_transcript=false`,
+      { headers: { "X-Api-Key": key }, signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) return json({ ok: false, message: `Fathom returned ${res.status}.` });
+    data = await res.json();
+  } catch (err) { return json({ ok: false, message: `Could not reach Fathom: ${err.message}` }); }
+  const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+
+  const changed = [], skipped = [];
+  for (const m of items) {
+    const externalId = String(m.recording_id ?? m.id ?? "");
+    if (!externalId) continue;
+    const call = await env.DB.prepare(
+      "SELECT id, client_name, renamed_at FROM calls WHERE external_id = ? LIMIT 1"
+    ).bind(externalId).first();
+    if (!call) continue;
+
+    const title = (m.meeting_title || m.title || "").trim();
+    const attendee = deriveAttendeeName(m);
+    if (!title || title === call.client_name) continue;
+    if (call.renamed_at) { skipped.push({ id: call.id, name: call.client_name, why: "renamed by hand" }); continue; }
+    if (attendee && call.client_name !== attendee) {
+      skipped.push({ id: call.id, name: call.client_name, why: "name is not the auto-derived attendee" });
+      continue;
+    }
+    changed.push({ id: call.id, from: call.client_name, to: title });
+    if (!dry) {
+      await env.DB.prepare("UPDATE calls SET client_name = ?, attendee_name = COALESCE(attendee_name, ?) WHERE id = ?")
+        .bind(title, attendee, call.id).run();
+    }
+  }
+  if (!dry && changed.length) {
+    await logEvent(env, { kind: "fathom.titles_backfilled", account_id: row.account_id,
+      detail: `${row.label}: retitled ${changed.length} call${changed.length === 1 ? "" : "s"} from attendee names to Fathom titles` });
+  }
+  return json({ ok: true, dry, label: row.label, changed, skipped });
 }
 
 async function fathomPullLatest(env, id, days = 7) {

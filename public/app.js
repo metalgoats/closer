@@ -511,7 +511,7 @@ function renderCallList() {
     return `<div class="call-item ${c.id === state.currentCallId ? "active" : ""} ${state.selected?.has(c.id) ? "picked" : ""} ${isNewCall(c) ? "is-new" : ""}" data-id="${c.id}" tabindex="0" role="button">
       <input type="checkbox" class="call-pick" data-pickid="${c.id}" ${state.selected?.has(c.id) ? "checked" : ""} aria-label="Select ${esc(c.client_name)}">
       <div class="call-row1"><span class="call-name"><span class="dot-${st}" title="${STATE_TITLE[st]}"></span>${esc(c.client_name)}</span><span class="call-time">${fmtTime(c.occurred_at)}</span></div>
-      <div class="call-meta">${pill}<span class="offer-tag">${esc(offerLabel(c))}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}${c.duplicate_of ? `<span class="dup-tag" title="Possible duplicate of call #${c.duplicate_of}">dup?</span>` : ""}${c.call_type_name ? `<span class="type-tag">${esc(typeTag(c))}</span>` : ""}</div>
+      <div class="call-meta">${pill}${c.attendee_name && c.attendee_name !== c.client_name ? `<span class="attendee-tag" title="External attendee">${esc(c.attendee_name)}</span>` : ""}<span class="offer-tag">${esc(offerLabel(c))}</span>${flags.length ? `<span class="sent-flags">${flags.join(" · ")}</span>` : ""}${c.duplicate_of ? `<span class="dup-tag" title="Possible duplicate of call #${c.duplicate_of}">dup?</span>` : ""}${c.call_type_name ? `<span class="type-tag">${esc(typeTag(c))}</span>` : ""}</div>
     </div>`;
   }).join("") || `<div style="padding:20px 16px; font-size:12px; color:var(--ink-400);">No calls match.</div>`;
   if (state.hasMore) {
@@ -1457,10 +1457,12 @@ async function renderIntegrations() {
           <button class="key-reveal" data-reveal="${i.id}" title="Show what you typed">Show</button>
           <button class="primary-btn key-save" data-save="${i.id}">Save</button>
           <button class="regen-btn" data-test="${i.id}">Test</button>
-          ${i.kind === "fathom" && i.has_key ? `<button class="regen-btn" data-pull="${i.id}">Pull latest call</button>` : ""}
+          ${i.kind === "fathom" && i.has_key ? `<button class="regen-btn" data-pull="${i.id}">Pull latest call</button>
+          <button class="regen-btn" data-peek="${i.id}">What's in Fathom?</button>` : ""}
           ${i.has_key ? `<button class="regen-btn key-remove" data-remove="${i.id}">Remove</button>` : ""}
         </div>
         <div class="key-foot">${state}<span class="key-msg" data-msg="${i.id}"></span></div>
+        <div class="peek-panel hidden" data-peekpanel="${i.id}"></div>
       </div>`;
     }).join("")}`).join("");
 
@@ -1551,6 +1553,43 @@ async function renderIntegrations() {
   }));
 
   // Pull exactly one call — the most recent. Lands unprocessed; you choose when to spend tokens.
+  // "What's in Fathom?" — read-only. Shows everything the key can see, including recordings we
+  // deliberately skip, so "are we missing calls?" is answered by looking instead of by widening
+  // the import and hoovering up the whole org. Fetches no transcripts and writes nothing.
+  document.querySelectorAll("[data-peek]").forEach(btn => btn.addEventListener("click", async () => {
+    const id = btn.dataset.peek;
+    const panel = document.querySelector(`[data-peekpanel="${id}"]`);
+    if (!panel.classList.contains("hidden") && panel.dataset.loaded === "1") {
+      panel.classList.add("hidden"); return;                       // second click closes it
+    }
+    panel.classList.remove("hidden");
+    panel.innerHTML = `<div class="peek-loading">Asking Fathom…</div>`;
+    btn.disabled = true;
+    try {
+      const days = 7;
+      const r = await api.get(`/integrations/${id}/preview?days=${days}`);
+      if (!r.ok) { panel.innerHTML = `<div class="peek-loading">${esc(r.message)}</div>`; return; }
+      const rows = r.meetings.map(m => `
+        <tr class="${m.imported ? "" : "peek-skip"}">
+          <td>${m.imported ? `<span class="peek-yes">In app</span>` : `<span class="peek-no">Skipped</span>`}</td>
+          <td class="peek-when">${esc(String(m.occurred_at || "").slice(0, 16).replace("T", " "))}</td>
+          <td>${esc(m.title)}</td>
+          <td class="peek-by">${esc(m.recorded_by)}</td>
+          <td class="peek-why">${m.skipped_reason ? esc(m.skipped_reason) : m.imported ? "" : "not imported yet"}</td>
+        </tr>`).join("");
+      panel.innerHTML = `
+        <div class="peek-head">Last ${days} days · <b>${r.total}</b> recording${r.total === 1 ? "" : "s"} visible to this key —
+          <b>${r.imported}</b> in the app, <b>${r.missing}</b> skipped.
+          Importing only <i>${esc(r.owner_email || "—")}</i>'s own recordings.</div>
+        <div style="overflow-x:auto;"><table class="peek-table"><tbody>${rows || `<tr><td>Nothing in this window.</td></tr>`}</tbody></table></div>
+        <div class="peek-foot">Skipped rows are colleagues' own recordings. Importing them would store their client
+          transcripts here — and a meeting several people recorded arrives once per recorder, so it would also duplicate.</div>`;
+      panel.dataset.loaded = "1";
+    } catch (err) {
+      panel.innerHTML = `<div class="peek-loading">${esc(err.message)}</div>`;
+    } finally { btn.disabled = false; }
+  }));
+
   document.querySelectorAll("[data-pull]").forEach(btn => btn.addEventListener("click", async () => {
     const id = btn.dataset.pull;
     setMsg(id, "Looking for your most recent call…");
