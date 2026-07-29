@@ -116,7 +116,7 @@ globalThis.fetch = async (url) => {
 
 let bootErr = null;
 try {
-  (0, eval)(src + `\n;globalThis.__t = { VIEWS, applySidebar, settingsMenu, openSettingsFrom, state };`);
+  (0, eval)(src + `\n;globalThis.__t = { VIEWS, applySidebar, settingsMenu, openSettingsFrom, state, renderProcessed, defaultOutputTab, OUTPUT_TABS };`);
 } catch (e) { bootErr = e; }
 
 console.log("\n== app.js loads ==");
@@ -191,6 +191,44 @@ const mobileBlock = (css.match(/@media \(max-width:640px\)\{[\s\S]*?\n\}/) || ["
 check("nav-item restored to flex, not `revert`", /\.sidebar \.nav-item\{\s*display:flex/.test(mobileBlock));
 check("a desktop collapse cannot hide the mobile slide-over",
   /body\.sb-collapsed \.sidebar\{[^}]*opacity:1/.test(mobileBlock));
+
+console.log("\n== outputs collapse to one pane at a time (TASK-088) ==");
+// defaultOutputTab: opens on what Gabriel said he'd send.
+check("email stated -> opens on Email",
+  T.defaultOutputTab({ statedFollowUps: [{ channel: "email" }] }) === "email");
+check("only text stated -> opens on Text",
+  T.defaultOutputTab({ statedFollowUps: [{ channel: "text" }] }) === "text");
+check("nothing stated -> defaults to Email", T.defaultOutputTab({}) === "email");
+check("malformed statedFollowUps does not throw", T.defaultOutputTab({ statedFollowUps: "oops" }) === "email");
+check("three output tabs: Text / Email / CRM Note",
+  T.OUTPUT_TABS.map(t => t.key).join(",") === "text,email,ghl");
+
+// Actually RENDER the processed detail and read the markup — the "render it and look" lesson,
+// mechanised: a processed call whose debrief says Gabriel stated an email.
+const processedCall = {
+  id: 1, client_name: "Marcus Webb", occurred_at: "2026-07-19T10:00:00Z", source: "fathom",
+  duration_min: 30, outcome: "followup", call_type_id: 1, selected_tone: "balanced", suggested_tone: "balanced",
+  debrief_json: JSON.stringify({ outcome: "followup", scorecard: [["rapport", 8]],
+    statedFollowUps: [{ channel: "email", said: "I'll email you", contains: ["steps"] }],
+    followUp: { nextStep: "call Thu" }, profile: ["p"] })
+};
+const processedOutputs = [
+  { id: 11, kind: "sms", tone: "balanced", body: "hi" },
+  { id: 12, kind: "email", tone: "balanced", subject: "s", body: "b" },
+  { id: 13, kind: "ghl_note", body: "CLIENT\n- x" }
+];
+T.state.callTypes = [{ id: 1, name: "Sales call" }];
+let renderErr = null;
+try { T.renderProcessed(processedCall, processedOutputs); } catch (e) { renderErr = e; }
+check("renderProcessed runs without throwing", !renderErr, renderErr ? `${renderErr.name}: ${renderErr.message}` : "");
+const dpHtml = (document.querySelector("#detailPane") || {}).innerHTML || "";
+check("all three output tabs are rendered", (dpHtml.match(/data-otab="(text|email|ghl)"/g) || []).length >= 6); // 3 chips + 3 panes
+check("exactly one output pane is active at a time",
+  (dpHtml.match(/class="opane active"/g) || []).length === 1,
+  `${(dpHtml.match(/class="opane [^"]*active[^"]*"/g) || []).length} active panes`);
+check("the active pane matches the stated channel (email)", /class="opane active" data-otab="email"/.test(dpHtml));
+check("CSS hides inactive panes and shows the active one",
+  /\.opane\{[^}]*display:none/.test(css) && /\.opane\.active\{[^}]*display:flex/.test(css));
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

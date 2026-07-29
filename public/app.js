@@ -829,6 +829,7 @@ function renderProcessed(call, outputs) {
   const sms = outputs.find(o => o.kind === "sms" && o.tone === tone);
   const email = outputs.find(o => o.kind === "email" && o.tone === tone);
   const ghl = outputs.find(o => o.kind === "ghl_note");
+  const defTab = defaultOutputTab(d);   // adaptive: open on what Gabriel said he'd send (TASK-085/088)
   const pill = call.outcome === "closed" ? `<span class="pill pill-closed">Closed</span>` : `<span class="pill pill-followup">Follow-up</span>`;
   // Fathom is the norm, so saying so on every call is noise. A hand-pasted transcript is the
   // exception and still says so.
@@ -872,11 +873,20 @@ function renderProcessed(call, outputs) {
       </div>
     </div>
 
-    <!-- Three columns: Text / Email / GHL Note -->
-    <div class="outputs">
-      ${outputPanel("Text Message", sms, { sent: true })}
-      ${outputPanel("Email", email, { sent: true, subject: true })}
-      ${outputPanel("GoHighLevel Note", ghl, {})}
+    <!-- One output at a time (TASK-088). Gabriel sends the text, then the email, sometimes
+         neither — three panels should not all fight for the screen at once. Segmented exactly
+         like the debrief pages so it keeps the dashboard feel. The tab shown first follows what
+         Gabriel said on the call he would send (statedFollowUps), so the app opens on the thing
+         he actually intends to send. -->
+    <div class="outputs-section">
+      <div class="panel-subnav" role="tablist">${OUTPUT_TABS.map(t =>
+        `<button class="chip ${t.key === defTab ? "active" : ""}" data-otab="${t.key}"
+                 role="tab" aria-selected="${t.key === defTab}">${t.label}</button>`).join("")}</div>
+      <div class="outputs">
+        <div class="opane ${defTab === "text"  ? "active" : ""}" data-otab="text">${outputPanel("Text Message", sms, { sent: true })}</div>
+        <div class="opane ${defTab === "email" ? "active" : ""}" data-otab="email">${outputPanel("Email", email, { sent: true, subject: true })}</div>
+        <div class="opane ${defTab === "ghl"   ? "active" : ""}" data-otab="ghl">${outputPanel("GoHighLevel Note", ghl, {})}</div>
+      </div>
     </div>`;
 
   wireDetail(call, { sms, email, ghl, debrief: d });
@@ -887,6 +897,24 @@ function renderProcessed(call, outputs) {
 // everything else is a section you go looking for deliberately.
 const bullets = xs => (xs || []).length
   ? `<ul>${xs.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+
+// The three outputs, shown one at a time under a segmented control (TASK-088).
+const OUTPUT_TABS = [
+  { key: "text",  label: "Text Message" },
+  { key: "email", label: "Email" },
+  { key: "ghl",   label: "CRM Note" }
+];
+
+// Which output to open on. Follows what Gabriel told the client he would send on the call
+// (statedFollowUps, TASK-085). Email is the default client-facing surface; only fall to Text
+// when he named a text and no email. The CRM note is internal, so it is never auto-opened.
+function defaultOutputTab(d) {
+  const stated = Array.isArray(d && d.statedFollowUps) ? d.statedFollowUps : [];
+  const channels = new Set(stated.map(s => String(s && s.channel || "").toLowerCase()));
+  if (channels.has("email")) return "email";
+  if (channels.has("text")) return "text";
+  return "email";
+}
 
 const DEBRIEF_PAGES = [
   { label: "TL;DR & Scorecard", key: "tldr",
@@ -977,6 +1005,17 @@ function wireDetail(call, outs) {
     });
     document.querySelectorAll(".dpage").forEach(p => p.classList.toggle("active", p.dataset.page === n));
     $("#debriefBody").scrollTop = 0;
+  }));
+
+  // Outputs: same one-at-a-time pattern as the debrief pages (TASK-088).
+  document.querySelectorAll(".chip[data-otab]").forEach(chip => chip.addEventListener("click", () => {
+    const k = chip.dataset.otab;
+    document.querySelectorAll(".chip[data-otab]").forEach(c => {
+      const on = c.dataset.otab === k;
+      c.classList.toggle("active", on);
+      c.setAttribute("aria-selected", on);
+    });
+    document.querySelectorAll(".opane").forEach(p => p.classList.toggle("active", p.dataset.otab === k));
   }));
 
   // tone switch

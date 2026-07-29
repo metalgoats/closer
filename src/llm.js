@@ -37,7 +37,7 @@ export function keyForRow(env, row) {
 // Rough expected output sizes, used ONLY to turn streamed bytes into a percentage.
 // They are estimates and are treated as such: progress is capped at each step's ceiling
 // rather than allowed to overshoot, and it cannot advance unless real bytes arrive.
-const EXPECTED_DEBRIEF_CHARS = 14000;   // 9 sections + a GHL note that can reach 10k
+const EXPECTED_DEBRIEF_CHARS = 12000;   // ~11 sections + a scannable GHL note (TASK-087 capped it at 6k)
 const EXPECTED_MESSAGE_CHARS = 1500;    // one tone's SMS + email
 const DEBRIEF_SHARE = 70;               // debrief is the long pole: 0-70%, messages 70-100%
 
@@ -91,10 +91,36 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
     "buyingSignals (string[]: notable signals; use [] if not applicable)",
     "lessons (string[])",
     'outcome ("closed"|"followup")',
-    'followUp (object: {nextStep (string: the single concrete next action actually agreed), timing (string: when the next contact was agreed, or ""), commitments (string[]: anything the host promised to do or send), personalDetails (string[]: specifics worth referencing in a follow-up)})'
+    'followUp (object: {nextStep (string: the single concrete next action actually agreed), timing (string: when the next contact was agreed, or ""), commitments (string[]: anything the host promised to do or send), personalDetails (string[]: specifics worth referencing in a follow-up)})',
+    // TASK-085 (adaptive output selection). Gabriel narrates his own follow-up on the call
+    // ("I'm going to send you an email, and it's going to have this, and this"). This is the
+    // ONLY pass that sees the transcript, so it must capture those commitments verbatim; the
+    // drafts are built downstream from what we extract here, never from the transcript.
+    'statedFollowUps (array of {channel ("email"|"text"|"other"), said (string: Gabriel\'s own words where he told the client what he would send or do next), contains (string[]: the specific items/links/documents he said it would include)} — read the transcript for moments where Gabriel commits to sending something after the call; capture each; use [] if he committed to nothing specific)',
+    // TASK-086 (recipient profile). A profile of the CLIENT, from THEIR language — not to make
+    // the follow-up sound like Gabriel, but like exactly what this person needs to hear. The
+    // "disclosed" list is the point: the personal facts a client volunteers (a doctor, a
+    // sister) that never register live but matter to them.
+    'recipientProfile (object: {communicationStyle (string: how this client actually talks and takes in information, inferred from their own words on the call — e.g. brief and bottom-line, warm and story-led, detail-hungry, guarded), caresAbout (string[]: what the client signalled matters to them), disclosed (string[]: personal facts the client volunteered — job, family, life details worth referencing in a follow-up), bestReceivedAs (string: one line on how to shape a follow-up so it lands for THIS person)})'
   );
   if (wantMessages) schemaParts.push('suggestedTone ("casual"|"balanced"|"formal")', "toneReason (string)");
-  if (wantCrmNote) schemaParts.push("ghlNote (string, under 10000 chars: name, personal details for rapport, profile, objections, next-call guidance)");
+  // TASK-087 (GHL note rebuild). Gabriel's spec, near-verbatim: more bulleted, more spaced
+  // out, concise, easy to read — enough for him OR anyone on the team to pick up cold. Plain
+  // text, because a GoHighLevel note is pasted plain and markdown may not render. The exact
+  // house wording lives in his OpenAI "GAB sales" folder and is NOT exported yet, so this
+  // pins down the STRUCTURE (six named sections, bulleted, spaced) and leaves the finer voice
+  // for a second pass once that reference is in hand — do not invent a house style here.
+  if (wantCrmNote) schemaParts.push(
+    'ghlNote (string, under 6000 chars: a scannable CRM note anyone on the team could act on cold. ' +
+    'PLAIN TEXT ONLY — no markdown, no # or *. Format: a SHORT UPPERCASE section header on its own line, ' +
+    'then "- " bullets, then a blank line before the next section. Bullets, not paragraphs. Be concise. ' +
+    'Sections in this exact order, each included only if there is genuinely something to say: ' +
+    'CLIENT (who they are, plus the personal details a teammate should know), ' +
+    'GOALS (what they want / why they took the call), ' +
+    'OUTCOME (what happened on this call and the agreed next step), ' +
+    'WHAT WAS SAID (only the few things that actually matter), ' +
+    'SELLING POINTS (angles likely to land next time), ' +
+    'WATCH OUT FOR (objections, sensitivities, pitfalls to avoid))');
 
   const debriefRes = await completeWithRetry(env, provider, key, [
     { role: "user", content: `${prompt}\n\nReturn ONLY valid JSON with keys: ${schemaParts.join(", ")}.\n\nTranscript:\n${call.transcript}` }
@@ -117,7 +143,25 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
   const toneChars = new Map(TONES.map(t => [t, 0]));   // shared so the 3 jobs report one combined bar
   const msgJobs = !wantMessages ? [] : TONES.map(async tone => {
     const res = await completeWithRetry(env, provider, key, [
-      { role: "user", content: `You are drafting a follow-up SMS and email from Gabriel, a high-ticket sales closer, to a client he just got off a call with.\n\nYou are NOT given the transcript. The summary below was extracted from it by a prior analysis pass — treat it as the complete and authoritative record of what happened. Do NOT invent facts, commitments, prices, or dates that are not in it.\n\nTone: ${tone}.\nWrite to the actual outcome (${parsed.outcome}) — do not imply a close that did not happen.\nReference the specific details below — their situation, their own phrasing, what was agreed — so this reads like Gabriel wrote it and not like a template.\n\nCall summary:\n${ctx}\n\nReturn ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
+      { role: "user", content: `You are drafting a follow-up SMS and email from Gabriel, a high-ticket sales closer, to a client he just got off a call with.
+
+You are NOT given the transcript. The summary below was extracted from it by a prior analysis pass — treat it as the complete and authoritative record of what happened. Do NOT invent facts, commitments, prices, or dates that are not in it.
+
+Tone: ${tone}.
+Write to the actual outcome (${parsed.outcome}) — do not imply a close that did not happen.
+
+DELIVER WHAT GABRIEL PROMISED. If "statedFollowUps" is non-empty, it is what Gabriel told the client on the call he would send or do next. The email must deliver exactly those things, including the specific items he named in "contains" — do not drop anything he promised, and do not add promises he did not make.
+
+WRITE BOTH, ALWAYS. Return a non-empty SMS and a non-empty email even if Gabriel only mentioned one of them on the call. The SMS is a short, warm note that ends the conversation on a good note — worth sending whether or not there was a sale. Never return an empty "sms".
+
+WRITE FOR THE RECIPIENT, NOT FOR GABRIEL. Use "recipientProfile" to shape how this lands: match how this specific client takes in information and reference what they disclosed and care about. The goal is not to sound like Gabriel — it is to say exactly what this person needs to hear, in the way they best receive it.
+
+Ground everything in the specific details below — their situation, their own phrasing, what was agreed — so it reads like a real message about a real call, not a template.
+
+Call summary:
+${ctx}
+
+Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
     ], { effort: "low", think: false,
          onRetry: r => onStep && onStep({ step: "retry", detail: `${tone} attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
          onProgress: chars => {
@@ -167,9 +211,19 @@ function draftContext(call, parsed) {
     personalDetails: f.personalDetails,
     clientProfile: parsed.profile,
     buyingSignals: parsed.buyingSignals,
+    // TASK-085: what Gabriel told the client he would send. The email/SMS must DELIVER exactly
+    // this, so it has to cross into the draft pass. It is his own words to the client, not
+    // critique of him, so it is safe under the guard below.
+    statedFollowUps: parsed.statedFollowUps,
+    // TASK-086: how THIS client best receives a message. Also client-facing, also safe.
+    recipientProfile: parsed.recipientProfile,
     // `said` is the client's verbatim objection — the phrasing worth mirroring back.
     objections: (parsed.objections || []).map(o => ({ said: o.said, meant: o.meant, resolveWith: o.follow }))
   }, null, 1);
+  // GUARD (TASK-042): scorecard, didWell, hurtSale, lessons and ghlNote are NEVER included.
+  // They are coaching critique OF Gabriel; a client-facing draft must not be built from them.
+  // Everything above is either the client's own words/situation or Gabriel's commitments to
+  // the client — safe to send. If you add a field here, it must pass that same test.
 }
 
 // A draft built from an empty distillation does not fail — it produces fluent, generic filler
@@ -426,9 +480,20 @@ function mockOutputs(call) {
       objections: [{ said: "[Mock objection]", meant: "—", felt: "—", should: "—", follow: "—", loop: "—" }],
       profile: ["[Mock] Real psychological profiling appears here once an LLM key is configured."],
       buyingSignals: ["[Mock] Real buying-signal detection appears here once an LLM key is configured."],
-      lessons: ["[Mock] Real coaching lessons appear here once an LLM key is configured."]
+      lessons: ["[Mock] Real coaching lessons appear here once an LLM key is configured."],
+      statedFollowUps: [{ channel: "email", said: `[Mock] "I'll send you an email with the details."`, contains: ["[Mock] the item Gabriel said he'd include"] }],
+      recipientProfile: { communicationStyle: "[Mock] how this client talks — real analysis needs an LLM key.",
+        caresAbout: ["[Mock] what the client cares about"], disclosed: ["[Mock] a personal detail the client volunteered"],
+        bestReceivedAs: "[Mock] how to shape the follow-up for this person." }
     },
-    ghlNote: `[Mock CRM note for ${call.client_name}] Connect an LLM API key to generate the real client profile and call summary.`,
+    ghlNote: [
+      `CLIENT`, `- ${call.client_name} — [mock] connect an LLM key for the real profile`, ``,
+      `GOALS`, `- [mock] what they came for`, ``,
+      `OUTCOME`, `- [mock] what happened + the agreed next step`, ``,
+      `WHAT WAS SAID`, `- [mock] the few things that matter`, ``,
+      `SELLING POINTS`, `- [mock] angles likely to land next time`, ``,
+      `WATCH OUT FOR`, `- [mock] objections and sensitivities`
+    ].join("\n"),
     messages: TONES.map(tone => ({
       tone,
       sms: `[Mock ${tone} SMS] Hi ${name}, great talking today — I'll follow up shortly.`,

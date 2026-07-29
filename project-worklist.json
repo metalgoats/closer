@@ -2534,6 +2534,75 @@
         "tests/naming.test.mjs (36) + tests/ui-smoke.test.mjs (21) gate the deploy via npm test"
       ],
       "notes": "THE DRY RUN EARNED ITS KEEP. The first cut would have renamed TWO different calls ('Kyle' and 'Evette') both to 'Impromptu Zoom Meeting' \u2014 Zoom's default, shared verbatim, identifying nothing \u2014 leaving them indistinguishable. It took THREE passes to get right: (a) add isGenericTitle to naming.js, (b) the backfill still had a duplicated local copy of the rule so it ignored the guard, (c) deriveClientName falls back to the auto-title when Fathom lists no external invitee, so a final 'never trade a real name for a generic one' guard was needed in the backfill. Naming rules now live in ONE place (src/naming.js) with unit tests. DECLINED Ivan's request to 'pull in all the calls from both Fathom APIs': the preview proved 8 of 10 visible OSA recordings belong to Taha and Jason (their own client calls \u2014 exactly what Gabriel objected to), and that one meeting recorded by three people arrives three times, so a wide pull would import colleagues' transcripts AND triplicate internal meetings. Offered a per-key opt-in instead if he still wants it."
+    },
+    {
+      "id": "TASK-085",
+      "title": "Adaptive output selection: prepare exactly what Gabriel said he'd send; never suppress the SMS",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-042"
+      ],
+      "description": "Gabriel narrates his own follow-up on calls ('I'm going to send you an email, and it's going to have this, and this'). Added statedFollowUps to the debrief schema (the only pass that sees the transcript) capturing each commitment verbatim with the items he named, carried forward through draftContext so the draft pass builds exactly that. Hard requirement, met: the SMS is NEVER suppressed \u2014 all three tones generate even on an email-only call, and the draft prompt insists on a warm, send-worthy SMS. Respects the TASK-042 guard: statedFollowUps is Gabriel's own words to the client, not critique of him, so it is safe to carry.",
+      "acceptance_criteria": [
+        "statedFollowUps in debrief schema + carried through draftContext",
+        "SMS generated for all three tones even when only an email was stated",
+        "draft prompt instructs: deliver what Gabriel promised; never return an empty SMS",
+        "verified against real generateOutputs in tests/llm.test.mjs (no key needed)"
+      ],
+      "notes": "Wording/quality of the resulting draft still needs one live model run to eyeball \u2014 no API key in the build session, seed transcripts are stubs. Structure + plumbing verified deterministically."
+    },
+    {
+      "id": "TASK-086",
+      "title": "Recipient profile: shape the follow-up to how the CLIENT best receives it",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-042",
+        "TASK-085"
+      ],
+      "description": "Gabriel's product decision: 'I don't even know if I want it to sound like me. I want it to sound like exactly what that person needs to hear.' Added recipientProfile to the debrief schema \u2014 communicationStyle, caresAbout, disclosed (personal facts the client volunteered \u2014 the 'I had no idea they were a doctor' fix), bestReceivedAs \u2014 from the client's own language. Carried through draftContext; the draft prompt shapes both SMS and email to the recipient, not to Gabriel. Safe under the guard (client-facing, not critique).",
+      "acceptance_criteria": [
+        "recipientProfile in debrief schema + carried through draftContext",
+        "disclosed facts reach the drafts",
+        "draft prompt instructs: write for the recipient, not for Gabriel",
+        "verified in tests/llm.test.mjs"
+      ],
+      "notes": "Kept the existing psychological `profile` field (CRM-facing) and added recipientProfile as the delivery-shaping layer, rather than overloading one field."
+    },
+    {
+      "id": "TASK-087",
+      "title": "Rebuild the GoHighLevel note: scannable, six bulleted sections",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [],
+      "description": "Gabriel's spec, near-verbatim: more bulleted, more spaced out, concise, easy to read \u2014 enough for him OR any teammate to act on cold. Restructured the ghlNote schema instruction into plain-text (GHL pastes plain; markdown may not render), SHORT UPPERCASE headers + '- ' bullets + blank lines, six sections in order: CLIENT / GOALS / OUTCOME / WHAT WAS SAID / SELLING POINTS / WATCH OUT FOR. Capped ~6k chars (was 10k) to force brevity; EXPECTED_DEBRIEF_CHARS re-baselined 14k->12k.",
+      "acceptance_criteria": [
+        "schema demands the six named sections, plain text, bulleted, concise",
+        "structural work only \u2014 house wording left for a second pass"
+      ],
+      "notes": "STRUCTURE ONLY, on purpose. The exact house format/voice lives in Gabriel's OpenAI 'GAB sales' folder and is NOT exported yet (handoff said so). Do the wording pass once that reference is in hand; do not invent a house style. Mock ghlNote updated to the new format so dev-mode shows it."
+    },
+    {
+      "id": "TASK-088",
+      "title": "Collapse the three outputs into a one-at-a-time segmented control",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [
+        "TASK-085"
+      ],
+      "description": "Ivan's observation from watching Gabriel: he sends the text, then the email, sometimes neither \u2014 the three panels should not all hold screen at once. Replaced the 3-column .outputs grid with a segmented control (Text Message / Email / CRM Note) showing one pane at a time, reusing the debrief pagination pattern to keep the dashboard feel. The tab shown first is adaptive (defaultOutputTab) \u2014 it opens on whatever Gabriel said he'd send (statedFollowUps); CRM note is internal so never auto-opened.",
+      "acceptance_criteria": [
+        "one output pane visible at a time; three tabs",
+        "default tab follows statedFollowUps (email unless only text stated)",
+        "rendered and looked at in a real browser on seeded data",
+        "asserted in tests/ui-smoke.test.mjs (renderProcessed runs; exactly one .opane active)"
+      ],
+      "notes": "Verified visually in-browser (mock/seed data): segmented control switches Text/Email/CRM cleanly, one pane each. Mobile override reconciled to the single-pane model."
     }
   ],
   "progress_percentage": 77,

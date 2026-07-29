@@ -66,6 +66,13 @@ public/          the UI (ported from the design mockup)
 - **Double-spend guard**: a second process request on an in-flight call is refused for
   `STALE_PROCESSING_MS` (10 min). Each run is 4 paid LLM calls — losing this guard costs real money.
 - **Import never generates.** Fathom imports land `new`. Keep it that way.
+- **The draft guard (`draftContext` in `src/llm.js`).** The debrief pass is the ONLY stage that
+  sees the transcript. The client-facing drafts are built from `draftContext()`, which
+  deliberately excludes coaching critique of Gabriel (scorecard, didWell, hurtSale, lessons, the
+  GHL note). Do not hand the drafts the transcript, and do not add a critique field to
+  `draftContext` — a leak there ships in a real client's email. Anything the drafts need is
+  extracted in the debrief pass (e.g. `statedFollowUps`, `recipientProfile`) and carried forward.
+  `tests/llm.test.mjs` fails the build if critique ever crosses that line.
 - **Fathom** (`src/index.js`): `GET api.fathom.ai/external/v1/meetings`, `X-Api-Key`, bounded by
   `created_after` so it can't pull full history. Fathom does **not** document sort order — the
   client-side newest-first sort is load-bearing, not a nicety.
@@ -77,8 +84,11 @@ public/          the UI (ported from the design mockup)
 
 ## Key product behaviors (from the 2026-07-12 Gabriel feedback call)
 
-- Debrief renders full-width on top; Text / Email / GHL Note are three columns below.
-- SMS + email generate in **all three tones** up front; switching is instant.
+- Debrief renders full-width on top. Below it, Text / Email / GHL Note share a **segmented
+  control and show one at a time** (TASK-088) — Gabriel sends them separately, so they no longer
+  all hold screen at once. The app opens on whatever Gabriel said on the call he'd send.
+- SMS + email generate in **all three tones** up front; switching is instant. The **SMS is never
+  suppressed** — even an email-only call gets a warm, send-worthy text (TASK-085).
 - Outputs are **editable in place**; every pre-copy edit is stored in `edits`.
 - Sunday cron: once ≥10 unfolded edits exist per (account, tone), a **suggestion** is created for
   approval — the prompt is never changed automatically.
