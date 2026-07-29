@@ -2626,6 +2626,24 @@
         "tests/llm.test.mjs (54) + tests/ui-smoke.test.mjs (41) green and in the CI gate"
       ],
       "notes": "NOT verified: whether a live Sonnet-5 run fills the richer schema WELL and inside the token budget \u2014 needs one real generation with a key. Schema/guard/rendering are done; model-output quality read is pending. Scannability preserved: tight diagnosis+TL;DR on top, depth behind pagination (added a Missed Openings page). Cost/length will rise \u2014 re-baseline max_tokens/cost against the first real run (traps doc). Local dev: injected an enriched sample debrief into local call id 4 and created a fresh admin (sonny@local.test) so Ivan can look; both are local-only (.wrangler, gitignored)."
+    },
+    {
+      "id": "TASK-090",
+      "title": "Fix two TASK-089 shape-change regressions found in the pre-push read",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [
+        "TASK-089"
+      ],
+      "description": "Pre-push diff review found two consumers still assuming the pre-TASK-089 flat shapes. (1) assertDraftable tested Array.isArray(parsed.profile) for 'enough colour to draft from'; profile is now an object, so it stopped counting \u2014 a smooth call (rich profile, no objections, no personalDetails) would throw and fail the WHOLE generation after the debrief was already paid for. (2) insights did hurt.push(d.hurtSale[0]) and hurtSale entries are now {issue,why,sayInstead}, so the Insights view would render '[object Object]'. Fixed with two exported helpers in llm.js \u2014 hasContent() and debriefLine() \u2014 as the single place that knows how to read a reshaped field; index.js imports debriefLine rather than duplicating.",
+      "acceptance_criteria": [
+        "A call with a rich profile object but no objections/personalDetails still drafts (all 3 tones + SMS)",
+        "Insights aggregates hurtSale via debriefLine \u2014 never renders [object Object]",
+        "Both new assertions verified to FAIL when their fix is reverted",
+        "Full suite green (164 assertions) and in the CI gate"
+      ],
+      "notes": "ROOT CAUSE of the miss: the llm.test fixture populates EVERY field, so no test exercised the sparse case. Added a deliberately sparse 'smooth call' fixture. When restructuring a schema field, grep every consumer for Array.isArray/[0]/typeof on that field \u2014 node --check and a full-fixture test will both pass while production breaks."
     }
   ],
   "progress_percentage": 77,

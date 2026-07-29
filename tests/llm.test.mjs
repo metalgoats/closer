@@ -11,7 +11,10 @@
 //   2. THE SMS IS NEVER SUPPRESSED, even on an email-only call.
 //   3. The enriched debrief (TASK-089) and adaptive-draft plumbing (recipientProfile.detailPreference,
 //      bounded-certainty) are wired, and the new fields survive into what workflow.js persists.
-import { generateOutputs } from "../src/llm.js";
+import { generateOutputs, hasContent, debriefLine } from "../src/llm.js";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 let pass = 0, fail = 0;
 const check = (n, c, d = "") => { c ? pass++ : fail++; console.log(`${c ? "  pass" : "  FAIL"}  ${n}${d && !c ? `  <- ${d}` : ""}`); };
@@ -137,6 +140,58 @@ check("asks for missedOpenings", /missedOpenings/.test(debriefPrompt));
 check("recipientProfile asks for detailPreference", /detailPreference \("brief"/.test(debriefPrompt));
 check("GHL note demands the richer section set",
   /OUTCOME[\s\S]*CLIENT[\s\S]*GOALS[\s\S]*PAIN POINTS[\s\S]*OBJECTIONS[\s\S]*SELLING POINTS[\s\S]*WATCH OUT FOR[\s\S]*FOLLOW-UP TASKS[\s\S]*RETENTION RISK[\s\S]*UPSELL[\s\S]*PERSONAL RAPPORT/.test(debriefPrompt));
+
+// ---------------------------------------------------------------------------------------
+// TASK-090 — the shape-change regressions. TASK-089 turned `profile` and `hurtSale` from flat
+// arrays into objects, and two consumers still did Array.isArray()/[0] on them. Neither was
+// caught by the suite above because its fixture populates EVERY field. These are the cases
+// that actually break in production.
+// ---------------------------------------------------------------------------------------
+console.log("\n== a smooth call must still be draftable (assertDraftable shape bug) ==");
+// Rich behavioural profile, but NO objections and NO personalDetails — a clean close. Under the
+// old Array.isArray(profile) check this threw and killed the whole generation AFTER the debrief
+// had been paid for.
+const SMOOTH = {
+  outcome: "closed",
+  followUp: { nextStep: "Send the onboarding link", timing: "today", commitments: [], personalDetails: [] },
+  objections: [],
+  profile: { dominantFears: ["being sold to"], valuesHierarchy: ["speed"], disc: "High D", trustTriggers: ["directness"] },
+  buyingSignals: { genuine: ["signed on the call"], false: [] },
+  recipientProfile: { communicationStyle: "brief", caresAbout: [], disclosed: [], bestReceivedAs: "short", detailPreference: "brief" },
+  statedFollowUps: [], suggestedTone: "casual", toneReason: "warm", ghlNote: "OUTCOME\n- closed"
+};
+bodies = [];
+globalThis.fetch = async (url, opts) => {
+  const body = JSON.parse(opts.body); bodies.push(body);
+  const isDebrief = body.messages[0].content.includes("Return ONLY valid JSON with keys");
+  return { ok: true, body: sseStream(JSON.stringify(isDebrief ? SMOOTH : DRAFT)) };
+};
+let smoothErr = null, smoothOut = null;
+try { smoothOut = await generateOutputs(env, { account, call, masterPrompt: "M", callType: CALLTYPE }); }
+catch (e) { smoothErr = e; }
+check("a call with a rich profile but no objections/personalDetails still drafts", !smoothErr,
+  smoothErr ? `${smoothErr.message.slice(0, 140)}` : "");
+check("...and still produces all three tones with an SMS",
+  !!smoothOut && smoothOut.messages.length === 3 && smoothOut.messages.every(m => m.sms));
+
+console.log("\n== hasContent reads either shape ==");
+check("array with items -> true", hasContent(["x"]));
+check("empty array -> false", !hasContent([]));
+check("object of arrays with items -> true", hasContent({ a: [], b: ["x"] }));
+check("object of empty arrays -> false", !hasContent({ a: [], b: [] }));
+check("non-empty string -> true", hasContent("x"));
+check("null/undefined -> false", !hasContent(null) && !hasContent(undefined));
+
+console.log("\n== debriefLine never renders [object Object] ==");
+check("legacy string passes through", debriefLine("plain text") === "plain text");
+check("hurtSale object -> its issue", debriefLine({ issue: "talked over them", why: "w", sayInstead: "s" }) === "talked over them");
+check("didWell object -> its move", debriefLine({ move: "opened strong", why: "w" }) === "opened strong");
+check("empty -> empty string, never '[object Object]'", debriefLine(null) === "" && !debriefLine({}).includes("object"));
+// The Insights aggregate lives in index.js and needs a DB, so assert at the source that it goes
+// through the helper rather than indexing the raw (now object-shaped) entry.
+const indexSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "index.js"), "utf8");
+check("insights aggregates hurtSale via debriefLine, not d.hurtSale[0] directly",
+  /debriefLine\(d\.hurtSale\?\.\[0\]\)/.test(indexSrc) && !/hurt\.push\(d\.hurtSale\[0\]\)/.test(indexSrc));
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

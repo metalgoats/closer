@@ -265,6 +265,26 @@ function draftContext(call, parsed) {
   // the client. If you add a field here, it must pass that same test.
 }
 
+// TASK-089 turned several flat string[] fields into structured objects. These two helpers are
+// the ONE place that knows how to read either shape, so every consumer — the draftable guard,
+// the insights aggregate in index.js, the front end — agrees. Do not re-implement locally.
+
+// Does this field carry anything, whether it is a string, an array, or an object of arrays?
+export function hasContent(v) {
+  if (!v) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "object") return Object.values(v).some(hasContent);
+  return String(v).trim().length > 0;
+}
+
+// A didWell / hurtSale entry is a string (legacy) or {move|issue, why, sayInstead} (TASK-089).
+// Returns the human-readable line, so an aggregate never renders "[object Object]".
+export function debriefLine(x) {
+  if (!x) return "";
+  if (typeof x === "string") return x;
+  return x.issue || x.move || "";
+}
+
 // A draft built from an empty distillation does not fail — it produces fluent, generic filler
 // that reads fine and says nothing about the actual call. That is worse than an error, because
 // nobody catches it. Fail loudly instead.
@@ -273,9 +293,13 @@ function assertDraftable(parsed) {
   const missing = [];
   if (!parsed.outcome) missing.push("outcome");
   if (!f.nextStep) missing.push("followUp.nextStep");
-  const hasColour = [f.personalDetails, parsed.profile, parsed.objections]
-    .some(v => Array.isArray(v) && v.length);
-  if (!hasColour) missing.push("followUp.personalDetails / profile / objections (all empty)");
+  // Shape-tolerant (TASK-090). `profile` became an OBJECT in TASK-089, and the old
+  // `Array.isArray(profile)` check silently stopped counting it as colour — so a smooth call
+  // with a rich profile but no objections and no personalDetails would fail the WHOLE
+  // generation after the debrief had already been paid for. Count content in either shape.
+  const hasColour = [f.personalDetails, parsed.profile, parsed.objections, parsed.recipientProfile]
+    .some(hasContent);
+  if (!hasColour) missing.push("followUp.personalDetails / profile / objections / recipientProfile (all empty)");
   if (missing.length) {
     throw new Error(
       `The debrief did not return the fields the follow-up drafts are built from: ${missing.join("; ")}. ` +

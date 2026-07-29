@@ -1,6 +1,6 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
-import { resolveKey, keyForRow } from "./llm.js";
+import { resolveKey, keyForRow, debriefLine } from "./llm.js";
 import { logEvent } from "./log.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
@@ -918,7 +918,9 @@ async function insights(env, accountId, callTypeId) {
     let d; try { d = JSON.parse(row.debrief_json); } catch { continue; }
     if ((d.scorecard || []).length) scored++;
     for (const [k, v] of d.scorecard || []) (dims[k] = dims[k] || []).push(v);
-    if (d.hurtSale?.[0]) hurt.push(d.hurtSale[0]);
+    // hurtSale entries became objects in TASK-089 — read via debriefLine or this renders
+    // "[object Object]" in the Insights view.
+    const h = debriefLine(d.hurtSale?.[0]); if (h) hurt.push(h);
     if (d.lessons?.[0]) lessons.push(d.lessons[0]);
   }
   const averages = Object.entries(dims)

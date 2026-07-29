@@ -3,6 +3,27 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-07-29 (pre-push) — Two shape-change regressions caught before deploy (TASK-090)
+
+A final read of the diff before pushing found two consumers that still assumed the OLD flat
+shapes after TASK-089 restructured them. Both would have hit Gabriel in production:
+
+- **`assertDraftable` could kill a whole generation.** It tested `Array.isArray(parsed.profile)`
+  for "does this debrief have enough colour to draft from" — but `profile` is now an *object*, so
+  it silently stopped counting. A smooth call (rich profile, no objections, no personal details —
+  i.e. a clean close) would throw and fail the run **after the debrief had already been paid for**.
+- **Insights would render `[object Object]`.** The aggregate did `hurt.push(d.hurtSale[0])`, and
+  `hurtSale` entries are now `{issue, why, sayInstead}`.
+
+Fixed with two exported helpers in `llm.js` — `hasContent()` (does this field carry anything, in
+either shape) and `debriefLine()` (the readable line from a string *or* an object) — so there is
+ONE place that knows how to read a reshaped field. `src/index.js` imports `debriefLine` rather
+than re-implementing.
+
+The lesson: the existing suite missed both because its fixture populates **every** field. Added a
+deliberately *sparse* fixture (the smooth-call case) plus direct helper tests, and verified each
+new assertion FAILS when its fix is reverted. 67 assertions in `llm.test.mjs` now.
+
 ## 2026-07-29 (later) — Output depth: stop the schema flattening the analysis (TASK-089)
 
 Gabriel provided a full `GAB sales` specimen (the Brandon call) — the ChatGPT output he likes and
