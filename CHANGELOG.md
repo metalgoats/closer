@@ -3,6 +3,42 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-07-29 (later still) — Drag-to-resize panes (TASK-091)
+
+Ivan asked for Apple Mail-style resizing: grab a boundary, drag it. Three dividers now — sidebar
+| call list, call list | detail, and (inside the detail column) debrief | outputs. Double-click a
+divider to reset it, arrow keys nudge it 16px, and sizes persist per browser like the theme and
+the collapse state.
+
+The load-bearing decision: the sizes are CSS **variables** on `:root`, never an inline
+`grid-template-columns` on `.app`. An inline grid style would outrank every media query and
+silently wreck the ≤900px icon rail and the ≤640px single-column mobile layout — so those two
+breakpoints deliberately ignore the variables and keep their fixed columns, and the handles hide
+below 900px where there is nothing to drag. A test asserts JS never writes the grid property
+directly.
+
+Details worth keeping:
+- Handles are placed by **measuring** the rendered pane edges (via `ResizeObserver`), not by
+  recomputing the CSS widths in JS — so they stay correct through every breakpoint and the
+  collapse animation with no second source of truth to drift.
+- Each pane measures the **grid column**, not the pane element. `.sidebar` carries an 8px left
+  margin, so measuring the element made the boundary lag the cursor by exactly 8px on every
+  sidebar drag. Caught by dragging it in a browser and checking where it landed; now the
+  boundary lands exactly under the pointer.
+- The `.18s` collapse transition is suppressed while dragging (it rubber-banded the drag) *and*
+  during keyboard nudges (a held arrow key otherwise trails the input by .18s).
+- Pointer capture, so a fast drag doesn't detach when the cursor outruns the 9px strip;
+  `touch-action:none` so a touch drag doesn't scroll the page; 9px hit area for a 1px line.
+
+Verified in a real browser at 1440×900 and 375×812: both boundaries land pixel-exactly under the
+cursor, the debrief divider grows by exactly the drag distance and clamps inside its column,
+double-click resets to the CSS default, sizes survive a reload, the collapsed sidebar hides its
+own handle, and mobile is completely unchanged. 62 assertions in `ui-smoke`.
+
+Note for the next session: `getComputedStyle` in the preview browser returned stale values here
+(it also reported `innerWidth: 0` at one point) and nearly sent me chasing a collapse bug that
+did not exist. The screenshot settled it in one shot. When the two disagree, believe the pixels.
+
 ## 2026-07-29 (pre-push) — Two shape-change regressions caught before deploy (TASK-090)
 
 A final read of the diff before pushing found two consumers that still assumed the OLD flat

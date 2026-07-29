@@ -116,6 +116,16 @@
     </div>
 
     <div class="detail" id="detailPane"></div>
+
+    <!-- Drag handles sit ON the column boundaries, absolutely positioned over the grid rather
+         than being grid items — so they add no column and nothing reflows. JS measures the real
+         pane edges to place them, which keeps them correct through every breakpoint and the
+         collapse animation without duplicating the CSS widths in JS. role="separator" +
+         tabindex is the ARIA splitter pattern; arrow keys resize, so this is not mouse-only. -->
+    <div class="resizer" data-resize="sidebar" role="separator" aria-orientation="vertical"
+         tabindex="0" aria-label="Resize sidebar" title="Drag to resize · double-click to reset"></div>
+    <div class="resizer" data-resize="list" role="separator" aria-orientation="vertical"
+         tabindex="0" aria-label="Resize call list" title="Drag to resize · double-click to reset"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>

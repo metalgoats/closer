@@ -32,12 +32,21 @@ button{ font-family:inherit; }
 .auth-hint{ font-size:11px; color:var(--ink-400); text-align:center; }
 
 /* ---------- shell ---------- */
-.app{ display:grid; grid-template-columns:208px 280px minmax(0,1fr); height:100vh; min-height:640px; background:var(--paper-0); }
-@media (max-width:1100px){ .app{ grid-template-columns:176px 240px minmax(0,1fr); } }
+/* Column widths come from variables so the panes can be dragged (TASK-091) WITHOUT inline
+   styles on .app — an inline grid-template-columns would outrank every media query below and
+   break the icon rail and the mobile single-column layout. Each breakpoint keeps control by
+   supplying its own fallback, and the ≤900px rail and ≤640px mobile rules deliberately ignore
+   the variables entirely: a 400px "icon rail" is not a layout anyone wants. */
+.app{ display:grid; grid-template-columns:var(--w-sidebar, 208px) var(--w-list, 280px) minmax(0,1fr);
+  height:100vh; min-height:640px; background:var(--paper-0); position:relative; }
+@media (max-width:1100px){ .app{ grid-template-columns:var(--w-sidebar, 176px) var(--w-list, 240px) minmax(0,1fr); } }
 @media (max-width:900px){
   .app{ grid-template-columns:56px 220px minmax(0,1fr); }
   .sidebar .brand-name, .sidebar .nav-label, .sidebar .nav-item, .sidebar-foot span, .sidebar-foot .linklike{ display:none; }
   .sidebar{ align-items:center; }
+  /* Below 900px the columns are fixed (icon rail, then single-column mobile), so there is
+     nothing to drag — hide the handles rather than let them move a width nothing reads. */
+  .resizer, .resizer-h{ display:none; }
 }
 
 /* ---------- sidebar ----------
@@ -72,13 +81,45 @@ button.brand:hover{ background:var(--paper-200); }
 .sb-toggle:hover::before, .sb-toggle:hover::after{ border-color:var(--ink-800); background-color:var(--ink-800); }
 body.sb-collapsed .sb-toggle::after{ background:none; }
 
-body.sb-collapsed .app{ grid-template-columns:0 280px minmax(0,1fr); }
+body.sb-collapsed .app{ grid-template-columns:0 var(--w-list, 280px) minmax(0,1fr); }
 body.sb-collapsed .sidebar{ opacity:0; margin-left:0; padding-left:0; padding-right:0;
   border-width:0; pointer-events:none; overflow:hidden; }
 @media (prefers-reduced-motion: no-preference){
   .app{ transition:grid-template-columns .18s ease; }
   .sidebar{ transition:opacity .14s ease; }
 }
+/* ---------- draggable pane dividers (TASK-091) ----------
+   Apple Mail behaviour: grab the boundary, drag, double-click to reset. The handles are
+   absolutely positioned OVER the boundary rather than being grid items, so the three-column
+   grid is untouched and nothing reflows when they appear. They are wider than they look
+   (9px hit area, 1px visual) because a 1px target is a dexterity test, not an affordance. */
+.resizer{ position:absolute; top:0; bottom:0; width:9px; margin-left:-4px; z-index:45;
+  cursor:col-resize; background:transparent; border:none; padding:0; touch-action:none; }
+.resizer::after{ content:""; position:absolute; inset:0 4px; background:transparent; transition:background .12s ease; }
+.resizer:hover::after, .resizer.dragging::after{ background:var(--blue-500); }
+.resizer:focus-visible{ outline:none; }
+.resizer:focus-visible::after{ background:var(--focus); }
+
+/* The debrief / outputs divider is a real flex item in the detail column, so the two sections
+   genuinely share the height rather than overlapping. */
+.resizer-h{ flex-shrink:0; height:9px; margin:-4px 0; z-index:45; position:relative;
+  cursor:row-resize; background:transparent; border:none; padding:0; width:100%; touch-action:none; }
+.resizer-h::after{ content:""; position:absolute; inset:4px 0; background:transparent; transition:background .12s ease; }
+.resizer-h:hover::after, .resizer-h.dragging::after{ background:var(--blue-500); }
+.resizer-h:focus-visible{ outline:none; }
+.resizer-h:focus-visible::after{ background:var(--focus); }
+
+/* While dragging: kill the collapse transition (it would rubber-band the drag), stop text
+   selection, and keep the resize cursor even when the pointer outruns the 9px handle. */
+body.resizing{ user-select:none; -webkit-user-select:none; }
+/* ...and the same during a keyboard nudge: each arrow press would otherwise restart the .18s
+   grid transition, leaving the pane permanently lagging a held-down arrow key. */
+body.resizing .app, body.pane-nudge .app{ transition:none; }
+body.resizing.resizing-x, body.resizing.resizing-x *{ cursor:col-resize !important; }
+body.resizing.resizing-y, body.resizing.resizing-y *{ cursor:row-resize !important; }
+/* Nothing to grab when the sidebar is collapsed to zero. */
+body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
+
 .nav-group{ margin-bottom:16px; }
 .nav-label{ font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-400); padding:0 8px 6px; }
 .nav-item{ display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:6px; font-size:12.5px; color:var(--ink-800); cursor:pointer; user-select:none; }
@@ -195,7 +236,7 @@ body.sb-collapsed .sidebar{ opacity:0; margin-left:0; padding-left:0; padding-ri
 .chip:hover{ background:var(--paper-200); }
 /* FIXED height (TASK-055), not max-height: the pane must be the same size on every pill page,
    so short pages show whitespace rather than the box jumping between tabs. Long pages scroll. */
-.debrief-body{ position:relative; height:360px; overflow-y:auto; padding:6px 22px 22px; font-size:12.5px; line-height:1.55; color:var(--ink-800); }
+.debrief-body{ position:relative; height:var(--h-debrief, 360px); overflow-y:auto; padding:6px 22px 22px; font-size:12.5px; line-height:1.55; color:var(--ink-800); }
 .debrief-body h4{ font-size:11px; text-transform:uppercase; letter-spacing:0.05em; font-weight:700; color:var(--ink-400); margin:20px 0 8px; }
 .debrief-body h4:first-of-type{ margin-top:2px; }
 .debrief-body ul{ margin:0 0 10px; padding-left:16px; }

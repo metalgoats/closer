@@ -670,6 +670,139 @@ $("#sbToggle")?.addEventListener("click", () => {
   applySidebar(!document.body.classList.contains("sb-collapsed"));
 });
 
+// ---------- draggable panes (TASK-091) ----------
+// Apple Mail behaviour: drag a boundary to resize, double-click it to reset, arrow keys to nudge.
+// Sizes are written to CSS VARIABLES on :root, never as inline grid-template-columns — inline
+// styles would outrank the ≤900px icon-rail and ≤640px mobile rules and wreck both layouts.
+// Persisted per browser, like the theme and the collapse state, because Ivan and Gabriel share
+// one login and one person's preferred widths are not the other's.
+const PANES_KEY = "closer-panes";
+// Each pane MEASURES the quantity its variable actually controls — the grid COLUMN, which is
+// not the same as the pane element's width: .sidebar carries an 8px left margin, so measuring
+// the element made the boundary lag the cursor by 8px on every sidebar drag. Measuring the
+// boundary positions keeps the divider exactly under the pointer.
+const rectOf = sel => document.querySelector(sel)?.getBoundingClientRect() || null;
+const PANES = {
+  sidebar: { prop: "--w-sidebar", axis: "x", min: 150, max: 460,
+             measure: () => { const a = rectOf(".app"), s = rectOf(".sidebar"); return a && s ? s.right - a.left : null; } },
+  list:    { prop: "--w-list",    axis: "x", min: 200, max: 640,
+             measure: () => { const s = rectOf(".sidebar"), l = rectOf(".call-list"); return s && l ? l.right - s.right : null; } },
+  // The debrief cannot grow past its own column — leave room for the outputs below it.
+  debrief: { prop: "--h-debrief", axis: "y", min: 120,
+             measure: () => rectOf("#debriefBody")?.height ?? null,
+             max: () => Math.max(200, (rectOf(".detail")?.height || 900) - 220) }
+};
+const paneBound = v => (typeof v === "function" ? v() : v);
+const paneSize = spec => spec.measure();
+
+function loadPanes() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(PANES_KEY) || "{}") || {}; } catch { /* private mode */ }
+  for (const [key, spec] of Object.entries(PANES)) {
+    const v = saved[key];
+    if (Number.isFinite(v)) document.documentElement.style.setProperty(spec.prop, `${v}px`);
+  }
+}
+function savePanes() {
+  const out = {};
+  for (const [key, spec] of Object.entries(PANES)) {
+    const v = parseFloat(document.documentElement.style.getPropertyValue(spec.prop));
+    if (Number.isFinite(v)) out[key] = Math.round(v);
+  }
+  try { localStorage.setItem(PANES_KEY, JSON.stringify(out)); } catch {}
+}
+function setPane(key, px) {
+  const spec = PANES[key];
+  const v = Math.round(Math.max(paneBound(spec.min), Math.min(paneBound(spec.max), px)));
+  document.documentElement.style.setProperty(spec.prop, `${v}px`);
+  document.querySelectorAll(`[data-resize="${key}"]`).forEach(h => h.setAttribute("aria-valuenow", String(v)));
+  placeResizers();
+}
+
+// Handles are placed by MEASURING the rendered pane edges rather than recomputing the CSS
+// widths in JS. That keeps them correct through every breakpoint, the collapse animation, and
+// any future column change, with no second source of truth to drift.
+function placeResizers() {
+  const app = document.querySelector(".app");
+  if (!app || !app.getBoundingClientRect) return;
+  const base = app.getBoundingClientRect();
+  for (const [key, sel] of [["sidebar", ".sidebar"], ["list", ".call-list"]]) {
+    const el = document.querySelector(sel);
+    const handle = document.querySelector(`.resizer[data-resize="${key}"]`);
+    if (el && handle && el.getBoundingClientRect) handle.style.left = `${el.getBoundingClientRect().right - base.left}px`;
+  }
+}
+
+function wireResizer(handle) {
+  const key = handle.dataset.resize;
+  const spec = PANES[key];
+  if (!spec || handle.dataset.wired) return;
+  handle.dataset.wired = "1";
+
+  handle.addEventListener("pointerdown", ev => {
+    const start = paneSize(spec);
+    if (start == null) return;
+    const origin = spec.axis === "x" ? ev.clientX : ev.clientY;
+    handle.classList.add("dragging");
+    document.body.classList.add("resizing", spec.axis === "x" ? "resizing-x" : "resizing-y");
+    // Pointer capture keeps the drag alive when the cursor outruns the 9px handle — without it
+    // a fast drag detaches the moment the pointer leaves the strip.
+    try { handle.setPointerCapture(ev.pointerId); } catch {}
+    const move = e => setPane(key, start + ((spec.axis === "x" ? e.clientX : e.clientY) - origin));
+    const end = () => {
+      handle.classList.remove("dragging");
+      document.body.classList.remove("resizing", "resizing-x", "resizing-y");
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      savePanes();
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+    ev.preventDefault();
+  });
+
+  // Double-click resets to the CSS default (removing the variable, not writing a hardcoded
+  // number — so the responsive defaults per breakpoint come back too).
+  handle.addEventListener("dblclick", () => {
+    document.documentElement.style.removeProperty(spec.prop);
+    document.querySelectorAll(`[data-resize="${key}"]`).forEach(h => h.removeAttribute("aria-valuenow"));
+    savePanes();
+    placeResizers();
+  });
+
+  handle.addEventListener("keydown", e => {
+    const horiz = spec.axis === "x";
+    const dec = horiz ? "ArrowLeft" : "ArrowUp";
+    const inc = horiz ? "ArrowRight" : "ArrowDown";
+    if (e.key !== dec && e.key !== inc) return;
+    const cur = paneSize(spec);
+    if (cur == null) return;
+    // Suppress the collapse transition for the nudge, or a held-down arrow key leaves the pane
+    // trailing the input by .18s. Cleared next frame so the collapse animation still works.
+    document.body.classList.add("pane-nudge");
+    setPane(key, cur + (e.key === inc ? 16 : -16));
+    savePanes();
+    requestAnimationFrame(() => document.body.classList.remove("pane-nudge"));
+    e.preventDefault();
+  });
+}
+
+function initPanes() {
+  loadPanes();
+  document.querySelectorAll(".resizer, .resizer-h").forEach(wireResizer);
+  placeResizers();
+  // A ResizeObserver means the handles follow the panes through the collapse transition and any
+  // breakpoint change without wiring a listener per cause.
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(() => placeResizers());
+    [".sidebar", ".call-list"].forEach(sel => { const el = document.querySelector(sel); if (el && el.nodeType) ro.observe(el); });
+  }
+  window.addEventListener("resize", placeResizers);
+}
+initPanes();
+
 function fmtTime(iso) {
   const d = new Date(iso + (iso.includes("Z") || iso.includes("+") ? "" : "Z"));
   const now = new Date(); const days = Math.floor((now - d) / 86400000);
@@ -872,6 +1005,11 @@ function renderProcessed(call, outputs) {
           `<div class="dpage ${i === 0 ? "active" : ""}" data-page="${i}">${p.render(d) || `<div class="dpage-empty">Nothing recorded for this section.</div>`}</div>`).join("")}
       </div>
     </div>
+
+    <!-- Debrief / outputs boundary — a real flex item, so the two sections genuinely share the
+         column height instead of overlapping (TASK-091). -->
+    <div class="resizer-h" data-resize="debrief" role="separator" aria-orientation="horizontal"
+         tabindex="0" aria-label="Resize debrief" title="Drag to resize · double-click to reset"></div>
 
     <!-- One output at a time (TASK-088). Gabriel sends the text, then the email, sometimes
          neither — three panels should not all fight for the screen at once. Segmented exactly
@@ -1117,6 +1255,9 @@ function wireDetail(call, outs) {
   wireRename(call);
   wireCallActions(call);
   wireTypePicker(call);   // processed calls can be re-typed too, not just new ones
+  // The debrief/outputs divider is re-created with the detail markup, so it needs re-wiring
+  // on every render (TASK-091). wireResizer is idempotent via its data-wired flag.
+  document.querySelectorAll(".resizer-h").forEach(wireResizer);
 
   // regenerate
   $("#regenBtn").addEventListener("click", async () => {

@@ -86,6 +86,13 @@ public/          the UI (ported from the design mockup)
 - **Keys** live in `integrations.secret_value` (D1, plaintext) and are write-only over the API —
   `GET /api/integrations` returns a masked preview, never the raw value. `resolveKey()` prefers the
   DB key and falls back to a Cloudflare secret.
+- **Resizable panes (`TASK-091`).** Sidebar | list | detail, plus debrief | outputs, are
+  drag-resizable (double-click a divider to reset, arrow keys nudge). Sizes are CSS variables on
+  `:root` (`--w-sidebar`, `--w-list`, `--h-debrief`), persisted per browser in `closer-panes`.
+  **Never set `grid-template-columns` inline from JS** — it outranks the media queries and breaks
+  the ≤900px icon rail and ≤640px mobile layouts, which deliberately ignore the variables. Handles
+  are positioned by measuring the rendered pane edges (ResizeObserver), so there is no second copy
+  of the column widths in JS to drift.
 - **Traffic-light dots**: hollow grey = new, violet pulsing = processing, blue = processed,
   pink = failed. Grey stays neutral so pink keeps meaning "wrong" (matches the scorecard language).
 

@@ -71,7 +71,11 @@ globalThis.document = {
     return [];
   },
   addEventListener(){}, createElement: () => mk("new"),
-  documentElement: { setAttribute(){}, getAttribute: () => "dark", clientHeight: 900, clientWidth: 1400 },
+  documentElement: { setAttribute(){}, getAttribute: () => "dark", clientHeight: 900, clientWidth: 1400,
+    // Real CSS-variable plumbing: the pane resizer (TASK-091) writes sizes here, so a no-op
+    // stub would make those assertions vacuous.
+    style: { _p: {}, setProperty(k, v){ this._p[k] = String(v); }, getPropertyValue(k){ return this._p[k] || ""; },
+             removeProperty(k){ delete this._p[k]; } } },
   body: get("body"), head: mk("head")
 };
 globalThis.window = { addEventListener(){}, location: { reload(){} }, innerHeight: 900, innerWidth: 1400 };
@@ -116,7 +120,7 @@ globalThis.fetch = async (url) => {
 
 let bootErr = null;
 try {
-  (0, eval)(src + `\n;globalThis.__t = { VIEWS, applySidebar, settingsMenu, openSettingsFrom, state, renderProcessed, defaultOutputTab, OUTPUT_TABS };`);
+  (0, eval)(src + `\n;globalThis.__t = { VIEWS, applySidebar, settingsMenu, openSettingsFrom, state, renderProcessed, defaultOutputTab, OUTPUT_TABS, setPane, PANES, loadPanes, savePanes };`);
 } catch (e) { bootErr = e; }
 
 console.log("\n== app.js loads ==");
@@ -268,6 +272,57 @@ check("missed-openings 'ask instead' renders", /class="ri-fix-tag">Ask instead/.
 check("adaptive default: only-text stated -> opens on Text", /class="opane active" data-otab="text"/.test(richHtml));
 check("still exactly one output pane active on the enriched shape",
   (richHtml.match(/class="opane active"/g) || []).length === 1);
+
+console.log("\n== draggable pane dividers (TASK-091) ==");
+const css1 = css.replace(/\s+/g, " ");
+const block = re => (css.match(re) || [""])[0].replace(/\s+/g, " ");
+const rail900 = block(/@media \(max-width:900px\)\{[\s\S]*?\n\}/);
+const mobile640 = block(/@media \(max-width:640px\)\{[\s\S]*?\n\}/);
+
+// THE layout-breaking mistake this design exists to avoid: driving the drag by writing
+// grid-template-columns inline from JS would outrank every media query and wreck both the
+// ≤900px icon rail and the ≤640px single-column mobile layout.
+check("column widths are variable-driven, not inline",
+  /\.app\{ display:grid; grid-template-columns:var\(--w-sidebar, ?208px\) var\(--w-list, ?280px\)/.test(css1));
+check("JS never writes grid-template-columns directly",
+  !/style\.(gridTemplateColumns|setProperty\(\s*["']grid-template-columns)/.test(src),
+  "an inline grid override would break the rail and mobile layouts");
+check("the ≤900px icon rail ignores the drag variables", !/--w-sidebar/.test(rail900), rail900.slice(0, 90));
+check("the ≤640px mobile layout ignores them too", !/--w-sidebar|--w-list/.test(mobile640));
+check("handles are hidden below 900px where the columns are fixed", /\.resizer, \.resizer-h\{ display:none/.test(rail900));
+check("collapsed sidebar keeps the dragged list width",
+  /body\.sb-collapsed \.app\{ grid-template-columns:0 var\(--w-list/.test(css1));
+check("debrief height is variable-driven", /\.debrief-body\{[^}]*height:var\(--h-debrief/.test(css1));
+check("dragging suppresses the collapse transition (it would rubber-band the drag)",
+  /body\.resizing \.app[^{]*\{ transition:none/.test(css1));
+check("a keyboard nudge suppresses it too (a held arrow key would trail by .18s)",
+  /body\.pane-nudge \.app\{ transition:none/.test(css1) && /pane-nudge/.test(src));
+check("collapsed sidebar hides its own handle", /body\.sb-collapsed \.resizer\[data-resize="sidebar"\]\{ display:none/.test(css1));
+
+check("two vertical handles exist in the shell", (html.match(/class="resizer" data-resize="(sidebar|list)"/g) || []).length === 2);
+check("they use the ARIA splitter pattern (role=separator + tabindex)",
+  (html.match(/role="separator"[^>]*tabindex="0"|tabindex="0"[^>]*role="separator"/g) || []).length >= 2);
+check("the debrief/outputs handle is emitted by renderProcessed", /class="resizer-h" data-resize="debrief"/.test(richHtml));
+check("handles declare touch-action:none so a touch drag doesn't scroll the page",
+  /\.resizer\{[^}]*touch-action:none/.test(css1) && /\.resizer-h\{[^}]*touch-action:none/.test(css1));
+check("drag uses pointer capture so a fast drag doesn't detach", /setPointerCapture/.test(src));
+
+// Behaviour: clamping, persistence, reset.
+const root = document.documentElement.style;
+T.setPane("sidebar", 9999);
+check("oversized drag clamps to the max", root.getPropertyValue("--w-sidebar") === `${T.PANES.sidebar.max}px`,
+  root.getPropertyValue("--w-sidebar"));
+T.setPane("sidebar", 10);
+check("undersized drag clamps to the min", root.getPropertyValue("--w-sidebar") === `${T.PANES.sidebar.min}px`);
+T.setPane("list", 380);
+T.savePanes();
+check("sizes persist to localStorage", JSON.parse(store["closer-panes"] || "{}").list === 380,
+  store["closer-panes"]);
+root.removeProperty("--w-list");
+T.loadPanes();
+check("...and are restored on the next load", root.getPropertyValue("--w-list") === "380px");
+check("the debrief max is computed from the pane, not hardcoded", typeof T.PANES.debrief.max === "function");
+check("every pane has a sane min", Object.values(T.PANES).every(p => (typeof p.min === "function" ? p.min() : p.min) >= 100));
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

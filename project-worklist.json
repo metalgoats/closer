@@ -2644,6 +2644,26 @@
         "Full suite green (164 assertions) and in the CI gate"
       ],
       "notes": "ROOT CAUSE of the miss: the llm.test fixture populates EVERY field, so no test exercised the sparse case. Added a deliberately sparse 'smooth call' fixture. When restructuring a schema field, grep every consumer for Array.isArray/[0]/typeof on that field \u2014 node --check and a full-fixture test will both pass while production breaks."
+    },
+    {
+      "id": "TASK-091",
+      "title": "Apple Mail-style drag-to-resize panes",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-078",
+        "TASK-088"
+      ],
+      "description": "Ivan asked to resize sections by dragging their boundaries, like Apple Mail. Three dividers: sidebar|list, list|detail, and debrief|outputs inside the detail column. Double-click resets to the CSS default, arrow keys nudge 16px, sizes persist per browser (closer-panes) like the theme and collapse state. Sizes are CSS variables on :root \u2014 NOT inline grid-template-columns, which would outrank every media query and break the icon rail and mobile layouts. Handles are absolutely positioned over the boundaries (no extra grid column) and placed by measuring rendered pane edges via ResizeObserver.",
+      "acceptance_criteria": [
+        "Drag resizes; boundary lands exactly under the cursor",
+        "Double-click resets; arrow keys nudge; sizes persist across reload",
+        "\u2264900px icon rail and \u2264640px mobile ignore the variables and hide the handles",
+        "Collapsed sidebar hides its own handle and keeps the dragged list width",
+        "Verified by dragging in a real browser at 1440x900 and 375x812"
+      ],
+      "notes": "TWO bugs found only by dragging it for real: (1) measuring the pane ELEMENT instead of the grid COLUMN made the boundary lag the cursor by exactly 8px (the .sidebar margin-left) \u2014 each pane now measures the column; (2) the .18s collapse transition made a held arrow key trail the input, so it is suppressed during drags and nudges. ALSO: getComputedStyle in the preview browser returned stale values (and innerWidth:0) and nearly sent me chasing a nonexistent collapse bug \u2014 the screenshot settled it. When computed style and pixels disagree, believe the pixels."
     }
   ],
   "progress_percentage": 77,
