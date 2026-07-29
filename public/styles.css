@@ -309,8 +309,10 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .chrome-dot{ width:8px; height:8px; border-radius:50%; }
 .chrome-dot.d1{ background:var(--blue-500); } .chrome-dot.d2{ background:var(--violet-500); } .chrome-dot.d3{ background:var(--pink-500); }
 .panel-head-row{ padding:7px 14px 10px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.panel-title{ font-size:13px; font-weight:700; }
-.panel-actions{ display:flex; gap:6px; }
+/* margin-left:auto, not the row's space-between: the output panels dropped their title (TASK-092,
+   the tab chip already names them), so the actions are the row's only child and space-between
+   would park them on the left. */
+.panel-actions{ display:flex; gap:6px; margin-left:auto; }
 .copy-btn, .sent-btn{ display:flex; align-items:center; gap:5px; border-radius:6px; padding:5px 9px; font-size:11.5px; font-weight:600; cursor:pointer; }
 .copy-btn{ background:var(--paper-0); border:1px solid var(--line-strong); color:var(--ink-800); }
 .copy-btn:hover{ border-color:var(--blue-500); color:var(--blue-600); }
@@ -597,7 +599,21 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
 .release-x{ background:none; border:none; color:var(--ink-400); font-size:22px; line-height:1;
   cursor:pointer; padding:0 2px; }
 .release-x:hover{ color:var(--ink-800); }
-.release-body{ padding:14px 20px 4px; max-height:min(60vh, 420px); overflow-y:auto; }
+/* Overflow has to announce itself (TASK-092). Now that a whole day aggregates into one entry,
+   these lists got long enough to scroll — and macOS overlay scrollbars stay invisible until you
+   touch them, so the note just looked like it stopped mid-sentence. Gabriel reads six of eight
+   items and closes it, which is precisely the "he never sees the full scope" problem the
+   aggregation exists to solve, reintroduced at the presentation layer.
+   CSS-only scroll shadows: the `local` layers scroll with the content and cover the `scroll`
+   layers at each extreme, so the hint shows up only when there really is more to read. */
+.release-body{
+  padding:14px 20px 4px; max-height:min(68vh, 560px); overflow-y:auto;
+  background:
+    linear-gradient(var(--paper-0) 30%, rgba(0,0,0,0))        top    / 100% 20px no-repeat local,
+    linear-gradient(rgba(0,0,0,0), var(--paper-0) 70%)        bottom / 100% 20px no-repeat local,
+    radial-gradient(farthest-side at 50% 0,    rgba(0,0,0,.3), rgba(0,0,0,0)) top    / 100% 9px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgba(0,0,0,.3), rgba(0,0,0,0)) bottom / 100% 9px no-repeat scroll;
+}
 .release-block + .release-block{ margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
 .release-v{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-400); margin-bottom:6px; }
 .release-body ul{ margin:0; padding-left:18px; }

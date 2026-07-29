@@ -132,9 +132,37 @@ function showUpdateBanner() {
 // deploy including typo fixes; a popup that fires for a one-line CSS change gets dismissed
 // unread, and then the one that matters gets dismissed unread too. A release earns an entry here
 // only when there is something worth a interruption.
+//
+// ONE ENTRY PER DAY, AND IT ACCUMULATES (TASK-092). `v` is the ISO date. Shipping again on a day
+// that already has an entry means APPENDING to it — never add a second entry for the same date.
+// Ivan pushes three or four times on a working day, and a note per push fails both ways: it either
+// interrupts Gabriel three times for one day of work, or — what actually happened on 2026-07-29,
+// where seven tasks shipped across four pushes and not one of them got a note — the later pushes
+// skip it and the whole day goes unannounced. One dated entry that grows is the only shape where
+// Gabriel reliably sees a day's full scope.
+//
+// Because a day's entry gets edited after Gabriel may already have read it, "seen" is tracked by a
+// CONTENT SIGNATURE rather than by `v` (see `releaseSig`): appending an item changes the signature,
+// so the note re-opens carrying the day's full list. That re-shows lines he has already read, on
+// purpose — seeing the complete day beats seeing only its tail.
 const RELEASES = [
   {
-    v: "2026.07.22",
+    v: "2026-07-29",
+    date: "29 July 2026",
+    title: "The outputs, rebuilt",
+    items: [
+      "The debrief is much deeper. It now opens with an executive read of where the deal actually stands and the one issue that decided it, every scorecard line carries a note explaining the number, and every criticism ships the exact better wording to have used — not just what went wrong.",
+      "Objections now show the root fear underneath what was said, the client profile is a real behavioural read (ranked values, trust triggers, decision speed, communication style), and a new Missed Openings page names the moments a question would have moved the call, with the question.",
+      "The follow-up drafts are built from what you told the client on the call you would send. If you promised a breakdown and two links, that's what gets drafted.",
+      "The text message is never skipped any more — even on an email-only call you get a warm, send-worthy text sitting there ready.",
+      "Drafts are now shaped to the person receiving them: analytical buyers get the structured, itemised version, relational buyers get a short warm note.",
+      "The CRM note was rebuilt into eleven scannable sections — goals, pain points, objections, selling points, what to watch for, follow-up tasks, retention risk, upsell, personal rapport — so anyone on the team can act on it cold.",
+      "Text / Email / CRM Note now share one switcher and show one at a time, instead of three panes fighting for the screen. The app opens on whichever one you said you'd send.",
+      "You can drag the dividers between the sidebar, the call list, the detail pane and the debrief to resize them, like Apple Mail. Double-click a divider to put it back, and your sizes are remembered."
+    ]
+  },
+  {
+    v: "2026-07-22",
     date: "22 July 2026",
     title: "Fixes: hidden sidebar locked you out, Integrations was dead",
     items: [
@@ -144,7 +172,7 @@ const RELEASES = [
     ]
   },
   {
-    v: "2026.07.21",
+    v: "2026-07-21",
     date: "21 July 2026",
     title: "Sidebar counts and new-call marks",
     items: [
@@ -154,7 +182,7 @@ const RELEASES = [
     ]
   },
   {
-    v: "2026.07.20",
+    v: "2026-07-20",
     date: "20 July 2026",
     title: "CloserAI, a collapsible sidebar, and the mobile menu escape",
     items: [
@@ -165,7 +193,7 @@ const RELEASES = [
     ]
   },
   {
-    v: "2026.07.19",
+    v: "2026-07-19",
     date: "19 July 2026",
     title: "Spend windows and release notes",
     items: [
@@ -177,12 +205,26 @@ const RELEASES = [
 ];
 const RELEASE_KEY = "closer-seen-release";
 
+// The identity of a release as its reader experiences it: the date PLUS its current items. Keying
+// "seen" on `v` alone would mean a day's entry could never re-open after Gabriel read it, so any
+// item appended by a later push that same day would be silently swallowed — the exact failure this
+// aggregation exists to fix.
+function releaseSig(r) {
+  const s = `${r.v}|${(r.items || []).join("|")}`;
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return `${r.v}#${(h >>> 0).toString(36)}`;
+}
+
 // Pure so it can be tested without a browser: given the release list (newest first) and the
-// version this browser last acknowledged, which notes should pop?
+// signature this browser last acknowledged, which notes should pop?
 function unseenFrom(list, seen) {
   if (!list.length) return [];
   if (!seen) return list.slice(0, 1);              // new browser: latest only, not the back catalogue
-  const i = list.findIndex(r => r.v === seen);
+  const i = list.findIndex(r => releaseSig(r) === seen);
+  // No match means one of two things: a browser holding a pre-signature value, or — the case that
+  // matters — today's entry grew since it was read, so nothing in the list carries that signature
+  // any more. Both want the newest entry, which is the day's complete list.
   return i === -1 ? list.slice(0, 1) : list.slice(0, i);   // everything since they last looked
 }
 function unseenReleases() {
@@ -192,7 +234,7 @@ function unseenReleases() {
 }
 function markReleasesSeen() {
   if (!RELEASES.length) return;
-  try { localStorage.setItem(RELEASE_KEY, RELEASES[0].v); } catch {}
+  try { localStorage.setItem(RELEASE_KEY, releaseSig(RELEASES[0])); } catch {}
 }
 
 function showReleaseNotes(list) {
@@ -1204,12 +1246,16 @@ function scorecard(rows) {
     </div>`).join("")}</div>`;
 }
 
+// No visible title (TASK-092). Each of these panels lives inside the outputs tab strip, so the
+// selected chip immediately above already names it — printing "Text Message" again two lines under
+// the "Text Message" tab is pure duplication. `title` is still taken: it labels the textarea for
+// screen readers, which have no chip to read from.
 function outputPanel(title, out, opts) {
-  if (!out) return `<div class="panel"><div class="panel-head"><div class="panel-head-row"><span class="panel-title">${title}</span></div></div>
+  if (!out) return `<div class="panel">
     <div class="panel-body"><span class="edit-note">Not generated yet — hit Regenerate.</span></div></div>`;
   return `<div class="panel" data-output="${out.id}">
     <div class="panel-head">
-        <div class="panel-head-row"><span class="panel-title">${title}</span>
+        <div class="panel-head-row">
         <div class="panel-actions">
           ${opts.sent ? `<button class="sent-btn ${out.sent_at ? "is-sent" : ""}" data-out="${out.id}">${out.sent_at ? "✓ Sent" : "Mark sent"}</button>` : ""}
           <button class="copy-btn" data-out="${out.id}">⧉ Copy</button>

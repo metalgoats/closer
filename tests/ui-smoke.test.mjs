@@ -120,7 +120,7 @@ globalThis.fetch = async (url) => {
 
 let bootErr = null;
 try {
-  (0, eval)(src + `\n;globalThis.__t = { VIEWS, applySidebar, settingsMenu, openSettingsFrom, state, renderProcessed, defaultOutputTab, OUTPUT_TABS, setPane, PANES, loadPanes, savePanes };`);
+  (0, eval)(src + `\n;globalThis.__t = { VIEWS, applySidebar, settingsMenu, openSettingsFrom, state, renderProcessed, defaultOutputTab, OUTPUT_TABS, setPane, PANES, loadPanes, savePanes, RELEASES, releaseSig, unseenFrom };`);
 } catch (e) { bootErr = e; }
 
 console.log("\n== app.js loads ==");
@@ -323,6 +323,69 @@ T.loadPanes();
 check("...and are restored on the next load", root.getPropertyValue("--w-list") === "380px");
 check("the debrief max is computed from the pane, not hardcoded", typeof T.PANES.debrief.max === "function");
 check("every pane has a sane min", Object.values(T.PANES).every(p => (typeof p.min === "function" ? p.min() : p.min) >= 100));
+
+console.log("\n== output panels don't repeat the tab label (TASK-092) ==");
+// The tab chip immediately above the panel already says "Text Message"; the panel printed it
+// again two lines below. Assert the label appears exactly once per output — as the chip.
+// Labels come from OUTPUT_TABS rather than being retyped here, so the chip stays the single
+// source of the visible label and this test can't drift from it.
+for (const { key, label } of T.OUTPUT_TABS) {
+  check(`the ${key} tab chip still carries its label ("${label}")`,
+    new RegExp(`data-otab="${key}"[^>]*>\\s*${label}`, "i").test(richHtml));
+}
+check("no output panel prints a visible title of its own",
+  !/class="panel-title"/.test(richHtml), "panel-title is back — that's the duplicate heading");
+check("the textarea keeps its aria-label (a chip is not announced as the field's label)",
+  (richHtml.match(/<textarea[^>]*aria-label="(Text Message|Email|GoHighLevel Note)"/g) || []).length === 3);
+check("all three copy buttons survive the title removal",
+  (richHtml.match(/class="copy-btn" data-out=/g) || []).length === 3);
+check("both Mark-sent buttons survive it too",
+  (richHtml.match(/class="sent-btn [^"]*" data-out=/g) || []).length === 2);
+check("the actions are pushed right by margin, not by space-between",
+  /\.panel-actions\{[^}]*margin-left:auto/.test(css),
+  "without margin-left:auto the buttons sit on the left of an otherwise empty row");
+
+console.log("\n== release notes aggregate per day (TASK-092) ==");
+const R = T.RELEASES;
+check("every release is keyed by an ISO date", R.every(r => /^\d{4}-\d{2}-\d{2}$/.test(r.v)),
+  R.map(r => r.v).join(", "));
+const days = R.map(r => r.v);
+check("no date has two entries — a day accumulates into one", new Set(days).size === days.length,
+  days.join(", "));
+check("releases are newest-first", days.every((d, i) => i === 0 || days[i - 1] > d), days.join(", "));
+check("today's work is actually announced", R[0].v === "2026-07-29" && R[0].items.length >= 6,
+  `${R[0].v}, ${R[0].items.length} items`);
+
+// The core of the aggregation: an entry Gabriel has already read must re-open when that same day
+// gains an item from a later push. Keying on `v` alone silently swallowed it.
+const day = { v: "2026-07-30", date: "30 July 2026", title: "Two pushes", items: ["first push"] };
+const older = { v: "2026-07-29", date: "29 July 2026", title: "Yesterday", items: ["old"] };
+const seenAfterFirstPush = T.releaseSig(day);
+check("a read entry stays quiet on the next visit",
+  T.unseenFrom([day, older], seenAfterFirstPush).length === 0);
+const grown = { ...day, items: ["first push", "second push"] };
+const reopened = T.unseenFrom([grown, older], seenAfterFirstPush);
+check("the same day re-opens once a later push appends to it", reopened.length === 1,
+  `${reopened.length} notes`);
+check("...and it carries the day's FULL list, not just the new item",
+  reopened[0].items.length === 2 && reopened[0].items[0] === "first push",
+  JSON.stringify(reopened[0]?.items));
+// The direct proof that keying on `v` swallows an append: a browser that acknowledged the bare
+// date would match the grown entry and be shown nothing. This is the assertion that fails if
+// anyone "simplifies" unseenFrom back to `r.v === seen`.
+check("...and re-opens even for a browser holding the bare date",
+  T.unseenFrom([grown, older], "2026-07-30").length === 1,
+  "a v-keyed match would swallow the second push's items");
+check("the signature changes when items change", T.releaseSig(grown) !== seenAfterFirstPush);
+check("the signature is stable for identical content", T.releaseSig({ ...grown }) === T.releaseSig(grown));
+check("a browser holding a pre-signature value gets the latest, not the back catalogue",
+  T.unseenFrom([grown, older], "2026.07.22").length === 1);
+check("a brand-new browser sees only the latest day",
+  T.unseenFrom([grown, older], null).length === 1);
+const twoDays = T.unseenFrom([grown, older, { v: "2026-07-28", date: "d", title: "t", items: ["x"] }],
+  T.releaseSig({ v: "2026-07-28", date: "d", title: "t", items: ["x"] }));
+check("missing two days of notes shows both, newest first",
+  twoDays.length === 2 && twoDays[0].v === "2026-07-30", twoDays.map(r => r.v).join(","));
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

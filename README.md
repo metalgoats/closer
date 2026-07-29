@@ -93,6 +93,13 @@ public/          the UI (ported from the design mockup)
   the ≤900px icon rail and ≤640px mobile layouts, which deliberately ignore the variables. Handles
   are positioned by measuring the rendered pane edges (ResizeObserver), so there is no second copy
   of the column widths in JS to drift.
+- **Release notes aggregate per day (`TASK-092`).** `RELEASES` in `public/app.js` holds **one entry
+  per ISO date**; shipping again the same day means *appending to that entry*, never adding a second
+  one for the same date — Ivan pushes several times a day, and a note per push either interrupts
+  Gabriel repeatedly or (what happened on 2026-07-29) gets skipped so the whole day goes
+  unannounced. Because a day's entry is edited after it may already have been read, "seen" is keyed
+  on `releaseSig()` (date + current items), **not** on `v`; reverting that to `r.v === seen`
+  silently swallows every item added by a later push, and `tests/ui-smoke.test.mjs` fails if you do.
 - **Traffic-light dots**: hollow grey = new, violet pulsing = processing, blue = processed,
   pink = failed. Grey stays neutral so pink keeps meaning "wrong" (matches the scorecard language).
 
@@ -100,7 +107,8 @@ public/          the UI (ported from the design mockup)
 
 - Debrief renders full-width on top. Below it, Text / Email / GHL Note share a **segmented
   control and show one at a time** (TASK-088) — Gabriel sends them separately, so they no longer
-  all hold screen at once. The app opens on whatever Gabriel said on the call he'd send.
+  all hold screen at once. The app opens on whatever Gabriel said on the call he'd send. The
+  selected chip is the panel's **only** label — the panels print no title of their own (TASK-092).
 - SMS + email generate in **all three tones** up front; switching is instant. The **SMS is never
   suppressed** — even an email-only call gets a warm, send-worthy text (TASK-085).
 - Outputs are **editable in place**; every pre-copy edit is stored in `edits`.

@@ -3,6 +3,53 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-07-29 (last) — Release notes aggregate per day; outputs stop labelling themselves twice (TASK-092)
+
+Two things Ivan raised after using the deployed build.
+
+**The duplicate label.** Each output panel printed its own title two lines under the tab chip that
+already named it — "Text Message" directly below the selected "Text Message" chip. The panel title
+is gone; `outputPanel()` still takes `title` because it labels the `<textarea>` for screen readers,
+which have no chip to read from. `.panel-actions` gained `margin-left:auto`, because the row's
+`space-between` would otherwise park Copy/Mark-sent on the left once they were its only child.
+
+**Release notes now aggregate by day — the real fix.** Ivan pushes several times on a working day,
+and the notes were getting lost between deploys, so Gabriel never saw a day's full scope. Two
+distinct causes, and the process one was the bigger:
+
+- *Process.* An entry was written per round of work, which on a busy day means the later pushes
+  skip it. Today proved it: TASK-085 through 091 shipped across four pushes with **zero** release
+  entries — the entire output rebuild and the resizable panes would have gone unannounced. `v` is
+  now the ISO date and there is one entry per day, appended to on each later push. The rule and its
+  reason are in the comment above `RELEASES`, where the next session will actually meet it.
+- *Mechanism.* "Seen" was keyed on `v`, so an entry edited after Gabriel read it could never
+  re-open — every item appended by a later push that day would be silently swallowed. Seen is now
+  keyed on `releaseSig()`, a djb2 hash of the date plus its current items, so appending changes the
+  identity and the note re-opens with the day's **full** list. It re-shows lines he has already
+  read, deliberately: seeing the complete day beats seeing only its tail.
+
+A browser holding a pre-signature value matches nothing and simply gets the newest entry, so the
+migration needs no special case.
+
+**A third problem, found only by looking at it.** With eight items the dialog scrolled, and macOS
+overlay scrollbars are invisible until touched — the list just appeared to stop mid-sentence at
+item 6. That is the "never sees the full scope" bug reappearing at the presentation layer, one
+screen away from the code that fixes it. `max-height` went from `min(60vh, 420px)` to
+`min(68vh, 560px)` (177px of hidden content down to 37px) plus CSS-only scroll shadows, where the
+`local` background layers scroll with the content and mask the `scroll` layers at each extreme, so
+the hint appears only when there is genuinely more to read. No JS, no scroll listener.
+
+Verified in a real browser, not just in tests: the note fired with all eight items, "Got it" stored
+`2026-07-29#1rlijkq`, a reload stayed silent, and appending a ninth item re-opened it with the whole
+day under one heading. 83 assertions in `ui-smoke` (was 62); the two that matter were each proven to
+FAIL when their bug is reintroduced — restoring `panel-title`, and reverting `unseenFrom` to
+`r.v === seen`.
+
+Repeat of last session's lesson, and I nearly fell for it twice: `localStorage.getItem` in the
+preview browser's JS context returned `null` for a key that was in fact set, and I spent several
+probes hunting a close-handler bug that did not exist. The screenshot settled it again. **When the
+JS context and the pixels disagree, believe the pixels.**
+
 ## 2026-07-29 (later still) — Drag-to-resize panes (TASK-091)
 
 Ivan asked for Apple Mail-style resizing: grab a boundary, drag it. Three dividers now — sidebar
