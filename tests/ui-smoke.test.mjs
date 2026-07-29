@@ -204,7 +204,8 @@ check("three output tabs: Text / Email / CRM Note",
   T.OUTPUT_TABS.map(t => t.key).join(",") === "text,email,ghl");
 
 // Actually RENDER the processed detail and read the markup — the "render it and look" lesson,
-// mechanised: a processed call whose debrief says Gabriel stated an email.
+// mechanised. FIRST with a LEGACY-shape debrief (flat string[], [label,score]): production has
+// processed calls stored this way and the enriched renderers (TASK-089) must not crash on them.
 const processedCall = {
   id: 1, client_name: "Marcus Webb", occurred_at: "2026-07-19T10:00:00Z", source: "fathom",
   duration_min: 30, outcome: "followup", call_type_id: 1, selected_tone: "balanced", suggested_tone: "balanced",
@@ -229,6 +230,44 @@ check("exactly one output pane is active at a time",
 check("the active pane matches the stated channel (email)", /class="opane active" data-otab="email"/.test(dpHtml));
 check("CSS hides inactive panes and shows the active one",
   /\.opane\{[^}]*display:none/.test(css) && /\.opane\.active\{[^}]*display:flex/.test(css));
+
+console.log("\n== the ENRICHED debrief (TASK-089) renders its new structure ==");
+const enrichedCall = {
+  id: 2, client_name: "Brandon", occurred_at: "2026-07-19T10:00:00Z", source: "fathom",
+  duration_min: 40, outcome: "followup", call_type_id: 1, selected_tone: "balanced", suggested_tone: "balanced",
+  debrief_json: JSON.stringify({
+    outcome: "followup",
+    diagnosis: "A strong technical sale stalled at diligence.",
+    outcomeSummary: "Verbal yes, payment pending contract.",
+    scorecard: [["rapport", 8, "strong flow"], ["authority", 7, "some absolutes"]],
+    overallScore: 7.7,
+    didWell: [{ move: "opened with authority", why: "set the frame" }],
+    hurtSale: [{ issue: "talked over the client", why: "cost trust", sayInstead: "ask, then stop" }],
+    objections: [{ said: "I need to think", meant: "not sold", felt: "cornered", rootFear: "been burned", should: "ask x", follow: "ask y", loop: "z" }],
+    profile: { dominantFears: ["abandonment"], valuesHierarchy: ["reliability", "price"], disc: "High D / High C",
+      emotionalWound: "burned by vendors", trustTriggers: ["specificity"] },
+    buyingSignals: { genuine: ["asked for ACH"], false: ["a polite yep"] },
+    missedOpenings: [{ moment: "after he praised switching", askInstead: "would three environments cover it?" }],
+    lessons: ["Precision is persuasion."],
+    statedFollowUps: [{ channel: "text", said: "I'll text you", contains: [] }],
+    followUp: { nextStep: "call Thu" }
+  })
+};
+let richErr = null;
+try { T.renderProcessed(enrichedCall, processedOutputs); } catch (e) { richErr = e; }
+check("renderProcessed runs on the enriched shape without throwing", !richErr, richErr ? `${richErr.name}: ${richErr.message}` : "");
+const richHtml = (document.querySelector("#detailPane") || {}).innerHTML || "";
+check("executive diagnosis renders", /class="diag-eyebrow">Diagnosis/.test(richHtml) && richHtml.includes("stalled at diligence"));
+check("overall score renders", /class="hl-tag hl-overall"/.test(richHtml) && richHtml.includes("7.7/10"));
+check("per-dimension scorecard note renders", /class="sc-note">strong flow/.test(richHtml));
+check("hurt-sale 'say instead' rewrite renders (the coaching, not just the critique)",
+  /class="ri-fix-tag">Say instead<\/span>ask, then stop/.test(richHtml));
+check("structured profile renders (values ranked + DISC)", /class="ranked"/.test(richHtml) && richHtml.includes("High D / High C"));
+check("objection root fear renders", /Root fear<\/dt><dd>been burned/.test(richHtml));
+check("missed-openings 'ask instead' renders", /class="ri-fix-tag">Ask instead/.test(richHtml));
+check("adaptive default: only-text stated -> opens on Text", /class="opane active" data-otab="text"/.test(richHtml));
+check("still exactly one output pane active on the enriched shape",
+  (richHtml.match(/class="opane active"/g) || []).length === 1);
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

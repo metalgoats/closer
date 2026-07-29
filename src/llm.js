@@ -37,7 +37,7 @@ export function keyForRow(env, row) {
 // Rough expected output sizes, used ONLY to turn streamed bytes into a percentage.
 // They are estimates and are treated as such: progress is capped at each step's ceiling
 // rather than allowed to overshoot, and it cannot advance unless real bytes arrive.
-const EXPECTED_DEBRIEF_CHARS = 12000;   // ~11 sections + a scannable GHL note (TASK-087 capped it at 6k)
+const EXPECTED_DEBRIEF_CHARS = 20000;   // enriched, structured debrief + richer GHL note (TASK-089)
 const EXPECTED_MESSAGE_CHARS = 1500;    // one tone's SMS + email
 const DEBRIEF_SHARE = 70;               // debrief is the long pole: 0-70%, messages 70-100%
 
@@ -79,17 +79,30 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
   // The ONLY request that carries the transcript (TASK-042). Everything downstream is built
   // from what this pass extracts.
   const t0 = Date.now();
+  // OUTPUT-DEPTH REBUILD (TASK-089). The old schema asked for flat string[] fields, which ground
+  // ChatGPT's titled, quote-backed, rewrite-carrying analysis (Gabriel's "GAB sales" standard)
+  // down to thin bullets. The schema WAS the bottleneck, not the prompt. Every analytical field
+  // is now a structured object that preserves the specific quoted moment, the reasoning, and —
+  // for every criticism — the exact better wording. Reference: the Brandon specimen in the vault
+  // (60 Reference/GAB sales report — the output-quality target).
   const schemaParts = [];
+  // Sales-frame fields (diagnosis, overall score, outcome summary, missed openings) are gated to
+  // scored/sales types — a client or internal call should not be forced into a sales narrative.
   if (dims.length) {
-    schemaParts.push(`scorecard (array of [label, score1to10] pairs, one for EACH of exactly these dimensions in this order: ${dims.join(", ")})`);
+    schemaParts.push(
+      'diagnosis (string, 2-4 sentences: the opinionated executive read that opens the report. Name what this call ACTUALLY was (e.g. a strong technical sale stalled at diligence, not a failed call), the SINGLE central issue that decides the deal, and the correct next move. Take a position.)',
+      `scorecard (array of [label, score1to10, note] triples, one for EACH of exactly these dimensions in this order: ${dims.join(", ")}. note = a short one-line diagnosis of WHY that score.)`,
+      "overallScore (number 1-10, one decimal allowed: the overall call score)",
+      "outcomeSummary (string, one sentence: the precise commercial outcome — what was agreed, what is pending, and why payment/signature did or did not happen)"
+    );
   }
   schemaParts.push(
-    "didWell (string[])",
-    "hurtSale (string[]: what worked against the goal of this call)",
-    "objections (array of {said, meant, felt, should, follow, loop} — use [] if the call had none)",
-    "profile (string[])",
-    "buyingSignals (string[]: notable signals; use [] if not applicable)",
-    "lessons (string[])",
+    "didWell (array of {move (string: the specific thing done well; quote the client's reaction verbatim where there is one), why (string: why it worked)})",
+    "hurtSale (array of {issue (string: what worked against the goal of this call; quote it), why (string: why it cost trust or momentum), sayInstead (string, REQUIRED: the exact better wording or move — never just name the problem without the fix)})",
+    "objections (array of {said (string: the client's VERBATIM words), meant (string), felt (string), rootFear (string: the deep emotional driver beneath the surface excuse), should (string: the exact better line to have said), follow (string: the best follow-up question to have asked), loop (string: how to loop back to it later)} — use [] if the call had none)",
+    "profile (object: {dominantFears (string[]), valuesHierarchy (string[], ranked most-important first), decisionSpeed (string), certaintyNeed (string), emotionalWound (string: include the client's verbatim quote if there is one), trustTriggers (string[]), resistancePatterns (string[]), identityStyle (string), disc (string, e.g. \"High D / High C\")})",
+    "buyingSignals (object: {genuine (string[]: real intent signals), false (string[]: acknowledgements like 'yep'/'makes sense' that were understanding, not commitment)})",
+    "lessons (string[]: generalizable coaching principles, each a titled one-liner)",
     'outcome ("closed"|"followup")',
     'followUp (object: {nextStep (string: the single concrete next action actually agreed), timing (string: when the next contact was agreed, or ""), commitments (string[]: anything the host promised to do or send), personalDetails (string[]: specifics worth referencing in a follow-up)})',
     // TASK-085 (adaptive output selection). Gabriel narrates his own follow-up on the call
@@ -101,30 +114,38 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
     // the follow-up sound like Gabriel, but like exactly what this person needs to hear. The
     // "disclosed" list is the point: the personal facts a client volunteers (a doctor, a
     // sister) that never register live but matter to them.
-    'recipientProfile (object: {communicationStyle (string: how this client actually talks and takes in information, inferred from their own words on the call — e.g. brief and bottom-line, warm and story-led, detail-hungry, guarded), caresAbout (string[]: what the client signalled matters to them), disclosed (string[]: personal facts the client volunteered — job, family, life details worth referencing in a follow-up), bestReceivedAs (string: one line on how to shape a follow-up so it lands for THIS person)})'
+    'recipientProfile (object: {communicationStyle (string: how this client actually talks and takes in information, inferred from their own words on the call — e.g. brief and bottom-line, warm and story-led, detail-hungry, guarded), caresAbout (string[]: what the client signalled matters to them), disclosed (string[]: personal facts the client volunteered — job, family, life details worth referencing in a follow-up), bestReceivedAs (string: one line on how to shape a follow-up so it lands for THIS person), detailPreference ("brief" if this person wants a short warm note, "detailed" if this analytical/high-C person wants a structured follow-up that itemises the specifics and unresolved points)})'
   );
+  // Missed micro-commitments — the coaching gold in the specimen: the exact question that would
+  // have converted a moment of excitement into defined scope. Sales-frame only.
+  if (dims.length) {
+    schemaParts.push('missedOpenings (array of {moment (string: the point in the call), askInstead (string: the exact micro-commitment question to have asked there)} — use [] if none)');
+  }
   if (wantMessages) schemaParts.push('suggestedTone ("casual"|"balanced"|"formal")', "toneReason (string)");
-  // TASK-087 (GHL note rebuild). Gabriel's spec, near-verbatim: more bulleted, more spaced
-  // out, concise, easy to read — enough for him OR anyone on the team to pick up cold. Plain
-  // text, because a GoHighLevel note is pasted plain and markdown may not render. The exact
-  // house wording lives in his OpenAI "GAB sales" folder and is NOT exported yet, so this
-  // pins down the STRUCTURE (six named sections, bulleted, spaced) and leaves the finer voice
-  // for a second pass once that reference is in hand — do not invent a house style here.
+  // TASK-089 (GHL note, finished against the specimen). The Brandon report is now the reference,
+  // so the note matches its richer section set — not just a recap, but retention risk, upsell
+  // openings, personal rapport, and a follow-up task checklist a teammate could act on cold.
+  // Plain text, because a GoHighLevel note is pasted plain and markdown may not render.
   if (wantCrmNote) schemaParts.push(
-    'ghlNote (string, under 6000 chars: a scannable CRM note anyone on the team could act on cold. ' +
+    'ghlNote (string, under 8000 chars: a scannable CRM note anyone on the team could act on cold. ' +
     'PLAIN TEXT ONLY — no markdown, no # or *. Format: a SHORT UPPERCASE section header on its own line, ' +
     'then "- " bullets, then a blank line before the next section. Bullets, not paragraphs. Be concise. ' +
-    'Sections in this exact order, each included only if there is genuinely something to say: ' +
-    'CLIENT (who they are, plus the personal details a teammate should know), ' +
+    'Sections in this order, each included only if there is genuinely something to say: ' +
+    'OUTCOME (what was agreed, what is pending, the next step + date), ' +
+    'CLIENT (who they are and their situation), ' +
     'GOALS (what they want / why they took the call), ' +
-    'OUTCOME (what happened on this call and the agreed next step), ' +
-    'WHAT WAS SAID (only the few things that actually matter), ' +
+    'PAIN POINTS (the real problems, not inflated ones), ' +
+    'OBJECTIONS (the concerns raised and the root fear behind them), ' +
     'SELLING POINTS (angles likely to land next time), ' +
-    'WATCH OUT FOR (objections, sensitivities, pitfalls to avoid))');
+    'WATCH OUT FOR (sensitivities and pitfalls to avoid), ' +
+    'FOLLOW-UP TASKS (a checklist of the concrete next actions), ' +
+    'RETENTION RISK (what could lose this client, and what reduces it), ' +
+    'UPSELL (specific expansion openings, if any), ' +
+    'PERSONAL RAPPORT (personal details the client volunteered, for the next human touch))');
 
   const debriefRes = await completeWithRetry(env, provider, key, [
     { role: "user", content: `${prompt}\n\nReturn ONLY valid JSON with keys: ${schemaParts.join(", ")}.\n\nTranscript:\n${call.transcript}` }
-  ], { effort: "medium", think: false,
+  ], { effort: "medium", think: false, maxTokens: 24000,
        onRetry: r => onStep && onStep({ step: "retry", detail: `debrief attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
        onProgress: chars => report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call") });
   tally(debriefRes.usage);
@@ -155,6 +176,10 @@ DELIVER WHAT GABRIEL PROMISED. If "statedFollowUps" is non-empty, it is what Gab
 WRITE BOTH, ALWAYS. Return a non-empty SMS and a non-empty email even if Gabriel only mentioned one of them on the call. The SMS is a short, warm note that ends the conversation on a good note — worth sending whether or not there was a sale. Never return an empty "sms".
 
 WRITE FOR THE RECIPIENT, NOT FOR GABRIEL. Use "recipientProfile" to shape how this lands: match how this specific client takes in information and reference what they disclosed and care about. The goal is not to sound like Gabriel — it is to say exactly what this person needs to hear, in the way they best receive it.
+
+MATCH THE SHAPE TO THE PERSON. If recipientProfile.detailPreference is "detailed" (an analytical, high-C buyer), the EMAIL should be structured and specific: acknowledge alignment briefly, then itemise the concrete points — what was agreed, what is pending, what happens next — as a short bulleted list they can act on. If it is "brief" (a relational buyer), the email is a short warm note, no lists. The SMS is always short regardless.
+
+USE BOUNDED CERTAINTY. Skeptical and technical buyers lose trust on absolute claims. Do NOT write "perfect", "always", "never", "guaranteed", or "we do anything" unless the call summary explicitly states that promise. Prefer "designed to", "typically", "we'll confirm", "the plan is".
 
 Ground everything in the specific details below — their situation, their own phrasing, what was agreed — so it reads like a real message about a real call, not a template.
 
@@ -202,6 +227,17 @@ Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
 // excluded — it is prose that restates the fields below and can run to 10k chars.
 function draftContext(call, parsed) {
   const f = parsed.followUp || {};
+  // profile is now a structured object (TASK-089) or, on legacy calls, a string[]. Carry only
+  // the parts that help a draft LAND — what the client values and trusts — not the whole
+  // behavioural analysis. Tolerate both shapes so old processed calls still draft correctly.
+  const p = parsed.profile;
+  const clientProfile = Array.isArray(p) ? p
+    : (p && typeof p === "object") ? { values: p.valuesHierarchy, trustTriggers: p.trustTriggers, style: p.communicationStyle }
+    : p;
+  // buyingSignals is now {genuine, false} or, on legacy calls, a string[]. The drafts only want
+  // the genuine signals.
+  const bs = parsed.buyingSignals;
+  const buyingSignals = Array.isArray(bs) ? bs : (bs && typeof bs === "object" ? bs.genuine : bs);
   return JSON.stringify({
     clientName: call.client_name,
     outcome: parsed.outcome,
@@ -209,21 +245,24 @@ function draftContext(call, parsed) {
     timing: f.timing,
     gabrielCommitted: f.commitments,
     personalDetails: f.personalDetails,
-    clientProfile: parsed.profile,
-    buyingSignals: parsed.buyingSignals,
+    clientProfile,
+    buyingSignals,
     // TASK-085: what Gabriel told the client he would send. The email/SMS must DELIVER exactly
     // this, so it has to cross into the draft pass. It is his own words to the client, not
     // critique of him, so it is safe under the guard below.
     statedFollowUps: parsed.statedFollowUps,
     // TASK-086: how THIS client best receives a message. Also client-facing, also safe.
     recipientProfile: parsed.recipientProfile,
-    // `said` is the client's verbatim objection — the phrasing worth mirroring back.
-    objections: (parsed.objections || []).map(o => ({ said: o.said, meant: o.meant, resolveWith: o.follow }))
+    // `said` is the client's verbatim objection; `rootFear` is the client's real concern — both
+    // client-facing, and a draft that addresses the real fear lands better. `should`/`felt` are
+    // coaching notes for Gabriel and stay OUT.
+    objections: (parsed.objections || []).map(o => ({ said: o.said, meant: o.meant, rootFear: o.rootFear, resolveWith: o.follow }))
   }, null, 1);
-  // GUARD (TASK-042): scorecard, didWell, hurtSale, lessons and ghlNote are NEVER included.
-  // They are coaching critique OF Gabriel; a client-facing draft must not be built from them.
-  // Everything above is either the client's own words/situation or Gabriel's commitments to
-  // the client — safe to send. If you add a field here, it must pass that same test.
+  // GUARD (TASK-042/089): the executive diagnosis, scorecard, didWell, hurtSale, lessons,
+  // missedOpenings and ghlNote are NEVER included — every one of them is coaching critique OF
+  // Gabriel (or a strategy note for his next call), and a client-facing draft must not be built
+  // from them. Everything above is the client's own words/situation or Gabriel's commitments to
+  // the client. If you add a field here, it must pass that same test.
 }
 
 // A draft built from an empty distillation does not fail — it produces fluent, generic filler
@@ -304,12 +343,14 @@ async function completeWithRetry(env, provider, key, messages, opts = {}) {
 // and 12.6 min. The SDKs guard against this (10-min validation + TCP keep-alive); we call
 // fetch directly, so we must stream. Do NOT set stream:false here.
 async function complete(env, provider, key, messages, opts = {}) {
-  const { effort = "medium", think = false, onProgress } = opts;
+  // maxTokens is per-call: the enriched debrief (TASK-089) can run long, and a truncated JSON
+  // fails the WHOLE call (there is no partial parse). The drafts are short and keep the default.
+  const { effort = "medium", think = false, onProgress, maxTokens = 16000 } = opts;
   if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gpt-5.2", messages, max_completion_tokens: 16000 }),
+      body: JSON.stringify({ model: "gpt-5.2", messages, max_completion_tokens: maxTokens }),
       signal: AbortSignal.timeout(STREAM_TIMEOUT_MS)
     });
     if (!res.ok) {
@@ -331,7 +372,7 @@ async function complete(env, provider, key, messages, opts = {}) {
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "claude-sonnet-5",
-        max_tokens: 16000,
+        max_tokens: maxTokens,
         thinking: think ? { type: "adaptive" } : { type: "disabled" },
         output_config: { effort },
         stream: true,
@@ -474,25 +515,37 @@ function mockOutputs(call) {
     toneReason: "Mock generation — connect an LLM API key in Integrations for real tone analysis",
     outcome: "followup",
     debrief: {
-      scorecard: dims.map(d => [d, 5 + Math.floor(rand() * 5)]),
-      didWell: [`[Mock] Built rapport early with ${name}.`, "[Mock] Asked a strong discovery question mid-call."],
-      hurtSale: ["[Mock] Connect an API key to get a real analysis of this transcript."],
-      objections: [{ said: "[Mock objection]", meant: "—", felt: "—", should: "—", follow: "—", loop: "—" }],
-      profile: ["[Mock] Real psychological profiling appears here once an LLM key is configured."],
-      buyingSignals: ["[Mock] Real buying-signal detection appears here once an LLM key is configured."],
-      lessons: ["[Mock] Real coaching lessons appear here once an LLM key is configured."],
+      // Enriched shapes (TASK-089) so dev/mock mode shows the real structure.
+      diagnosis: `[Mock] Executive read appears here once an LLM key is configured — what this call actually was, the one issue that decides it, and the next move.`,
+      scorecard: dims.map(d => [d, 5 + Math.floor(rand() * 5), "[mock] one-line why"]),
+      overallScore: 7.0,
+      outcomeSummary: "[Mock] The precise commercial outcome appears here once an LLM key is configured.",
+      didWell: [{ move: `[Mock] Built rapport early with ${name}.`, why: "[mock] why it worked" }],
+      hurtSale: [{ issue: "[Mock] a moment that cost momentum", why: "[mock] why", sayInstead: "[mock] the exact better line" }],
+      objections: [{ said: "[Mock objection]", meant: "—", felt: "—", rootFear: "—", should: "—", follow: "—", loop: "—" }],
+      profile: { dominantFears: ["[mock] fear"], valuesHierarchy: ["[mock] reliability", "[mock] price"],
+        decisionSpeed: "[mock]", certaintyNeed: "[mock]", emotionalWound: "[mock]",
+        trustTriggers: ["[mock] specificity"], resistancePatterns: ["[mock]"], identityStyle: "[mock]", disc: "[mock] High D / High C" },
+      buyingSignals: { genuine: ["[Mock] a real intent signal"], false: ["[Mock] a polite 'yep' mistaken for commitment"] },
+      lessons: ["[Mock] a generalizable coaching lesson appears here once an LLM key is configured."],
+      missedOpenings: [{ moment: "[mock] a moment of excitement", askInstead: "[mock] the exact question to have asked" }],
       statedFollowUps: [{ channel: "email", said: `[Mock] "I'll send you an email with the details."`, contains: ["[Mock] the item Gabriel said he'd include"] }],
       recipientProfile: { communicationStyle: "[Mock] how this client talks — real analysis needs an LLM key.",
         caresAbout: ["[Mock] what the client cares about"], disclosed: ["[Mock] a personal detail the client volunteered"],
-        bestReceivedAs: "[Mock] how to shape the follow-up for this person." }
+        bestReceivedAs: "[Mock] how to shape the follow-up for this person.", detailPreference: "brief" }
     },
     ghlNote: [
+      `OUTCOME`, `- [mock] what was agreed + what's pending + next step`, ``,
       `CLIENT`, `- ${call.client_name} — [mock] connect an LLM key for the real profile`, ``,
       `GOALS`, `- [mock] what they came for`, ``,
-      `OUTCOME`, `- [mock] what happened + the agreed next step`, ``,
-      `WHAT WAS SAID`, `- [mock] the few things that matter`, ``,
+      `PAIN POINTS`, `- [mock] the real problems`, ``,
+      `OBJECTIONS`, `- [mock] concern + the root fear`, ``,
       `SELLING POINTS`, `- [mock] angles likely to land next time`, ``,
-      `WATCH OUT FOR`, `- [mock] objections and sensitivities`
+      `WATCH OUT FOR`, `- [mock] sensitivities and pitfalls`, ``,
+      `FOLLOW-UP TASKS`, `- [mock] next concrete action`, ``,
+      `RETENTION RISK`, `- [mock] what could lose them`, ``,
+      `UPSELL`, `- [mock] expansion opening`, ``,
+      `PERSONAL RAPPORT`, `- [mock] a personal detail for the next touch`
     ].join("\n"),
     messages: TONES.map(tone => ({
       tone,

@@ -2603,6 +2603,29 @@
         "asserted in tests/ui-smoke.test.mjs (renderProcessed runs; exactly one .opane active)"
       ],
       "notes": "Verified visually in-browser (mock/seed data): segmented control switches Text/Email/CRM cleanly, one pane each. Mobile override reconciled to the single-pane model."
+    },
+    {
+      "id": "TASK-089",
+      "title": "Output depth: structured debrief calibrated to the GAB sales specimen; recipient-adaptive drafts",
+      "priority": "high",
+      "estimated_complexity": "high",
+      "status": "completed",
+      "dependencies": [
+        "TASK-085",
+        "TASK-086",
+        "TASK-087",
+        "TASK-088"
+      ],
+      "description": "Gabriel provided a full GAB sales specimen (Brandon call) \u2014 the ChatGPT output he likes. Key insight: Closer's JSON schema, not the prompt, was flattening quality. ChatGPT writes free-form; Closer forced flat string[] fields, discarding titled/quoted/rewrite-carrying analysis even with identical prompt+context. Fixed by restructuring every analytical field: executive diagnosis; diagnostic scorecard [label,score,note]+overallScore+outcomeSummary; didWell {move,why}; hurtSale {issue,why,sayInstead} (every criticism carries its rewrite); objection rootFear; profile as behavioural object (ranked values, fears, emotional wound w/ quote, trust triggers, DISC); buyingSignals {genuine,false}; missedOpenings; richer GHL note (objections/follow-up tasks/retention/upsell/personal rapport). Drafts adapt to recipientProfile.detailPreference (analytical->structured itemised email, relational->short warm; SMS always short) + bounded-certainty rule (no absolutes). Debrief maxTokens raised 16k->24k against truncation. Specimen saved as calibration reference in Sonny vault 60 Reference.",
+      "acceptance_criteria": [
+        "Every debrief field structured; guard still excludes ALL critique (diagnosis, sayInstead, missedOpenings, scorecard notes, profile internals) from draftContext \u2014 verified to FAIL on reintroduced leak",
+        "Front-end + debriefToText shape-tolerant: legacy flat-shape processed calls still render (verified in browser + test)",
+        "Drafts vary by recipientProfile.detailPreference; bounded-certainty instruction present",
+        "Debrief runs at maxTokens 24000; drafts at 16000",
+        "Enriched AND legacy debriefs rendered in a real browser and looked at",
+        "tests/llm.test.mjs (54) + tests/ui-smoke.test.mjs (41) green and in the CI gate"
+      ],
+      "notes": "NOT verified: whether a live Sonnet-5 run fills the richer schema WELL and inside the token budget \u2014 needs one real generation with a key. Schema/guard/rendering are done; model-output quality read is pending. Scannability preserved: tight diagnosis+TL;DR on top, depth behind pagination (added a Missed Openings page). Cost/length will rise \u2014 re-baseline max_tokens/cost against the first real run (traps doc). Local dev: injected an enriched sample debrief into local call id 4 and created a fresh admin (sonny@local.test) so Ivan can look; both are local-only (.wrangler, gitignored)."
     }
   ],
   "progress_percentage": 77,

@@ -73,6 +73,13 @@ public/          the UI (ported from the design mockup)
   `draftContext` — a leak there ships in a real client's email. Anything the drafts need is
   extracted in the debrief pass (e.g. `statedFollowUps`, `recipientProfile`) and carried forward.
   `tests/llm.test.mjs` fails the build if critique ever crosses that line.
+- **Enriched, shape-tolerant debrief (TASK-089).** The debrief schema returns *structured* fields
+  (an executive `diagnosis`; `didWell`/`hurtSale` as objects where every criticism carries its
+  `sayInstead` rewrite; a behavioural `profile` object; `missedOpenings`), calibrated to the
+  "GAB sales" specimen (in the vault). The debrief runs at `maxTokens: 24000` so the richer JSON
+  can't silently truncate. Older processed calls are stored in the *flat* legacy shape, so every
+  renderer in `public/app.js` (and `debriefToText`) branches on `typeof` and handles both — do
+  not assume the new shape. `tests/ui-smoke.test.mjs` renders both shapes and fails if either breaks.
 - **Fathom** (`src/index.js`): `GET api.fathom.ai/external/v1/meetings`, `X-Api-Key`, bounded by
   `created_after` so it can't pull full history. Fathom does **not** document sort order — the
   client-side newest-first sort is load-bearing, not a nicety.

@@ -210,6 +210,35 @@ body.sb-collapsed .sidebar{ opacity:0; margin-left:0; padding-left:0; padding-ri
 .hl-best{ background:var(--blue-100); color:var(--blue-600); }
 .hl-worst{ background:var(--pink-100); color:var(--pink-600); }
 .hl-lesson{ background:var(--violet-100); color:var(--violet-600); }
+.hl-overall{ background:var(--paper-200); color:var(--ink-800); }
+
+/* Executive diagnosis (TASK-089): the opinionated top-of-report read. Sits above the TL;DR. */
+.diagnosis{ border:1px solid var(--line-strong); border-left:3px solid var(--violet-500);
+  border-radius:9px; background:var(--paper-50); padding:12px 14px; margin-bottom:14px; }
+.diag-eyebrow{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--violet-600); margin-bottom:5px; }
+.diag-text{ margin:0; font-size:13px; line-height:1.55; color:var(--ink-950); }
+.diag-outcome{ margin:8px 0 0; font-size:12px; line-height:1.5; color:var(--ink-600); }
+
+/* Did-well / hurt-sale / missed-openings: each item is a titled finding, and (for hurt-sale and
+   missed openings) carries the exact better wording — the coaching, not just the critique. */
+.rich-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:11px; }
+.rich-list > li{ border-left:2px solid var(--line-strong); padding-left:11px; }
+.ri-main{ font-size:13px; font-weight:600; color:var(--ink-950); line-height:1.5; }
+.ri-why{ font-size:12px; color:var(--ink-600); margin-top:3px; line-height:1.5; }
+.ri-fix{ font-size:12.5px; color:var(--ink-950); margin-top:6px; line-height:1.5;
+  background:var(--blue-100); border-radius:7px; padding:7px 10px; }
+.ri-fix-tag{ display:inline-block; font-size:9.5px; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.05em; color:var(--blue-600); margin-right:7px; }
+
+/* Structured client profile (TASK-089). */
+.prof-lines{ display:flex; flex-wrap:wrap; gap:6px 18px; margin-bottom:6px; }
+.prof-line{ display:flex; gap:7px; font-size:12.5px; align-items:baseline; }
+.prof-k{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-400); }
+.ranked{ margin:0; padding-left:20px; font-size:12.5px; line-height:1.7; }
+.prof-wound{ margin:0; font-size:12.5px; font-style:italic; color:var(--ink-800); line-height:1.55;
+  border-left:2px solid var(--pink-500); padding-left:10px; }
+
+.sc-note{ grid-column:1/-1; font-size:11px; color:var(--ink-400); line-height:1.45; margin-top:-1px; }
 
 /* Flows into as many columns as the pane is wide. The old 1fr/auto grid stacked all 10
    dimensions vertically, which is what forced the scorecard to scroll. */

@@ -916,28 +916,94 @@ function defaultOutputTab(d) {
   return "email";
 }
 
+// TASK-089 enriched the debrief from flat lists to structured objects. Every renderer below is
+// SHAPE-TOLERANT: production has processed calls stored in the OLD shape (string[], [label,score]),
+// and they must keep rendering. Each helper branches on typeof and never assumes the new shape.
 const DEBRIEF_PAGES = [
   { label: "TL;DR & Scorecard", key: "tldr",
-    render: d => (highlights(d) + (d.scorecard?.length ? `<h4>Call Scorecard</h4>${scorecard(d.scorecard)}` : "")) },
-  { label: "Did Well", key: "didWell", render: d => bullets(d.didWell) },
-  { label: "Hurt Sale", key: "hurtSale", render: d => bullets(d.hurtSale) },
+    render: d => (diagnosisBlock(d) + highlights(d) + (d.scorecard?.length ? `<h4>Call Scorecard</h4>${scorecard(d.scorecard)}` : "")) },
+  { label: "Did Well", key: "didWell", render: d => richList(d.didWell, "did") },
+  { label: "Hurt Sale", key: "hurtSale", render: d => richList(d.hurtSale, "hurt") },
   { label: "Objections", key: "objections", render: d => (d.objections || []).map(o => `
       <div class="objection"><div class="said">"${esc(o.said)}"</div>
       <dl><dt>Meant</dt><dd>${esc(o.meant)}</dd><dt>Felt</dt><dd>${esc(o.felt)}</dd>
+      ${o.rootFear ? `<dt>Root fear</dt><dd>${esc(o.rootFear)}</dd>` : ""}
       <dt>Say instead</dt><dd>${esc(o.should)}</dd><dt>Follow-up</dt><dd>${esc(o.follow)}</dd>
       <dt>Loop back</dt><dd>${esc(o.loop)}</dd></dl></div>`).join("") },
-  { label: "Client Profile", key: "profile", render: d => bullets(d.profile) },
-  { label: "Buying Signals", key: "buyingSignals", render: d => bullets(d.buyingSignals) },
+  { label: "Client Profile", key: "profile", render: d => profileBlock(d.profile) },
+  { label: "Buying Signals", key: "buyingSignals", render: d => signalsBlock(d.buyingSignals) },
+  { label: "Missed Openings", key: "missedOpenings", render: d => openingsBlock(d.missedOpenings) },
   { label: "Lessons", key: "lessons", render: d => bullets(d.lessons) }
 ];
 
+// A "did well" / "hurt sale" item is a string (legacy) or an object (TASK-089). The rewrite
+// ("say instead") is the valuable part of a hurt-sale item, so it is surfaced, not buried.
+function richList(items, kind) {
+  if (!(items || []).length) return "";
+  return `<ul class="rich-list">${items.map(x => {
+    if (typeof x === "string") return `<li>${esc(x)}</li>`;
+    if (kind === "hurt") return `<li><div class="ri-main">${esc(x.issue || "")}</div>
+      ${x.why ? `<div class="ri-why">${esc(x.why)}</div>` : ""}
+      ${x.sayInstead ? `<div class="ri-fix"><span class="ri-fix-tag">Say instead</span>${esc(x.sayInstead)}</div>` : ""}</li>`;
+    return `<li><div class="ri-main">${esc(x.move || "")}</div>${x.why ? `<div class="ri-why">${esc(x.why)}</div>` : ""}</li>`;
+  }).join("")}</ul>`;
+}
+
+// Executive diagnosis + one-line outcome, at the top of the TL;DR page. Enriched debriefs only —
+// legacy calls have neither and this returns "".
+function diagnosisBlock(d) {
+  if (!d.diagnosis && !d.outcomeSummary) return "";
+  return `<div class="diagnosis">
+    ${d.diagnosis ? `<div class="diag-eyebrow">Diagnosis</div><p class="diag-text">${esc(d.diagnosis)}</p>` : ""}
+    ${d.outcomeSummary ? `<p class="diag-outcome">${esc(d.outcomeSummary)}</p>` : ""}</div>`;
+}
+
+// Client profile — string[] (legacy) or the structured behavioural object (TASK-089).
+function profileBlock(p) {
+  if (!p) return "";
+  if (Array.isArray(p)) return bullets(p);
+  if (typeof p !== "object") return bullets([String(p)]);
+  const sub = (label, xs) => (xs || []).length ? `<h4>${label}</h4>${bullets(xs)}` : "";
+  const line = (label, v) => v ? `<div class="prof-line"><span class="prof-k">${esc(label)}</span><span>${esc(v)}</span></div>` : "";
+  return `${p.disc || p.decisionSpeed || p.certaintyNeed || p.identityStyle ? `<div class="prof-lines">
+      ${line("DISC", p.disc)}${line("Decision speed", p.decisionSpeed)}${line("Certainty need", p.certaintyNeed)}${line("Identity", p.identityStyle)}</div>` : ""}
+    ${(p.valuesHierarchy || []).length ? `<h4>Values (ranked)</h4><ol class="ranked">${p.valuesHierarchy.map(v => `<li>${esc(v)}</li>`).join("")}</ol>` : ""}
+    ${sub("Dominant fears", p.dominantFears)}
+    ${p.emotionalWound ? `<h4>Emotional wound</h4><p class="prof-wound">${esc(p.emotionalWound)}</p>` : ""}
+    ${sub("Trust triggers", p.trustTriggers)}
+    ${sub("Resistance patterns", p.resistancePatterns)}`;
+}
+
+// Buying signals — string[] (legacy) or {genuine, false} (TASK-089).
+function signalsBlock(b) {
+  if (!b) return "";
+  if (Array.isArray(b)) return bullets(b);
+  if (typeof b !== "object") return bullets([String(b)]);
+  return `${(b.genuine || []).length ? `<h4>Genuine signals</h4>${bullets(b.genuine)}` : ""}
+    ${(b.false || []).length ? `<h4>False signals</h4>${bullets(b.false)}` : ""}`;
+}
+
+// Missed micro-commitments — enriched debriefs only.
+function openingsBlock(list) {
+  if (!(list || []).length) return "";
+  return `<ul class="rich-list">${list.map(o => `<li><div class="ri-main">${esc(o.moment || "")}</div>
+    <div class="ri-fix"><span class="ri-fix-tag">Ask instead</span>${esc(o.askInstead || "")}</div></li>`).join("")}</ul>`;
+}
+
 // Copy = the WHOLE debrief, not just the visible page. Pagination is a reading aid; it must
-// not silently narrow what the copy button gives you.
+// not silently narrow what the copy button gives you. Shape-tolerant like the renderers.
 function debriefToText(call, d) {
   const L = [`DEBRIEF — ${call.client_name}`, fmtTime(call.occurred_at), ""];
-  const sec = (title, xs) => { if ((xs || []).length) L.push(title.toUpperCase(), ...xs.map(x => `• ${x}`), ""); };
+  const asLine = x => typeof x === "string" ? x
+    : x.move ? (x.why ? `${x.move} — ${x.why}` : x.move)
+    : x.issue ? `${x.issue}${x.why ? ` — ${x.why}` : ""}${x.sayInstead ? `\n    Say instead: ${x.sayInstead}` : ""}`
+    : JSON.stringify(x);
+  const sec = (title, xs) => { if ((xs || []).length) L.push(title.toUpperCase(), ...xs.map(x => `• ${asLine(x)}`), ""); };
+  if (d.diagnosis) L.push("DIAGNOSIS", d.diagnosis, "");
+  if (d.outcomeSummary) L.push(d.outcomeSummary, "");
   if (d.scorecard?.length) {
-    L.push("CALL SCORECARD", ...d.scorecard.map(([k, v]) => `• ${k}: ${v}/10`), "");
+    L.push(`CALL SCORECARD${Number.isFinite(d.overallScore) ? ` (overall ${d.overallScore}/10)` : ""}`,
+      ...d.scorecard.map(([k, v, note]) => `• ${k}: ${v}/10${note ? ` — ${note}` : ""}`), "");
   }
   sec("What you did well", d.didWell);
   sec("What hurt the sale", d.hurtSale);
@@ -945,22 +1011,45 @@ function debriefToText(call, d) {
     L.push("OBJECTION AUTOPSY");
     d.objections.forEach(o => L.push(
       `• "${o.said}"`, `    Meant: ${o.meant}`, `    Felt: ${o.felt}`,
+      ...(o.rootFear ? [`    Root fear: ${o.rootFear}`] : []),
       `    Say instead: ${o.should}`, `    Follow-up: ${o.follow}`, `    Loop back: ${o.loop}`));
     L.push("");
   }
-  sec("Client profile", d.profile);
-  sec("Buying signals + red flags", d.buyingSignals);
+  // Client profile: object (new) or string[] (legacy).
+  if (Array.isArray(d.profile)) sec("Client profile", d.profile);
+  else if (d.profile && typeof d.profile === "object") {
+    const p = d.profile; L.push("CLIENT PROFILE");
+    if (p.disc) L.push(`• DISC: ${p.disc}`);
+    (p.valuesHierarchy || []).forEach((v, i) => L.push(`• Value ${i + 1}: ${v}`));
+    (p.dominantFears || []).forEach(v => L.push(`• Fear: ${v}`));
+    if (p.emotionalWound) L.push(`• Wound: ${p.emotionalWound}`);
+    (p.trustTriggers || []).forEach(v => L.push(`• Trusts: ${v}`));
+    L.push("");
+  }
+  if (Array.isArray(d.buyingSignals)) sec("Buying signals + red flags", d.buyingSignals);
+  else if (d.buyingSignals && typeof d.buyingSignals === "object") {
+    sec("Genuine buying signals", d.buyingSignals.genuine);
+    sec("False signals", d.buyingSignals.false);
+  }
+  if ((d.missedOpenings || []).length) {
+    L.push("MISSED OPENINGS");
+    d.missedOpenings.forEach(o => L.push(`• ${o.moment}`, `    Ask instead: ${o.askInstead}`));
+    L.push("");
+  }
   sec("Coaching lessons", d.lessons);
   return L.join("\n").trim();
 }
 
 function highlights(d) {
-  if (!d.scorecard?.length) return "";
-  const sorted = [...d.scorecard].sort((a, b) => b[1] - a[1]);
-  const best = sorted[0], worst = sorted[sorted.length - 1];
+  const hasScore = d.scorecard?.length;
+  const overall = Number.isFinite(d.overallScore) ? d.overallScore : null;
+  if (!hasScore && overall == null) return "";
+  let best, worst;
+  if (hasScore) { const s = [...d.scorecard].sort((a, b) => b[1] - a[1]); best = s[0]; worst = s[s.length - 1]; }
   return `<div class="highlights"><div class="hl-title">TL;DR</div>
-    <div class="hl-row"><span class="hl-tag hl-best">Strongest</span><span>${esc(best[0])} — ${best[1]}/10</span></div>
-    <div class="hl-row"><span class="hl-tag hl-worst">Work on</span><span>${esc(worst[0])} — ${worst[1]}/10</span></div>
+    ${overall != null ? `<div class="hl-row"><span class="hl-tag hl-overall">Overall</span><span>${overall}/10</span></div>` : ""}
+    ${best ? `<div class="hl-row"><span class="hl-tag hl-best">Strongest</span><span>${esc(best[0])} — ${best[1]}/10</span></div>` : ""}
+    ${worst ? `<div class="hl-row"><span class="hl-tag hl-worst">Work on</span><span>${esc(worst[0])} — ${worst[1]}/10</span></div>` : ""}
     ${d.lessons?.[0] ? `<div class="hl-row"><span class="hl-tag hl-lesson">#1 Lesson</span><span>${esc(d.lessons[0])}</span></div>` : ""}</div>`;
 }
 
@@ -969,10 +1058,11 @@ const tierColor = n => n >= 8 ? "var(--blue-500)" : n >= 6 ? "var(--violet-500)"
 // the pane is wide. The old 2-column grid forced all 10 rows into a single tall stack, which is
 // what made the scorecard need scrolling.
 function scorecard(rows) {
-  return `<div class="scorecard">${(rows || []).map(([k, v]) => `
+  return `<div class="scorecard">${(rows || []).map(([k, v, note]) => `
     <div class="sc-item">
       <div class="sc-top"><span class="sc-k">${esc(k)}</span><span class="sc-v" style="color:${tierColor(v)}">${v}/10</span></div>
       <div class="bar"><i style="width:${v * 10}%; background:${tierColor(v)}"></i></div>
+      ${note ? `<div class="sc-note">${esc(note)}</div>` : ""}
     </div>`).join("")}</div>`;
 }
 

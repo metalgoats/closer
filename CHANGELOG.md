@@ -3,6 +3,49 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-07-29 (later) — Output depth: stop the schema flattening the analysis (TASK-089)
+
+Gabriel provided a full `GAB sales` specimen (the Brandon call) — the ChatGPT output he likes and
+that this project is being rebuilt to match. Reading it produced the key insight of the whole
+effort: **Closer's JSON schema, not the prompt, was the bottleneck.** ChatGPT wrote free-form;
+Closer forced flat `string[]` fields, which grind titled, quote-backed, rewrite-carrying analysis
+down to thin bullets. Even with an identical prompt and context, our schema was discarding the
+depth. Good news, because it's fixable today with no dependency on the history export. The specimen
+is saved as the calibration reference (Sonny vault, `60 Reference/GAB sales report — the
+output-quality target`).
+
+- **Every analytical field is now structured** (`src/llm.js` debrief schema): an executive
+  `diagnosis` that names the deal's real state and the one central issue; a diagnostic scorecard
+  (`[label, score, note]` + `overallScore` + `outcomeSummary`); `didWell` as `{move, why}`;
+  `hurtSale` as `{issue, why, sayInstead}` so **every criticism ships its exact rewrite**;
+  objections gain `rootFear`; `profile` becomes a behavioural object (ranked values, dominant
+  fears, the emotional wound with its quote, trust triggers, DISC); `buyingSignals` splits
+  genuine/false; new `missedOpenings` with the exact question to have asked. The GHL note gains
+  Objections / Follow-up tasks / Retention risk / Upsell / Personal rapport.
+- **Drafts adapt to the recipient** (Q-confirmed with Ivan): `recipientProfile.detailPreference`
+  drives email shape — analytical/high-C buyers get the specimen's structured, itemised email;
+  relational buyers get a short warm note; the SMS stays short. Added a **bounded-certainty** rule:
+  no "perfect/always/never/guaranteed" unless the summary states it (the specimen's throughline —
+  absolutes destroy trust with skeptical buyers).
+- **The debrief runs at `maxTokens: 24000`** (drafts stay 16k). The richer JSON is larger and a
+  truncated debrief fails the whole call — there is no partial parse.
+- **Rendering is shape-tolerant** (`public/app.js`). Production has processed calls in the flat
+  legacy shape; every renderer and `debriefToText` branches on `typeof` so old calls keep working.
+
+The guard held through the entire reshape — the executive diagnosis, `sayInstead` rewrites,
+`missedOpenings`, scorecard notes, and behavioural profile internals all carry critique of Gabriel
+and are excluded from `draftContext`. `tests/llm.test.mjs` (now 54 assertions) seeds a sentinel in
+every one and was verified to FAIL if any is reintroduced into a draft. `tests/ui-smoke.test.mjs`
+(41) renders *both* the enriched and legacy shapes.
+
+Verification (honest split): the guard, the carry-forward, the adaptive-draft/bounded-certainty
+wiring, the token budget, and the schema requests are all proven deterministically without a key.
+The enriched **and** legacy debriefs were rendered in a real browser and looked at — the executive
+diagnosis, the "say instead" rewrites, the structured profile, and the missed-openings page all
+land, and old-shape calls still render. **Still not verified: whether a live Sonnet-5 generation
+against a real transcript fills this richer schema *well* and inside the token budget.** That needs
+one real run — the schema/guard/rendering are done; the model-output quality read is pending a key.
+
 ## 2026-07-29 — Output quality round (TASK-085…088)
 
 Context: on 2026-07-28 Gabriel said the interface had landed but the outputs had not — he still
