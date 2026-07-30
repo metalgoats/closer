@@ -3,6 +3,36 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-07-30 — One type scale, and it is not a guess
+
+Adopted the interface type scale now shared across Ivan's tools, measured off apple.com rather
+than approximated. Full reasoning and the table live in the vault at
+`60 Reference/The interface type scale.md`.
+
+The problem it fixes here: **the debrief body — the thing Gabriel actually reads after every
+call — was 12.5px.** So was the diagnosis at 13px, the message he edits and sends at 13px, and
+the profile lines at 12.5px. Ninety-odd rules sat between 9.5px and 13px, and several of the
+smallest were carrying real language rather than chrome.
+
+Two rules from the scale, both of which this file was breaking:
+
+- **Body copy is 17px.** `.debrief-body`, `.diag-text`, `.ri-main`, `.view-body`, `.msg-edit`
+  and `.subject-input` are now 17/1.47 at −0.022em. Secondary text is 15px. Labels are 12px.
+- **Tracking goes positive on display sizes and negative on text sizes.** Uppercase eyebrows
+  were at `.04em`–`.06em`; they are now `.02em` at 12px/600, which is legible instead of
+  decorative.
+
+- `--font-display` added (SF Pro Display) for `.dh-name`, `.list-title`, `.debrief-head h3`,
+  `.ct-editor-head`, `.ev-summary b` and `.spend-v`. `--font-ui` is now explicitly SF Pro Text.
+- **Nothing renders below 12px anywhere in the app.** The remaining settings, keys, events and
+  model-picker panes were swept to that floor rather than left behind, because a scale that
+  stops at the pretty screens is not a scale.
+- Sizes now resolve to **12 / 13 / 15 / 17 / 21 / 24**, down from eleven distinct values.
+
+Verified by running the app locally and by rendering the real stylesheet against representative
+debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
+assertions passing, unchanged.
+
 ## 2026-07-29 (evening) — Gabriel says the outputs are usable (TASK-093…099)
 
 The day ended with the sentence the whole effort was resting on. Gabriel, on a live
