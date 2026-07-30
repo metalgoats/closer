@@ -341,6 +341,24 @@ check("all three copy buttons survive the title removal",
   (richHtml.match(/class="copy-btn" data-out=/g) || []).length === 3);
 check("both Mark-sent buttons survive it too",
   (richHtml.match(/class="sent-btn [^"]*" data-out=/g) || []).length === 2);
+
+console.log("\n== the outputs row is ONE line, not two (TASK-093) ==");
+// The header strip below the chips held nothing but two buttons. It looked like a bug and
+// cost a full row of height on every call.
+check("no panel-head strip is rendered at all",
+  !/class="panel-head/.test(richHtml), "the second row is back");
+check("actions live inside the tab strip",
+  /class="panel-subnav"[\s\S]{0,900}?class="oacts/.test(richHtml));
+check("one action set per tab", (richHtml.match(/class="oacts[^"]*" data-otab=/g) || []).length === 3);
+check("exactly one action set is active", (richHtml.match(/class="oacts active"/g) || []).length === 1);
+check("the active action set matches the active tab",
+  (richHtml.match(/class="oacts active" data-otab="(\w+)"/) || [])[1] ===
+  (richHtml.match(/class="chip active" data-otab="(\w+)"/) || [])[1]);
+check("switching tabs also switches the action set",
+  /querySelectorAll\("\.oacts"\)[\s\S]{0,120}dataset\.otab === k/.test(src),
+  "tab switch would leave the wrong Copy button wired");
+check("the CSS hides inactive action sets",
+  /\.oacts\{[^}]*display:none/.test(css) && /\.oacts\.active\{[^}]*display:flex/.test(css));
 check("the actions are pushed right by margin, not by space-between",
   /\.panel-actions\{[^}]*margin-left:auto/.test(css),
   "without margin-left:auto the buttons sit on the left of an otherwise empty row");

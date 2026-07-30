@@ -231,7 +231,12 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .debrief-section{ border-bottom:1px solid var(--line); flex-shrink:0; }
 .debrief-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 22px 0; }
 .debrief-head h3{ margin:0; font-size:13px; font-weight:700; }
-.panel-subnav{ display:flex; gap:5px; padding:9px 22px; overflow-x:auto; }
+.panel-subnav{ display:flex; align-items:center; gap:5px; padding:9px 22px; overflow-x:auto; }
+/* The outputs tab strip carries its own actions on the SAME line (TASK-093). Copy and Mark
+   sent used to sit in a header strip below the chips, which read as a rendering mistake and
+   cost a full row of vertical height on every call. Only the active tab's set is shown. */
+.oacts{ display:none; gap:6px; margin-left:auto; flex:none; }
+.oacts.active{ display:flex; }
 .chip{ font-size:10.5px; font-weight:600; color:var(--ink-600); background:var(--paper-100); border:1px solid var(--line); border-radius:100px; padding:3.5px 9px; white-space:nowrap; cursor:pointer; }
 .chip:hover{ background:var(--paper-200); }
 /* FIXED height (TASK-055), not max-height: the pane must be the same size on every pill page,
@@ -309,9 +314,6 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .chrome-dot{ width:8px; height:8px; border-radius:50%; }
 .chrome-dot.d1{ background:var(--blue-500); } .chrome-dot.d2{ background:var(--violet-500); } .chrome-dot.d3{ background:var(--pink-500); }
 .panel-head-row{ padding:7px 14px 10px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
-/* margin-left:auto, not the row's space-between: the output panels dropped their title (TASK-092,
-   the tab chip already names them), so the actions are the row's only child and space-between
-   would park them on the left. */
 .panel-actions{ display:flex; gap:6px; margin-left:auto; }
 .copy-btn, .sent-btn{ display:flex; align-items:center; gap:5px; border-radius:6px; padding:5px 9px; font-size:11.5px; font-weight:600; cursor:pointer; }
 .copy-btn{ background:var(--paper-0); border:1px solid var(--line-strong); color:var(--ink-800); }

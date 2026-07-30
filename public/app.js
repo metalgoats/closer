@@ -1059,9 +1059,18 @@ function renderProcessed(call, outputs) {
          Gabriel said on the call he would send (statedFollowUps), so the app opens on the thing
          he actually intends to send. -->
     <div class="outputs-section">
-      <div class="panel-subnav" role="tablist">${OUTPUT_TABS.map(t =>
-        `<button class="chip ${t.key === defTab ? "active" : ""}" data-otab="${t.key}"
-                 role="tab" aria-selected="${t.key === defTab}">${t.label}</button>`).join("")}</div>
+      <div class="panel-subnav" role="tablist">
+        ${OUTPUT_TABS.map(t =>
+          `<button class="chip ${t.key === defTab ? "active" : ""}" data-otab="${t.key}"
+                   role="tab" aria-selected="${t.key === defTab}">${t.label}</button>`).join("")}
+        <!-- Copy / Mark sent live IN the tab row, not in a second strip below it. Each tab
+             carries its own set (they act on different output ids) and only the active one
+             shows, so the controls never cost a second line of vertical space. -->
+        ${[["text", sms, true], ["email", email, true], ["ghl", ghl, false]].map(([k, o, sent]) =>
+          `<div class="oacts ${k === defTab ? "active" : ""}" data-otab="${k}">${o ? `
+            ${sent ? `<button class="sent-btn ${o.sent_at ? "is-sent" : ""}" data-out="${o.id}">${o.sent_at ? "✓ Sent" : "Mark sent"}</button>` : ""}
+            <button class="copy-btn" data-out="${o.id}">⧉ Copy</button>` : ""}</div>`).join("")}
+      </div>
       <div class="outputs">
         <div class="opane ${defTab === "text"  ? "active" : ""}" data-otab="text">${outputPanel("Text Message", sms, { sent: true })}</div>
         <div class="opane ${defTab === "email" ? "active" : ""}" data-otab="email">${outputPanel("Email", email, { sent: true, subject: true })}</div>
@@ -1246,21 +1255,14 @@ function scorecard(rows) {
     </div>`).join("")}</div>`;
 }
 
-// No visible title (TASK-092). Each of these panels lives inside the outputs tab strip, so the
-// selected chip immediately above already names it — printing "Text Message" again two lines under
-// the "Text Message" tab is pure duplication. `title` is still taken: it labels the textarea for
-// screen readers, which have no chip to read from.
+// No title and no head row (TASK-092, TASK-093). The tab chip above already names the panel,
+// and Copy / Mark sent now sit in that same tab row — a header strip holding only two buttons
+// cost a whole second line of vertical space and read as a rendering mistake. `title` is still
+// taken: it labels the textarea for screen readers, which have no chip to read from.
 function outputPanel(title, out, opts) {
   if (!out) return `<div class="panel">
     <div class="panel-body"><span class="edit-note">Not generated yet — hit Regenerate.</span></div></div>`;
   return `<div class="panel" data-output="${out.id}">
-    <div class="panel-head">
-        <div class="panel-head-row">
-        <div class="panel-actions">
-          ${opts.sent ? `<button class="sent-btn ${out.sent_at ? "is-sent" : ""}" data-out="${out.id}">${out.sent_at ? "✓ Sent" : "Mark sent"}</button>` : ""}
-          <button class="copy-btn" data-out="${out.id}">⧉ Copy</button>
-        </div></div>
-    </div>
     <div class="panel-body">
       ${opts.subject ? `<input class="subject-input" data-out="${out.id}" data-field="subject" value="${esc(out.subject || "")}" aria-label="Email subject">` : ""}
       <textarea class="msg-edit" data-out="${out.id}" data-field="body" aria-label="${title}">${esc(out.body)}</textarea>
@@ -1290,6 +1292,7 @@ function wireDetail(call, outs) {
       c.setAttribute("aria-selected", on);
     });
     document.querySelectorAll(".opane").forEach(p => p.classList.toggle("active", p.dataset.otab === k));
+    document.querySelectorAll(".oacts").forEach(a => a.classList.toggle("active", a.dataset.otab === k));
   }));
 
   // tone switch

@@ -2686,6 +2686,60 @@
         "The dialog signals that more content exists rather than clipping mid-sentence."
       ],
       "notes": "Verified in a real browser end to end: dismissed -> marker 2026-07-29#1rlijkq stored -> reload silent -> ninth item appended -> note re-opened with all nine under one heading. 83 assertions in ui-smoke; the duplicate-title and v-keyed-seen assertions were each proven to FAIL when their bug is reintroduced. The process rule (append, never add a second entry for a date) lives in the comment above RELEASES and in README, because the mechanism alone does not stop the next session from writing a second entry."
+    },
+    {
+      "id": "TASK-093",
+      "title": "Outputs tab strip and its actions share one row",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [
+        "TASK-088",
+        "TASK-092"
+      ],
+      "description": "Removing the panel title in TASK-092 left a header strip below the tab chips containing nothing but Copy and Mark sent. Two stacked rows where one would do — it read as a rendering mistake and cost a full row of vertical height on every call. The actions now live inside the tab strip itself, one set per tab, only the active one shown.",
+      "acceptance_criteria": [
+        "No .panel-head strip is rendered at all.",
+        "Copy and Mark sent sit on the same line as the tab chips.",
+        "Each tab has its own action set targeting its own output id.",
+        "Switching tabs switches the action set, so Copy never targets the wrong output.",
+        "CRM Note has Copy but no Mark sent."
+      ],
+      "notes": "Caused by my own TASK-092 change. Verified in a browser: one row, and clicking through text/ghl/email keeps copy targets 3/7/6 correct. 90 assertions in ui-smoke."
+    },
+    {
+      "id": "TASK-094",
+      "title": "ChatGPT history export from the GAB sales folder",
+      "priority": "high",
+      "estimated_complexity": "high",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "THE headline action item from the 2026-07-28 Gabriel call and the one thing he said would close the gap: Closer runs the same prompt he uses in ChatGPT, so the prompt is not the variable — what ChatGPT has is months of accumulated context. Ivan's decision on the call: export by automation, not by hand. 'I'm not gonna export those by hand. I'm gonna train the AI to do it, and then just be like, do this till there's no more.' Was never added to this worklist despite being the top item.",
+      "acceptance_criteria": [
+        "Past reports from the GAB sales folder are pulled out of the OpenAI account automatically.",
+        "They land somewhere Closer's generation can draw on, not just a folder of text.",
+        "Gabriel does not have to export anything by hand.",
+        "A run against a real transcript is compared before/after to show the context actually helped."
+      ],
+      "notes": "Sonny flagged 2026-07-29: this was an action item on the call and an owner was named, but it never became a task. Everything else from that call did. The GAB sales specimen is already saved in the vault at 60 Reference/GAB sales report — the output-quality target."
+    },
+    {
+      "id": "TASK-095",
+      "title": "Live generation quality read against a real transcript",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "status": "incomplete",
+      "dependencies": [
+        "TASK-089"
+      ],
+      "description": "Every structural claim about the enriched output is proven — the draft guard holds, the schema asks for the right fields, both legacy and enriched shapes render. What has never been checked is whether a live Sonnet-5 run FILLS that richer schema well against a real transcript, and whether it stays inside maxTokens 24000 without truncating.",
+      "acceptance_criteria": [
+        "One real call generated end to end and read by a human.",
+        "Confirm the model fills the depth rather than padding it.",
+        "Confirm no truncation at maxTokens 24000.",
+        "Log the actual cost and re-baseline the estimate against it."
+      ],
+      "notes": "Open since 2026-07-29. This is the only thing standing between the output-quality round and 'done'. Ivan said he would run one."
     }
   ],
   "progress_percentage": 77,
