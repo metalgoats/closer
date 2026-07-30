@@ -1,6 +1,7 @@
 // All model calls happen here, server-side only. With no API keys configured, generation
 // falls back to clearly-labeled mock output so the app is fully usable before setup.
 import { SPECIMEN } from "./specimen.js";
+import { thinkingFor, DEFAULT_MODEL, modelSpec } from "./models.js";
 
 const TONES = ["casual", "balanced", "formal"];
 
@@ -48,6 +49,9 @@ const DEBRIEF_SHARE = 70;               // debrief is the long pole: 0-70%, mess
 // could never change what got scored, and a team call was graded like a sales call.
 export async function generateOutputs(env, { account, call, masterPrompt, callType, onStep, onProgress }) {
   const provider = account.llm_provider || "anthropic";
+  // One model for the whole run. Mixing models mid-generation would let the debrief and the
+  // drafts disagree about register, and would make the logged cost unattributable.
+  const model = account.llm_model || DEFAULT_MODEL;
   const key = await resolveKey(env, account.id, provider);
   if (!key) return mockOutputs(call);
 
@@ -153,7 +157,7 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
       { type: "text", text: SPECIMEN, cache_control: { type: "ephemeral" } },
       { type: "text", text: `${prompt}\n\nReturn ONLY valid JSON with keys: ${schemaParts.join(", ")}.\n\nTranscript:\n${call.transcript}` }
     ] }
-  ], { effort: "medium", think: false, maxTokens: 24000,
+  ], { model, effort: "medium", think: false, maxTokens: 24000,
        onRetry: r => onStep && onStep({ step: "retry", detail: `debrief attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
        onProgress: chars => report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call") });
   tally(debriefRes.usage);
@@ -195,7 +199,7 @@ Call summary:
 ${ctx}
 
 Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
-    ], { effort: "low", think: false,
+    ], { model, effort: "low", think: false,
          onRetry: r => onStep && onStep({ step: "retry", detail: `${tone} attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
          onProgress: chars => {
       toneChars.set(tone, chars);
@@ -377,7 +381,10 @@ async function completeWithRetry(env, provider, key, messages, opts = {}) {
 async function complete(env, provider, key, messages, opts = {}) {
   // maxTokens is per-call: the enriched debrief (TASK-089) can run long, and a truncated JSON
   // fails the WHOLE call (there is no partial parse). The drafts are short and keep the default.
-  const { effort = "medium", think = false, onProgress, maxTokens = 16000 } = opts;
+  const { effort = "medium", think = false, onProgress, maxTokens = 16000,
+          model = DEFAULT_MODEL } = opts;
+  // Resolved once, here, so every caller gets the per-model handling without knowing about it.
+  const thinkingParam = thinkingFor(model, think, effort);
   if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -402,10 +409,12 @@ async function complete(env, provider, key, messages, opts = {}) {
     res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+      // `thinking` is OMITTED entirely when the model requires it (Fable 5) rather than sent
+      // as null — see models.js. Sending {type:"disabled"} to Fable is a 400, not a downgrade.
       body: JSON.stringify({
-        model: "claude-sonnet-5",
+        model,
         max_tokens: maxTokens,
-        thinking: think ? { type: "adaptive" } : { type: "disabled" },
+        ...(thinkingParam === undefined ? {} : { thinking: thinkingParam }),
         output_config: { effort },
         stream: true,
         messages

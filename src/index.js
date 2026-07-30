@@ -1,6 +1,7 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
+import { MODELS, DEFAULT_MODEL } from "./models.js";
 import { logEvent } from "./log.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
@@ -248,6 +249,23 @@ async function route(request, env, url, ctx) {
   }
 
   // ---- templates ----
+  // The model picker (TASK-098). Lives beside the prompts because choosing a model IS a
+  // prompt-level decision — the same prompt behaves differently across them.
+  if (path === "/api/model" && method === "GET") {
+    const row = await env.DB.prepare("SELECT llm_model FROM accounts ORDER BY id LIMIT 1").first();
+    return json({ current: row?.llm_model || DEFAULT_MODEL, default: DEFAULT_MODEL, models: MODELS });
+  }
+  if (path === "/api/model" && method === "PUT") {
+    const { model } = await request.json().catch(() => ({}));
+    // Allowlisted, not free text: an unknown id would 404 on every generation, and each model
+    // needs its own thinking handling (see models.js) that only exists for these three.
+    if (!Object.prototype.hasOwnProperty.call(MODELS, model)) {
+      return json({ error: "Unknown model" }, 400);
+    }
+    await env.DB.prepare("UPDATE accounts SET llm_model = ?").bind(model).run();
+    return json({ ok: true, current: model });
+  }
+
   if (path === "/api/templates" && method === "GET") {
     const { results } = await env.DB.prepare(
       "SELECT * FROM prompt_templates WHERE active = 1 ORDER BY account_id, tone"

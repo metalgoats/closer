@@ -105,6 +105,9 @@ const ROUTES = [
                               { id: 3, account_name: "OSA", kind: "anthropic", has_secret: 1 },
                               { id: 4, account_name: "OSA", kind: "openai", has_secret: 0 }] })],
   [/^\/templates/,   () => ({ templates: [] })],
+  [/^\/model/,       () => ({ current: "claude-opus-5", default: "claude-opus-5",
+                              models: { "claude-opus-5": { label: "Opus 5", tier: "Flagship", inPerM: 5, outPerM: 25, note: "n" },
+                                        "claude-fable-5": { label: "Fable 5", tier: "Most capable", inPerM: 10, outPerM: 50, note: "n" } } })],
   [/^\/suggestions/, () => ({ suggestions: [] })],
   [/^\/insights/,    () => ({ scored: 1, calls: 1, averages: [["rapport", 8, 3]], hurt: ["x"], lessons: ["y"], types: [] })],
   [/^\/events/,      () => ({ events: [], totals: { runs: 2, failures: 0, input_tokens: 100, output_tokens: 50, avg_ms: 1000 },
@@ -404,6 +407,13 @@ const twoDays = T.unseenFrom([grown, older, { v: "2026-07-28", date: "d", title:
   T.releaseSig({ v: "2026-07-28", date: "d", title: "t", items: ["x"] }));
 check("missing two days of notes shows both, newest first",
   twoDays.length === 2 && twoDays[0].v === "2026-07-30", twoDays.map(r => r.v).join(","));
+
+console.log("\n== the model picker degrades instead of dying (TASK-098) ==");
+check("the picker CSS exists", /\.mp-card\.on\{/.test(css));
+check("a failed /model call is caught, not thrown",
+  /api\.get\("\/model"\)\.catch/.test(src),
+  "one endpoint hiccup would take down the whole Prompt Library");
+check("the picker is skipped when models are unavailable", /\$\{!models \? "" :/.test(src));
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

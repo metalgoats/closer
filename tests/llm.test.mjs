@@ -12,6 +12,7 @@
 //   3. The enriched debrief (TASK-089) and adaptive-draft plumbing (recipientProfile.detailPreference,
 //      bounded-certainty) are wired, and the new fields survive into what workflow.js persists.
 import { generateOutputs, hasContent, debriefLine } from "../src/llm.js";
+import { SPECIMEN_APPROX_TOKENS as SPECIMEN_TOKENS } from "../src/specimen.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -229,6 +230,47 @@ console.log("\n== the worked example is debrief-only (TASK-096) ==");
     /Do NOT copy its content/.test(SPECIMEN),
     "without this the model can lift Brandon's details into an unrelated call");
   check("the specimen is not empty", SPECIMEN.length > 2000, String(SPECIMEN.length));
+}
+
+console.log("\n== per-model thinking, the part that 400s if wrong (TASK-098) ==");
+{
+  const { MODELS, DEFAULT_MODEL, thinkingFor, costOf, modelSpec } = await import("../src/models.js");
+
+  // Fable 5 thinks always. ANY explicit thinking config is a 400 — including the
+  // {type:"disabled"} this app sends for the debrief pass. This is the assertion that stops
+  // "switch to Fable" from breaking generation on the first call.
+  check("Fable 5 gets NO thinking key at all",
+    thinkingFor("claude-fable-5", false, "medium") === undefined,
+    JSON.stringify(thinkingFor("claude-fable-5", false, "medium")));
+  check("...not even when thinking is requested",
+    thinkingFor("claude-fable-5", true, "high") === undefined);
+
+  // Opus 5 rejects disabled thinking above `high`.
+  check("Opus 5 may disable thinking at medium effort",
+    thinkingFor("claude-opus-5", false, "medium").type === "disabled");
+  for (const e of ["xhigh", "max"]) {
+    check(`Opus 5 does NOT send disabled at ${e} effort`,
+      thinkingFor("claude-opus-5", false, e).type === "adaptive",
+      "this combination is a 400");
+  }
+  check("Sonnet 5 keeps the original behaviour",
+    thinkingFor("claude-sonnet-5", false, "medium").type === "disabled" &&
+    thinkingFor("claude-sonnet-5", true, "medium").type === "adaptive");
+  check("an unknown model falls back to the default rather than throwing",
+    thinkingFor("claude-nonexistent", false, "medium") !== null);
+
+  check("the default is Opus 5", DEFAULT_MODEL === "claude-opus-5", DEFAULT_MODEL);
+  check("every model carries a price", Object.values(MODELS).every(m => m.inPerM > 0 && m.outPerM > 0));
+  check("Fable is priced above Opus", MODELS["claude-fable-5"].inPerM > MODELS["claude-opus-5"].inPerM);
+  check("cost is computed per model, not from a constant",
+    costOf("claude-fable-5", 1e6, 0) === 10 && costOf("claude-opus-5", 1e6, 0) === 5);
+  check("the specimen clears the cache minimum on the default model",
+    SPECIMEN_TOKENS >= modelSpec(DEFAULT_MODEL).cacheMinTokens,
+    `${SPECIMEN_TOKENS} vs ${modelSpec(DEFAULT_MODEL).cacheMinTokens}`);
+
+  // The request body must OMIT the key, not send undefined/null.
+  const body = JSON.parse(bodies[0] ? JSON.stringify(bodies[0]) : "{}");
+  check("the live debrief body names a model", typeof body.model === "string", body.model);
 }
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);

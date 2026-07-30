@@ -2773,6 +2773,24 @@
         "The remaining incomplete count reflects work that can actually be done."
       ],
       "notes": "Filed 2026-07-29. A backlog that mixes wishes with work stops being usable for deciding what to do next. — Done 2026-07-29 on Ivan's instruction: six parked (026,027,028,067,068,070). The GHL pair (018/019) stays BLOCKED, not parked — that is real work waiting on GoHighLevel to approve a marketplace app, which is a different thing from an idea nobody has committed to."
+    },
+    {
+      "id": "TASK-098",
+      "title": "Model picker in the Prompt Library, with per-model API handling",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [],
+      "description": "Ivan wanted to switch models without asking Sonny, and to trial Fable 5 against its price. Default moved to Opus 5. The models differ in ways that 400 rather than degrade: Fable 5 thinks always and rejects ANY explicit thinking config — including the {type:\"disabled\"} this app sends on the debrief pass — and Opus 5 rejects disabled thinking above high effort. src/models.js holds the registry, the per-model thinking resolution and per-model pricing.",
+      "acceptance_criteria": [
+        "Model is chosen in the Prompt Library and stored per account.",
+        "Fable 5 receives NO thinking key at all, not a null one.",
+        "Opus 5 never receives disabled thinking at xhigh/max effort.",
+        "Only allowlisted models can be set; unknown ids are rejected at the API.",
+        "Price per model is visible at the moment of choosing.",
+        "A failed /model call hides the picker rather than breaking the Prompt Library."
+      ],
+      "notes": "Verified the Fable exemption FAILS when removed. Default is now claude-opus-5 (/); Fable 5 is /; Sonnet 5 /. A typical generation is about $0.21 on Opus 5 vs $0.42 on Fable. Opus 5 also lowers the prompt-cache minimum to 512 tokens, so the TASK-096 specimen now caches reliably where it was borderline on Sonnet 5. NOT verified: whether Fable actually generates here — needs one live run, and note Fable requires 30-day data retention (unavailable under zero-retention orgs)."
     }
   ],
   "progress_percentage": 77,

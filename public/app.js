@@ -1554,9 +1554,13 @@ async function renderSuggestions() {
 }
 
 async function renderTemplates() {
-  const [{ call_types }, { templates }] = await Promise.all([
-    api.get("/call-types"), api.get("/templates")
+  const [{ call_types }, { templates }, mdl] = await Promise.all([
+    api.get("/call-types"), api.get("/templates"),
+    // The picker is a convenience; the prompts are the point. If /model fails, degrade to
+    // hiding the picker rather than taking the whole Prompt Library down with it.
+    api.get("/model").catch(() => null)
   ]);
+  const models = mdl && mdl.models ? mdl.models : null;
   state.callTypes = call_types;
 
   // Pattern borrowed from Grain's Templates settings: a list of types, each a row with name,
@@ -1572,7 +1576,21 @@ async function renderTemplates() {
 
   viewShell("Prompt Library",
     "One prompt per kind of call. Label a call, and Generate uses that prompt — so a team call isn't graded like a sales call.",
-    `<div class="ct-list">${call_types.map(row).join("")}</div>
+    `${!models ? "" : `<div class="model-pick">
+       <div class="mp-head">
+         <span class="mp-title">Model</span>
+         <span class="mp-note">Applies to every generation. Switch back any time \u2014 nothing else changes.</span>
+       </div>
+       <div class="mp-grid">${Object.entries(models).map(([id, m]) => `
+         <button class="mp-card ${id === mdl.current ? "on" : ""}" data-model="${id}">
+           <span class="mp-name">${esc(m.label)}${id === mdl.default ? '<span class="ct-badge">Default</span>' : ""}</span>
+           <span class="mp-tier">${esc(m.tier)}</span>
+           <span class="mp-price">$${m.inPerM} in / $${m.outPerM} out <span class="mp-per">per 1M tokens</span></span>
+           <span class="mp-desc">${esc(m.note)}</span>
+         </button>`).join("")}</div>
+       <div class="mp-cmp" id="mpCmp"></div>
+     </div>`}
+     <div class="ct-list">${call_types.map(row).join("")}</div>
      <button class="primary-btn" id="ctNew" style="margin:14px 0 22px;">+ New call type</button>
      <div id="ctEditor"></div>
      <details style="margin-top:18px;"><summary style="cursor:pointer; font-size:12px; color:var(--ink-400);">Legacy master prompt (v${templates.filter(t=>!t.tone)[0]?.version ?? "—"}) — kept for reference</summary>
@@ -1582,6 +1600,26 @@ async function renderTemplates() {
   document.querySelectorAll("[data-ctedit]").forEach(b => b.addEventListener("click", () =>
     openTypeEditor(call_types.find(t => t.id === +b.dataset.ctedit))));
   $("#ctNew").addEventListener("click", () => openTypeEditor(null));
+
+  // Show the cost delta against the CURRENT choice, not against the cheapest — the question
+  // Ivan is actually asking is "what does switching cost me", not "which is cheapest".
+  if (!models) return;
+  const cur = models[mdl.current] || Object.values(models)[0];
+  const per = m => (12000 / 1e6) * m.inPerM + (6000 / 1e6) * m.outPerM;   // a typical run
+  $("#mpCmp").textContent =
+    `A typical generation (~12k in, ~6k out) costs about $${per(cur).toFixed(3)} on ${cur.label}. ` +
+    Object.entries(models).filter(([id]) => id !== mdl.current)
+      .map(([, m]) => `${m.label} $${per(m).toFixed(3)}`).join(" \u00b7 ") + ".";
+
+  document.querySelectorAll("[data-model]").forEach(b => b.addEventListener("click", async () => {
+    if (b.classList.contains("on")) return;
+    b.disabled = true;
+    try {
+      await api.req("PUT", "/model", { model: b.dataset.model });
+      toast(`Now generating with ${models[b.dataset.model].label}`);
+      renderTemplates();
+    } catch (e) { toast("Could not switch model"); b.disabled = false; }
+  }));
 }
 
 function ctSummary(t) {
