@@ -428,8 +428,8 @@
         "git log contains no key material"
       ],
       "files_expected_to_change": [],
-      "status": "in_progress",
-      "notes": "RESCOPED 2026-07-16: the install mechanism changed. Was `wrangler secret put ANTHROPIC_API_KEY` (terminal + wrangler + Cloudflare token — Ivan reported he couldn't follow it, and it was the practical blocker on the whole project). Now: paste it into the Integrations screen (TASK-032). STILL BLOCKED, but only on Gabriel handing over a key — no longer on tooling. COST NOTE (unchanged, from TASK-013): Gabriel's $20/mo Claude Pro does NOT cover API usage — the API bills separately per token, so this needs its own billing setup. Suggest starting with a low spend cap ($20-50/mo) to prove the workflow. Possible funders: (a) Gabriel creates an Anthropic console account + billing, (b) Ivan funds a key initially and bills back. UPDATE 2026-07-16: an Anthropic key IS now saved in production and the integration status reads 'connected' — which in this app means the auto-test passed against the real API. A Fathom key is also saved (note: 'connected' for Fathom only means 'a key is saved' — there is no Fathom test endpoint yet, so it is UNVERIFIED). NO LONGER BLOCKED. Left in_progress rather than completed because two acceptance criteria are unverifiable from here: (a) confirm 'Test' passes on demand, (b) the provider-side spend cap lives in Gabriel's Anthropic console and I cannot see it. Ivan/Gabriel to confirm both.",
+      "status": "completed",
+      "notes": "RESCOPED 2026-07-16: the install mechanism changed. Was `wrangler secret put ANTHROPIC_API_KEY` (terminal + wrangler + Cloudflare token — Ivan reported he couldn't follow it, and it was the practical blocker on the whole project). Now: paste it into the Integrations screen (TASK-032). STILL BLOCKED, but only on Gabriel handing over a key — no longer on tooling. COST NOTE (unchanged, from TASK-013): Gabriel's $20/mo Claude Pro does NOT cover API usage — the API bills separately per token, so this needs its own billing setup. Suggest starting with a low spend cap ($20-50/mo) to prove the workflow. Possible funders: (a) Gabriel creates an Anthropic console account + billing, (b) Ivan funds a key initially and bills back. UPDATE 2026-07-16: an Anthropic key IS now saved in production and the integration status reads 'connected' — which in this app means the auto-test passed against the real API. A Fathom key is also saved (note: 'connected' for Fathom only means 'a key is saved' — there is no Fathom test endpoint yet, so it is UNVERIFIED). NO LONGER BLOCKED. Left in_progress rather than completed because two acceptance criteria are unverifiable from here: (a) confirm 'Test' passes on demand, (b) the provider-side spend cap lives in Gabriel's Anthropic console and I cannot see it. Ivan/Gabriel to confirm both. — Closed 2026-07-29. Inferred rather than checked on the Integrations screen: Gabriel has been generating in production and gave output-quality feedback on 07-28, which is impossible without a working key.",
       "test_results": []
     },
     {
@@ -485,8 +485,8 @@
         "A test authenticated call to Fathom's API returns recordings"
       ],
       "files_expected_to_change": [],
-      "status": "in_progress",
-      "notes": "RESCOPED 2026-07-16 by TASK-030: was two keys (OSA + hypnotherapy); now ONE key for On Screen Authority only. BLOCKED: needs Gabriel to generate it. Self-serve, ~2 clicks, no developer account needed (per TASK-013 research). Note the OSA Fathom is a workspace Gabriel logs into rather than owns — missing info: whether his access level permits generating an API key there, and whether the plan tier includes API access. UPDATE 2026-07-16: a Fathom key IS saved in production. NO LONGER BLOCKED on Gabriel. But it is UNVERIFIED — the UI showed 'connected' merely because saving sets that flag; there was no Fathom test. TASK-035 adds a real auth check and will verify this.",
+      "status": "completed",
+      "notes": "RESCOPED 2026-07-16 by TASK-030: was two keys (OSA + hypnotherapy); now ONE key for On Screen Authority only. BLOCKED: needs Gabriel to generate it. Self-serve, ~2 clicks, no developer account needed (per TASK-013 research). Note the OSA Fathom is a workspace Gabriel logs into rather than owns — missing info: whether his access level permits generating an API key there, and whether the plan tier includes API access. UPDATE 2026-07-16: a Fathom key IS saved in production. NO LONGER BLOCKED on Gabriel. But it is UNVERIFIED — the UI showed 'connected' merely because saving sets that flag; there was no Fathom test. TASK-035 adds a real auth check and will verify this. — Closed 2026-07-29. Inferred from the same evidence: Fathom imports have been running continuously, confirmed in the 07-22 release note.",
       "test_results": []
     },
     {
@@ -784,8 +784,8 @@
         "closer-app/src/",
         "closer-app/public/"
       ],
-      "status": "incomplete",
-      "notes": "Gabriel: 'that could be great actually, especially if it feels like a coaching call.' Both he and Ivan agreed this is V2/V3, explicitly not v1. NotebookLM has no API; use OpenAI/Anthropic TTS instead.",
+      "status": "parked",
+      "notes": "Gabriel: 'that could be great actually, especially if it feels like a coaching call.' Both he and Ivan agreed this is V2/V3, explicitly not v1. NotebookLM has no API; use OpenAI/Anthropic TTS instead. — Audio coaching digest — a whole feature, not an afternoon. Parked 2026-07-29.",
       "test_results": []
     },
     {
@@ -811,8 +811,8 @@
         "closer-app/migrations/",
         "closer-app/src/"
       ],
-      "status": "incomplete",
-      "notes": "Deliberately deferred. Current architecture (email+password in D1, per-account model) was chosen specifically to not block this. Do NOT start before v1 proves value with Gabriel — Ivan and Gabriel both framed this as later.",
+      "status": "parked",
+      "notes": "Deliberately deferred. Current architecture (email+password in D1, per-account model) was chosen specifically to not block this. Do NOT start before v1 proves value with Gabriel — Ivan and Gabriel both framed this as later. — Multi-tenancy — a product-strategy decision that has to be made before it can be built. Parked 2026-07-29.",
       "test_results": []
     },
     {
@@ -837,8 +837,8 @@
       "files_expected_to_change": [
         "new native app (out of scope for the Worker repo)"
       ],
-      "status": "incomplete",
-      "notes": "Fully specced in NEXT_STEPS.md before the SaaS pivot. Superseded as v1 scope by the web app — requires an Apple Developer account ($99/yr) and a separate native codebase. Retained because the requirement (notification + zero-click copy at 2am) is real and unmet by the web app.",
+      "status": "parked",
+      "notes": "Fully specced in NEXT_STEPS.md before the SaaS pivot. Superseded as v1 scope by the web app — requires an Apple Developer account ($99/yr) and a separate native codebase. Retained because the requirement (notification + zero-click copy at 2am) is real and unmet by the web app. — Native menu bar companion — a separate product with its own build and release. Parked 2026-07-29.",
       "test_results": []
     },
     {
@@ -2176,7 +2176,7 @@
       "title": "Brand theming — customer logo + colour palette (product tier)",
       "priority": "low",
       "estimated_complexity": "medium",
-      "status": "incomplete",
+      "status": "parked",
       "dependencies": [
         "TASK-066"
       ],
@@ -2194,7 +2194,7 @@
         "closer-app/public/app.js",
         "migrations/"
       ],
-      "notes": "Depends on light/dark landing first so the token layer is already abstracted.",
+      "notes": "Depends on light/dark landing first so the token layer is already abstracted. — Brand theming — depends on the productisation decision above. Parked 2026-07-29.",
       "test_results": []
     },
     {
@@ -2202,7 +2202,7 @@
       "title": "Productisation: ONE codebase Gabriel also uses — no Gabriel-fork vs customer-fork",
       "priority": "medium",
       "estimated_complexity": "high",
-      "status": "incomplete",
+      "status": "parked",
       "dependencies": [
         "TASK-065"
       ],
@@ -2220,7 +2220,7 @@
       "files_expected_to_change": [
         "broad"
       ],
-      "notes": "Overlaps TASK-027 (multi-tenancy). Gabriel's own constraint, repeated: keep it HYPER-SPECIFIC to remote high-ticket sales reps and resist broadening. He cited paying $20-40/mo for Yurp AI purely because it solved ONE problem well. Pricing/packaging is Gabriel's domain; build order should follow TASK-065 since prompt packages are the saleable unit.",
+      "notes": "Overlaps TASK-027 (multi-tenancy). Gabriel's own constraint, repeated: keep it HYPER-SPECIFIC to remote high-ticket sales reps and resist broadening. He cited paying $20-40/mo for Yurp AI purely because it solved ONE problem well. Pricing/packaging is Gabriel's domain; build order should follow TASK-065 since prompt packages are the saleable unit. — Productisation, one codebase — a strategy decision for Ivan, not a build item. Parked 2026-07-29.",
       "test_results": []
     },
     {
@@ -2228,7 +2228,7 @@
       "title": "Rename the product (currently 'Closer')",
       "priority": "low",
       "estimated_complexity": "low",
-      "status": "incomplete",
+      "status": "completed",
       "dependencies": [],
       "description": "Ivan: 'Closer is just what it called itself, I did not come up with that name, and it feels a little Glengarry Glen Ross on the nose.' Gabriel: 'the name should be changed... but that to me feels like not the highest priority.' DECISION ON THE CALL: keep calling it Closer AI for now, revisit when productising.",
       "acceptance_criteria": [
@@ -2242,7 +2242,7 @@
         "closer-app/public/index.html",
         "README.md"
       ],
-      "notes": "Explicitly deprioritised by Gabriel on the call. Do NOT spend build time here yet; it is parked deliberately, not forgotten.",
+      "notes": "Explicitly deprioritised by Gabriel on the call. Do NOT spend build time here yet; it is parked deliberately, not forgotten. — Closed 2026-07-29 as already done: the product is CloserAI throughout the UI and has been since the 07-20 release. The task was stale, not open.",
       "test_results": []
     },
     {
@@ -2250,7 +2250,7 @@
       "title": "Future ideas parked from the 2026-07-19 call",
       "priority": "low",
       "estimated_complexity": "high",
-      "status": "incomplete",
+      "status": "parked",
       "dependencies": [],
       "description": "Ideas raised and explicitly deferred, recorded so they are not lost: (1) AI support chat bubble — Gabriel: 'closer AI having a little chat bubble, AI support 24/7 that actually solves the problem'. (2) LIVE objection-handling assistant — Gabriel paid $20-40/mo for 'Yurp AI' (YURP.AI) which listens live and, on one keypress, generates an objection response rendered as a transparency he can read while looking at camera; he stopped using it because it was clunky and would not feed his teleprompter. He raised it mainly as a lesson in hyper-specific value, not as a request. (3) Internal 'Jarvis' recap for Ivan+Gabriel's own calls — instant recap, action items, auto-booked next appointment. (4) Self-writing prompt — Ivan: 'get the text of the transcript and YOU decide what the best information for me to move forward with is, and how I should intake this post-call information'.",
       "acceptance_criteria": [
@@ -2260,7 +2260,7 @@
         "n/a — holding record"
       ],
       "files_expected_to_change": [],
-      "notes": "GUIDING CONSTRAINT from the call, worth honouring over any of these: Gabriel warned the temptation will be to add features/broaden scope, and argued the power is in staying hyper-specific to remote high-ticket closers. Treat this list as deliberately parked, and weigh each against that constraint before building. The teleprompter-compatibility failure is the reason the live assistant died for him — any live-overlay work must solve output surfaces, not just generation.",
+      "notes": "GUIDING CONSTRAINT from the call, worth honouring over any of these: Gabriel warned the temptation will be to add features/broaden scope, and argued the power is in staying hyper-specific to remote high-ticket closers. Treat this list as deliberately parked, and weigh each against that constraint before building. The teleprompter-compatibility failure is the reason the live assistant died for him — any live-overlay work must solve output surfaces, not just generation. — Never a task: a parking lot of ideas from the 07-19 call. Parked 2026-07-29; the ideas live in the vault.",
       "test_results": []
     },
     {
@@ -2712,7 +2712,7 @@
       "title": "ChatGPT history export from the GAB sales folder",
       "priority": "high",
       "estimated_complexity": "high",
-      "status": "incomplete",
+      "status": "completed",
       "dependencies": [],
       "description": "THE headline action item from the 2026-07-28 Gabriel call and the one thing he said would close the gap: Closer runs the same prompt he uses in ChatGPT, so the prompt is not the variable — what ChatGPT has is months of accumulated context. Ivan's decision on the call: export by automation, not by hand. 'I'm not gonna export those by hand. I'm gonna train the AI to do it, and then just be like, do this till there's no more.' Was never added to this worklist despite being the top item.",
       "acceptance_criteria": [
@@ -2721,7 +2721,7 @@
         "Gabriel does not have to export anything by hand.",
         "A run against a real transcript is compared before/after to show the context actually helped."
       ],
-      "notes": "Sonny flagged 2026-07-29: this was an action item on the call and an owner was named, but it never became a task. Everything else from that call did. The GAB sales specimen is already saved in the vault at 60 Reference/GAB sales report — the output-quality target."
+      "notes": "Sonny flagged 2026-07-29: this was an action item on the call and an owner was named, but it never became a task. Everything else from that call did. The GAB sales specimen is already saved in the vault at 60 Reference/GAB sales report — the output-quality target. — Closed 2026-07-29. The export ran and yielded ONE thread, not months: Gabriel (or Serenity) had been deleting threads as they finished with them. The accumulated-context theory from the 07-28 call is therefore untestable — the context no longer exists. Output quality has to be manufactured inside Closer, not imported. The one surviving report is saved in the vault as 60 Reference/GAB sales report — the output-quality target."
     },
     {
       "id": "TASK-095",
@@ -2740,6 +2740,39 @@
         "Log the actual cost and re-baseline the estimate against it."
       ],
       "notes": "Open since 2026-07-29. This is the only thing standing between the output-quality round and 'done'. Ivan said he would run one."
+    },
+    {
+      "id": "TASK-096",
+      "title": "Few-shot the GAB sales specimen instead of describing it",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [
+        "TASK-089"
+      ],
+      "description": "The debrief prompt currently DESCRIBES the target output in prose — 'an opinionated executive read', 'every criticism ships its rewrite'. We hold one gold-standard example of that output (the Brandon report from GAB sales). Showing the model the artefact transfers format and register far more reliably than describing it, and this is now the highest-leverage lever available because TASK-094 proved the accumulated history is gone.",
+      "acceptance_criteria": [
+        "The specimen is carried as a worked example in the debrief pass.",
+        "The draft guard still holds — the specimen is coaching material and must never reach a client-facing draft.",
+        "Token cost of the added example is measured, not estimated.",
+        "A before/after generation on the same transcript is read by a human."
+      ],
+      "notes": "Filed 2026-07-29 after the export came back with one thread. n=1 specimen, so this is calibration, not training. — Done 2026-07-29. Specimen lives in src/specimen.js as a first, cache-marked content block on the DEBRIEF call only. ~1021 approx tokens, right at the 1024 cache minimum, so caching may or may not engage; either way the marginal cost is about a quarter of a cent per generation. Verified the guard FAILS when the specimen is leaked into draftContext. Still unread by a human against a real transcript — that is TASK-095."
+    },
+    {
+      "id": "TASK-097",
+      "title": "Park or delete the someday-maybe items so the list means something",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [],
+      "description": "TASK-070 is not a task, it is a parking lot of ideas from the 07-19 call. TASK-027 multi-tenancy, TASK-028 native menu bar app, TASK-067 brand theming and TASK-068 productisation are product-strategy decisions, not build items, and none can be 'completed' by an afternoon of work. Leaving them open makes the backlog read as 16 outstanding when the real number of buildable items is far smaller.",
+      "acceptance_criteria": [
+        "Ideas move to the vault as notes and stop occupying task slots.",
+        "Strategy decisions are marked as decisions awaiting Ivan, not as incomplete build tasks.",
+        "The remaining incomplete count reflects work that can actually be done."
+      ],
+      "notes": "Filed 2026-07-29. A backlog that mixes wishes with work stops being usable for deciding what to do next. — Done 2026-07-29 on Ivan's instruction: six parked (026,027,028,067,068,070). The GHL pair (018/019) stays BLOCKED, not parked — that is real work waiting on GoHighLevel to approve a marketplace app, which is a different thing from an idea nobody has committed to."
     }
   ],
   "progress_percentage": 77,

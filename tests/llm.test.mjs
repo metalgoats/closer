@@ -64,24 +64,33 @@ const call = { id: 1, client_name: "Marcus Webb", transcript: "Gabriel: hi.\n" +
 const account = { id: 1, llm_provider: "anthropic" };
 const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => ({ secret_value: "sk-test" }) }) }) } };
 
+// The debrief pass sends an ARRAY of content blocks (the cached worked example, then the
+// prompt); the draft passes still send a plain string. Every assertion below reads through
+// this, so adding or removing a block cannot silently change what the tests inspect.
+const textOf = c => Array.isArray(c) ? c.map(b => b.text || "").join("\n") : String(c || "");
+
 let bodies = [];
 globalThis.fetch = async (url, opts) => {
   const body = JSON.parse(opts.body);
   bodies.push(body);
-  const isDebrief = body.messages[0].content.includes("Return ONLY valid JSON with keys");
+  const isDebrief = textOf(body.messages[0].content).includes("Return ONLY valid JSON with keys");
   return { ok: true, body: sseStream(JSON.stringify(isDebrief ? DEBRIEF : DRAFT)) };
 };
 
 const out = await generateOutputs(env, { account, call, masterPrompt: "M", callType: CALLTYPE });
 const debriefBody = bodies[0];
-const debriefPrompt = debriefBody.messages[0].content;
-const draftPrompts = bodies.slice(1).map(b => b.messages[0].content);
+const debriefPrompt = textOf(debriefBody.messages[0].content);
+const draftPrompts = bodies.slice(1).map(b => textOf(b.messages[0].content));
 const allDrafts = draftPrompts.join("\n");
 
 console.log("\n== the pipeline ran the expected calls ==");
 check("1 debrief + 3 tone drafts", bodies.length === 4, `got ${bodies.length}`);
 check("the debrief is the only call carrying the transcript",
-  bodies.filter(b => b.messages[0].content.includes("Client: I'm stuck")).length === 1);
+  bodies.filter(b => textOf(b.messages[0].content).includes("Client: I'm stuck")).length === 1);
+
+// The smooth-call scenario below resets `bodies`. Snapshot the first run so later assertions
+// inspect the run they were written about.
+const firstRun = bodies.slice();
 
 console.log("\n== THE GUARD: no coaching critique of Gabriel reaches a client-facing draft ==");
 for (const [label, sentinel] of [
@@ -163,7 +172,7 @@ const SMOOTH = {
 bodies = [];
 globalThis.fetch = async (url, opts) => {
   const body = JSON.parse(opts.body); bodies.push(body);
-  const isDebrief = body.messages[0].content.includes("Return ONLY valid JSON with keys");
+  const isDebrief = textOf(body.messages[0].content).includes("Return ONLY valid JSON with keys");
   return { ok: true, body: sseStream(JSON.stringify(isDebrief ? SMOOTH : DRAFT)) };
 };
 let smoothErr = null, smoothOut = null;
@@ -192,6 +201,35 @@ check("empty -> empty string, never '[object Object]'", debriefLine(null) === ""
 const indexSrc = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "index.js"), "utf8");
 check("insights aggregates hurtSale via debriefLine, not d.hurtSale[0] directly",
   /debriefLine\(d\.hurtSale\?\.\[0\]\)/.test(indexSrc) && !/hurt\.push\(d\.hurtSale\[0\]\)/.test(indexSrc));
+
+console.log("\n== the worked example is debrief-only (TASK-096) ==");
+// The specimen is a coaching report ABOUT THE SELLER: absolutes he used, what he should have
+// said, "stop selling". Reaching a draft would ship criticism of Gabriel to Gabriel's client —
+// exactly the failure the draft guard exists to prevent.
+{
+  const { SPECIMEN } = await import("../src/specimen.js");
+  // One line in the source: a probe that spans a newline silently never matches.
+  const probe = "Root emotional objection: Prior vendor betrayal.";
+  const carrying = firstRun.filter(b => textOf(b.messages[0].content).includes(probe));
+  check("the specimen reaches exactly one call — the debrief", carrying.length === 1,
+    `${carrying.length} of ${firstRun.length} calls carried it`);
+  check("no draft prompt carries it", !allDrafts.includes(probe),
+    "a draft prompt contains coaching material about Gabriel");
+  const blocks = firstRun[0].messages[0].content;
+  check("the debrief sends content blocks, not one string", Array.isArray(blocks));
+  check("the example is the FIRST block", Array.isArray(blocks) &&
+    /^Here is one complete example/.test(blocks[0].text || ""),
+    "a cached prefix has to actually be the prefix");
+  check("the example block is marked for caching",
+    Array.isArray(blocks) && !!blocks[0].cache_control);
+  check("the transcript is NOT inside the cached block",
+    Array.isArray(blocks) && !blocks[0].text.includes(call.transcript.slice(0, 40)),
+    "a per-call transcript in the cached prefix defeats the cache entirely");
+  check("the example tells the model not to copy its content",
+    /Do NOT copy its content/.test(SPECIMEN),
+    "without this the model can lift Brandon's details into an unrelated call");
+  check("the specimen is not empty", SPECIMEN.length > 2000, String(SPECIMEN.length));
+}
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

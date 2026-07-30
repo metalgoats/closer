@@ -1,5 +1,6 @@
 // All model calls happen here, server-side only. With no API keys configured, generation
 // falls back to clearly-labeled mock output so the app is fully usable before setup.
+import { SPECIMEN } from "./specimen.js";
 
 const TONES = ["casual", "balanced", "formal"];
 
@@ -143,8 +144,15 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
     'UPSELL (specific expansion openings, if any), ' +
     'PERSONAL RAPPORT (personal details the client volunteered, for the next human touch))');
 
+  // The worked example goes FIRST and in its own content block (TASK-096): first because a
+  // cached prefix has to be a prefix, and separate because it is static across every call
+  // while everything after it changes. Scoped to the debrief pass alone — see the warning in
+  // specimen.js; this is criticism OF GABRIEL and must never reach a client-facing draft.
   const debriefRes = await completeWithRetry(env, provider, key, [
-    { role: "user", content: `${prompt}\n\nReturn ONLY valid JSON with keys: ${schemaParts.join(", ")}.\n\nTranscript:\n${call.transcript}` }
+    { role: "user", content: [
+      { type: "text", text: SPECIMEN, cache_control: { type: "ephemeral" } },
+      { type: "text", text: `${prompt}\n\nReturn ONLY valid JSON with keys: ${schemaParts.join(", ")}.\n\nTranscript:\n${call.transcript}` }
+    ] }
   ], { effort: "medium", think: false, maxTokens: 24000,
        onRetry: r => onStep && onStep({ step: "retry", detail: `debrief attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
        onProgress: chars => report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call") });
