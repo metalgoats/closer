@@ -1,7 +1,7 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
-import { MODELS, DEFAULT_MODEL } from "./models.js";
+import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
 import { logEvent } from "./log.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
@@ -252,8 +252,36 @@ async function route(request, env, url, ctx) {
   // The model picker (TASK-098). Lives beside the prompts because choosing a model IS a
   // prompt-level decision — the same prompt behaves differently across them.
   if (path === "/api/model" && method === "GET") {
-    const row = await env.DB.prepare("SELECT llm_model FROM accounts ORDER BY id LIMIT 1").first();
-    return json({ current: row?.llm_model || DEFAULT_MODEL, default: DEFAULT_MODEL, models: MODELS });
+    const row = await env.DB.prepare(
+      "SELECT llm_model, llm_effort FROM accounts ORDER BY id LIMIT 1").first();
+    // Cost is computed from THIS account's real generations, not a guessed shape. An average
+    // that came from my head told Ivan nothing he could act on; his own last N runs do.
+    const u = await env.DB.prepare(
+      `SELECT COUNT(*) AS runs,
+              AVG(input_tokens)      AS in_avg,
+              AVG(output_tokens)     AS out_avg,
+              AVG(COALESCE(cache_read_tokens, 0)) AS cache_avg
+         FROM events
+        WHERE kind = 'generation.succeeded' AND input_tokens IS NOT NULL`
+    ).first();
+    return json({
+      current: row?.llm_model || DEFAULT_MODEL, default: DEFAULT_MODEL, models: MODELS,
+      effort: row?.llm_effort || DEFAULT_EFFORT, defaultEffort: DEFAULT_EFFORT, efforts: EFFORTS,
+      usage: {
+        runs: u?.runs || 0,
+        inAvg: Math.round(u?.in_avg || 0),
+        outAvg: Math.round(u?.out_avg || 0),
+        cacheAvg: Math.round(u?.cache_avg || 0),
+      },
+    });
+  }
+  if (path === "/api/effort" && method === "PUT") {
+    const { effort } = await request.json().catch(() => ({}));
+    if (!Object.prototype.hasOwnProperty.call(EFFORTS, effort)) {
+      return json({ error: "Unknown effort level" }, 400);
+    }
+    await env.DB.prepare("UPDATE accounts SET llm_effort = ?").bind(effort).run();
+    return json({ ok: true, effort });
   }
   if (path === "/api/model" && method === "PUT") {
     const { model } = await request.json().catch(() => ({}));

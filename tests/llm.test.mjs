@@ -271,6 +271,19 @@ console.log("\n== per-model thinking, the part that 400s if wrong (TASK-098) =="
   // The request body must OMIT the key, not send undefined/null.
   const body = JSON.parse(bodies[0] ? JSON.stringify(bodies[0]) : "{}");
   check("the live debrief body names a model", typeof body.model === "string", body.model);
+
+  const { EFFORTS, DEFAULT_EFFORT, forcesThinking } = await import("../src/models.js");
+  check("five reasoning levels exist", Object.keys(EFFORTS).length === 5);
+  check("High is one of them", !!EFFORTS.high);
+  check("the default stays medium so nothing silently changes", DEFAULT_EFFORT === "medium");
+  check("Opus 5 at high does NOT force thinking", forcesThinking("claude-opus-5", "high") === false);
+  check("Opus 5 at xhigh/max DOES force thinking",
+    forcesThinking("claude-opus-5", "xhigh") && forcesThinking("claude-opus-5", "max"));
+  check("Fable always forces thinking, at every level",
+    Object.keys(EFFORTS).every(e => forcesThinking("claude-fable-5", e)));
+  check("the effort the account chose reaches the debrief call",
+    body.output_config && typeof body.output_config.effort === "string",
+    JSON.stringify(body.output_config));
 }
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);

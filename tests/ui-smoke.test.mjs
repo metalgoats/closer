@@ -106,8 +106,12 @@ const ROUTES = [
                               { id: 4, account_name: "OSA", kind: "openai", has_secret: 0 }] })],
   [/^\/templates/,   () => ({ templates: [] })],
   [/^\/model/,       () => ({ current: "claude-opus-5", default: "claude-opus-5",
-                              models: { "claude-opus-5": { label: "Opus 5", tier: "Flagship", inPerM: 5, outPerM: 25, note: "n" },
-                                        "claude-fable-5": { label: "Fable 5", tier: "Most capable", inPerM: 10, outPerM: 50, note: "n" } } })],
+                              effort: "high", defaultEffort: "medium",
+                              efforts: { medium: { label: "Medium", note: "m" }, high: { label: "High", note: "h" },
+                                         xhigh: { label: "X-High", note: "x" } },
+                              usage: { runs: 7, inAvg: 14200, outAvg: 5100, cacheAvg: 1000 },
+                              models: { "claude-opus-5": { label: "Opus 5", tier: "Flagship", inPerM: 5, outPerM: 25, note: "n", thinking: "optional-capped" },
+                                        "claude-fable-5": { label: "Fable 5", tier: "Most capable", inPerM: 10, outPerM: 50, note: "n", thinking: "always-on" } } })],
   [/^\/suggestions/, () => ({ suggestions: [] })],
   [/^\/insights/,    () => ({ scored: 1, calls: 1, averages: [["rapport", 8, 3]], hurt: ["x"], lessons: ["y"], types: [] })],
   [/^\/events/,      () => ({ events: [], totals: { runs: 2, failures: 0, input_tokens: 100, output_tokens: 50, avg_ms: 1000 },
@@ -414,6 +418,21 @@ check("a failed /model call is caught, not thrown",
   /api\.get\("\/model"\)\.catch/.test(src),
   "one endpoint hiccup would take down the whole Prompt Library");
 check("the picker is skipped when models are unavailable", /\$\{!models \? "" :/.test(src));
+
+console.log("\n== reasoning level + cost from real history (TASK-099) ==");
+check("the reasoning selector renders", /class="mp-eopt/.test(src) && /data-effort=/.test(src));
+check("effort is persisted via its own endpoint", /api\.req\("PUT", "\/effort"/.test(src));
+check("cost is priced from logged usage, not a hardcoded shape",
+  /u\.inAvg/.test(src) && /u\.outAvg/.test(src) && !/12000 \/ 1e6/.test(src),
+  "the invented ~12k/~6k figures are back");
+check("cached input is billed at the reduced rate",
+  /u\.cacheAvg \/ 1e6\) \* m\.inPerM \* 0\.1/.test(src),
+  "a cached prefix genuinely costs ~10% and must not be billed at full rate");
+check("with no history it says so instead of inventing a number",
+  /No generations logged yet/.test(src));
+check("the note warns when a level forces thinking on",
+  /Thinking is on at this level/.test(src));
+check("the effort segment has styles", /\.mp-eopt\.on\{/.test(css));
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

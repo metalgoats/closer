@@ -1,7 +1,7 @@
 // All model calls happen here, server-side only. With no API keys configured, generation
 // falls back to clearly-labeled mock output so the app is fully usable before setup.
 import { SPECIMEN } from "./specimen.js";
-import { thinkingFor, DEFAULT_MODEL, modelSpec } from "./models.js";
+import { thinkingFor, DEFAULT_MODEL, modelSpec, DEFAULT_EFFORT } from "./models.js";
 
 const TONES = ["casual", "balanced", "formal"];
 
@@ -52,6 +52,9 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
   // One model for the whole run. Mixing models mid-generation would let the debrief and the
   // drafts disagree about register, and would make the logged cost unattributable.
   const model = account.llm_model || DEFAULT_MODEL;
+  // The setting governs the DEBRIEF pass only. The drafts stay at "low" — they are short
+  // pieces of writing, and paying max-effort rates to compose a two-line SMS buys nothing.
+  const effort = account.llm_effort || DEFAULT_EFFORT;
   const key = await resolveKey(env, account.id, provider);
   if (!key) return mockOutputs(call);
 
@@ -157,7 +160,7 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
       { type: "text", text: SPECIMEN, cache_control: { type: "ephemeral" } },
       { type: "text", text: `${prompt}\n\nReturn ONLY valid JSON with keys: ${schemaParts.join(", ")}.\n\nTranscript:\n${call.transcript}` }
     ] }
-  ], { model, effort: "medium", think: false, maxTokens: 24000,
+  ], { model, effort, think: false, maxTokens: 24000,
        onRetry: r => onStep && onStep({ step: "retry", detail: `debrief attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
        onProgress: chars => report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call") });
   tally(debriefRes.usage);

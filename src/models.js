@@ -38,6 +38,27 @@ export const MODELS = {
 
 export const DEFAULT_MODEL = "claude-opus-5";
 
+// Reasoning depth for the DEBRIEF pass — the analytical one. The follow-up drafts stay at
+// "low" whatever this is set to: they are short pieces of writing, not reasoning problems,
+// and paying max-effort prices to write a two-line SMS is waste with no quality upside.
+export const EFFORTS = {
+  low:    { label: "Low",     note: "Quickest and cheapest. Thin analysis." },
+  medium: { label: "Medium",  note: "The balance Closer shipped on." },
+  high:   { label: "High",    note: "Deeper read. Recommended for sales calls." },
+  xhigh:  { label: "X-High",  note: "Hardest calls. Forces thinking on — costs more." },
+  max:    { label: "Max",     note: "Ceiling. Diminishing returns and can overthink." },
+};
+export const DEFAULT_EFFORT = "medium";
+
+// Above `high`, Opus 5 refuses a disabled-thinking request, so the guard turns thinking on.
+// That is a real cost change, not a footnote — the UI says so rather than surprising Ivan
+// with a bigger bill.
+export function forcesThinking(modelId, effort) {
+  const spec = modelSpec(modelId);
+  if (spec.thinking === "always-on") return true;
+  return spec.thinking === "optional-capped" && (effort === "xhigh" || effort === "max");
+}
+
 export function modelSpec(id) {
   return MODELS[id] || MODELS[DEFAULT_MODEL];
 }

@@ -2791,6 +2791,26 @@
         "A failed /model call hides the picker rather than breaking the Prompt Library."
       ],
       "notes": "Verified the Fable exemption FAILS when removed. Default is now claude-opus-5 (/); Fable 5 is /; Sonnet 5 /. A typical generation is about $0.21 on Opus 5 vs $0.42 on Fable. Opus 5 also lowers the prompt-cache minimum to 512 tokens, so the TASK-096 specimen now caches reliably where it was borderline on Sonnet 5. NOT verified: whether Fable actually generates here — needs one live run, and note Fable requires 30-day data retention (unavailable under zero-retention orgs)."
+    },
+    {
+      "id": "TASK-099",
+      "title": "Reasoning-level control, and cost priced from real history",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "dependencies": [
+        "TASK-098"
+      ],
+      "description": "Two follow-ups from Ivan. He wants Opus 5 at High, so the debrief effort is now a setting rather than a constant. And the cost figure on the model cards was priced from a shape I invented (~12k in / ~6k out), which told him nothing actionable — it now averages his own logged generations from the events table and prices each model against that, folding in the ~10 percent rate for cached input.",
+      "acceptance_criteria": [
+        "Reasoning level is chosen in the Prompt Library and stored per account.",
+        "The level governs the debrief pass; drafts stay at low.",
+        "The UI says when a level forces thinking on and therefore costs more.",
+        "Cost is computed from logged input/output/cache tokens, not a hardcoded shape.",
+        "Cached input is priced at the reduced rate.",
+        "With no history it says so rather than inventing a number."
+      ],
+      "notes": "Verified against seeded history: 5 runs averaging 36,598 in / 5,402 out / 613 cached gives $0.315 per call on Opus 5, $0.631 on Fable, $0.189 on Sonnet. Default effort stays medium so nothing changed silently for anyone who does not touch it. Ivan asked for High and it is set."
     }
   ],
   "progress_percentage": 77,

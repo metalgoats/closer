@@ -1588,6 +1588,13 @@ async function renderTemplates() {
            <span class="mp-price">$${m.inPerM} in / $${m.outPerM} out <span class="mp-per">per 1M tokens</span></span>
            <span class="mp-desc">${esc(m.note)}</span>
          </button>`).join("")}</div>
+       <div class="mp-effort">
+         <span class="mp-elabel">Reasoning</span>
+         <div class="mp-eseg">${Object.entries(mdl.efforts).map(([k, e]) => `
+           <button class="mp-eopt ${k === mdl.effort ? "on" : ""}" data-effort="${k}"
+                   title="${esc(e.note)}">${esc(e.label)}</button>`).join("")}</div>
+         <span class="mp-enote" id="mpENote"></span>
+       </div>
        <div class="mp-cmp" id="mpCmp"></div>
      </div>`}
      <div class="ct-list">${call_types.map(row).join("")}</div>
@@ -1605,11 +1612,45 @@ async function renderTemplates() {
   // Ivan is actually asking is "what does switching cost me", not "which is cheapest".
   if (!models) return;
   const cur = models[mdl.current] || Object.values(models)[0];
-  const per = m => (12000 / 1e6) * m.inPerM + (6000 / 1e6) * m.outPerM;   // a typical run
-  $("#mpCmp").textContent =
-    `A typical generation (~12k in, ~6k out) costs about $${per(cur).toFixed(3)} on ${cur.label}. ` +
-    Object.entries(models).filter(([id]) => id !== mdl.current)
-      .map(([, m]) => `${m.label} $${per(m).toFixed(3)}`).join(" \u00b7 ") + ".";
+  const u = mdl.usage || { runs: 0 };
+
+  // Real cost, from this account's own generations. Cached input bills at ~10% of the input
+  // rate, so a run with a big cached prefix is genuinely cheaper — folding that in matters
+  // now that the worked example (TASK-096) is a cached prefix on every debrief.
+  const per = m => {
+    const fresh = Math.max(0, u.inAvg - u.cacheAvg);
+    return (fresh / 1e6) * m.inPerM + (u.cacheAvg / 1e6) * m.inPerM * 0.1
+         + (u.outAvg / 1e6) * m.outPerM;
+  };
+  const money = n => n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(3)}`;
+
+  $("#mpCmp").textContent = u.runs === 0
+    ? "No generations logged yet, so there is no average to price against. Run one and this fills in with your real numbers."
+    : `Your last ${u.runs} generation${u.runs === 1 ? "" : "s"} averaged `
+      + `${u.inAvg.toLocaleString()} in / ${u.outAvg.toLocaleString()} out`
+      + (u.cacheAvg ? ` (${u.cacheAvg.toLocaleString()} cached)` : "")
+      + `. That is ${money(per(cur))} per call on ${cur.label} \u2014 `
+      + Object.entries(models).filter(([id]) => id !== mdl.current)
+          .map(([, m]) => `${m.label} ${money(per(m))}`).join(", ") + ".";
+
+  const eNote = () => {
+    const e = mdl.efforts[mdl.effort];
+    const forced = cur.thinking === "always-on"
+      || (cur.thinking === "optional-capped" && (mdl.effort === "xhigh" || mdl.effort === "max"));
+    $("#mpENote").textContent = e.note + (forced && cur.thinking === "optional-capped"
+      ? " Thinking is on at this level, so expect more output tokens than the average above."
+      : "");
+  };
+  eNote();
+
+  document.querySelectorAll("[data-effort]").forEach(b => b.addEventListener("click", async () => {
+    if (b.classList.contains("on")) return;
+    try {
+      await api.req("PUT", "/effort", { effort: b.dataset.effort });
+      toast(`Reasoning set to ${mdl.efforts[b.dataset.effort].label}`);
+      renderTemplates();
+    } catch (e) { toast("Could not change the reasoning level"); }
+  }));
 
   document.querySelectorAll("[data-model]").forEach(b => b.addEventListener("click", async () => {
     if (b.classList.contains("on")) return;

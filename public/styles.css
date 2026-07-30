@@ -765,3 +765,13 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
 .mp-per{ font-weight:400; color:var(--ink-400); }
 .mp-desc{ font-size:11.5px; color:var(--ink-600); line-height:1.45; }
 .mp-cmp{ font-size:11.5px; color:var(--ink-400); margin-top:12px; }
+/* Reasoning depth sits under the model cards because the two together decide cost — and the
+   note line spells out when a level forces thinking on, rather than letting a bigger bill be
+   the way Ivan finds out. */
+.mp-effort{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px; padding-top:13px; border-top:1px solid var(--line); }
+.mp-elabel{ font-size:11.5px; font-weight:700; }
+.mp-eseg{ display:flex; gap:2px; background:var(--paper-100); border:1px solid var(--line); border-radius:8px; padding:2px; }
+.mp-eopt{ background:none; border:none; border-radius:6px; padding:5px 11px; font-size:11.5px; font-weight:600; color:var(--ink-600); cursor:pointer; }
+.mp-eopt:hover{ color:var(--ink-950); }
+.mp-eopt.on{ background:var(--paper-0); color:var(--ink-950); box-shadow:0 1px 2px rgba(0,0,0,.4); }
+.mp-enote{ font-size:11.5px; color:var(--ink-400); flex:1; min-width:180px; }
