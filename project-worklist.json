@@ -2728,7 +2728,7 @@
       "title": "Live generation quality read against a real transcript",
       "priority": "high",
       "estimated_complexity": "low",
-      "status": "incomplete",
+      "status": "completed",
       "dependencies": [
         "TASK-089"
       ],
@@ -2739,7 +2739,7 @@
         "Confirm no truncation at maxTokens 24000.",
         "Log the actual cost and re-baseline the estimate against it."
       ],
-      "notes": "Open since 2026-07-29. This is the only thing standing between the output-quality round and 'done'. Ivan said he would run one."
+      "notes": "Closed 2026-07-29 by Gabriel's own verdict on a live run: \"Yo so much better! Might actually be able to use these outputs from now on.\" That is the first positive read on OUTPUT quality since he told Ivan on 2026-07-28 that the interface had landed and the outputs had not. HONEST LIMITS: four things changed at once — the worked example (096), the enriched schema (089), Opus 5 (098) and High effort (099) — so which one did the work is unknown. And \"might be able to use\" is not yet \"this saves me time\", which was his original complaint and remains the real bar."
     },
     {
       "id": "TASK-096",
