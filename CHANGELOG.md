@@ -3,6 +3,47 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-07-29 (evening) — Gabriel says the outputs are usable (TASK-093…099)
+
+The day ended with the sentence the whole effort was resting on. Gabriel, on a live
+generation: *"Yo so much better! Might actually be able to use these outputs from now on."*
+The first positive read on OUTPUT quality since 07-28, when he volunteered twice that the
+interface had landed and the outputs had not.
+
+**Recorded with its limits, not as a clean win.** Four things changed at once, so which one
+did the work is unknown — and there is no evidence about what to keep if cost ever forces
+something back. And "might be able to use" is not "this saves me time", which was the original
+complaint and is still the bar.
+
+- **The outputs row is one line, not two (TASK-093).** Removing the panel title in TASK-092 had
+  left a header strip holding nothing but Copy and Mark sent, directly under the chips that
+  already labelled the panel. Two rows where one would do, on every call. The actions moved
+  into the tab strip; each tab carries its own set because they act on different output ids,
+  and switching tabs switches the set — otherwise Copy silently targets the previous output.
+- **The prompt SHOWS the standard instead of describing it (TASK-096).** `src/specimen.js`
+  carries the Brandon report from Gabriel's own `GAB sales` folder as a worked example, first
+  content block, marked for caching. **Debrief pass only** — it is coaching material *about the
+  seller*, and reaching a draft would ship criticism of Gabriel to Gabriel's client. Verified by
+  leaking it into `draftContext` on purpose and watching two assertions fail.
+- **Model picker in the Prompt Library (TASK-098).** Default moved to Opus 5. The models differ
+  in ways that 400 rather than degrade: **Fable 5 rejects ANY explicit `thinking` config**,
+  including the `{type:"disabled"}` this app sends on every debrief, so it must be OMITTED
+  entirely; and Opus 5 rejects disabled thinking above `high` effort. `src/models.js` owns the
+  registry so a fourth model is a data change, not a hunt through `llm.js`.
+- **Reasoning level, and cost from real history (TASK-099).** Effort is a setting rather than a
+  constant, governing the debrief pass only — drafts stay `low`, because paying max-effort
+  rates to write a two-line SMS buys nothing. The cost figure on the cards was wrong to ship:
+  it priced a generation shape I invented. Ivan called it. It now averages **his own logged
+  generations** from `events` and prices every model against them, with cached input at ~10% of
+  the input rate — which matters because since TASK-096 every debrief carries a cached prefix.
+
+The 07-28 diagnosis turned out to be **wrong**, and that is worth keeping. The fix was supposed
+to be exporting months of accumulated ChatGPT context (TASK-094); the export returned **one
+thread**, because the conversations had been deleted as they went. The reservoir never existed.
+The gap closed from inside Closer instead — only discoverable by trying it.
+
+135 assertions across four suites.
+
 ## 2026-07-29 (last) — Release notes aggregate per day; outputs stop labelling themselves twice (TASK-092)
 
 Two things Ivan raised after using the deployed build.

@@ -100,6 +100,20 @@ public/          the UI (ported from the design mockup)
   unannounced. Because a day's entry is edited after it may already have been read, "seen" is keyed
   on `releaseSig()` (date + current items), **not** on `v`; reverting that to `r.v === seen`
   silently swallows every item added by a later push, and `tests/ui-smoke.test.mjs` fails if you do.
+- **Model and reasoning are settings, not constants (`TASK-098`/`099`).** Chosen in the Prompt
+  Library, stored per account, defaulting to **Opus 5 at medium**. `src/models.js` is the only
+  place that knows how models differ, and the differences **400 rather than degrade**: Fable 5
+  rejects *any* explicit `thinking` config (it must be omitted, not set to null), and Opus 5
+  rejects disabled thinking above `high` effort. Never point this code at a new model without
+  auditing the request body against that model — `tests/llm.test.mjs` fails if the Fable
+  exemption is removed. The reasoning level governs the **debrief pass only**; drafts stay `low`.
+- **The worked example (`TASK-096`).** `src/specimen.js` carries the one output Gabriel
+  confirmed is right, as the first (cached) content block of the debrief call. It is coaching
+  material *about Gabriel* — it must never reach `draftContext()` or a client-facing draft, and
+  the test suite fails if it does.
+- **Cost is measured, never estimated.** The Prompt Library prices each model against this
+  account's own logged generations from `events`, cached input included at the reduced rate.
+  With no history it says so rather than inventing an average.
 - **Traffic-light dots**: hollow grey = new, violet pulsing = processing, blue = processed,
   pink = failed. Grey stays neutral so pink keeps meaning "wrong" (matches the scorecard language).
 
