@@ -300,10 +300,13 @@ check("JS never writes grid-template-columns directly",
   "an inline grid override would break the rail and mobile layouts");
 check("the ≤900px icon rail ignores the drag variables", !/--w-sidebar/.test(rail900), rail900.slice(0, 90));
 check("the ≤640px mobile layout ignores them too", !/--w-sidebar|--w-list/.test(mobile640));
-check("handles are hidden below 900px where the columns are fixed", /\.resizer, \.resizer-h\{ display:none/.test(rail900));
+check("handles are hidden below 900px where the columns are fixed", /\.resizer\{ display:none/.test(rail900));
 check("collapsed sidebar keeps the dragged list width",
   /body\.sb-collapsed \.app\{ grid-template-columns:0 var\(--w-list/.test(css1));
-check("debrief height is variable-driven", /\.debrief-body\{[^}]*height:var\(--h-debrief/.test(css1));
+// 2026-08-06: the debrief|outputs split is GONE — one unified body, full height, one panel at
+// a time. The old assertion pinned the split's mechanism; these pin the unification's.
+check("the unified body takes the full height", /\.unified-body\{[^}]*flex:1/.test(css1) && !/--h-debrief/.test(css1),
+  "a leftover height:var(--h-debrief) means the split quietly came back");
 check("dragging suppresses the collapse transition (it would rubber-band the drag)",
   /body\.resizing \.app[^{]*\{ transition:none/.test(css1));
 check("a keyboard nudge suppresses it too (a held arrow key would trail by .18s)",
@@ -313,9 +316,15 @@ check("collapsed sidebar hides its own handle", /body\.sb-collapsed \.resizer\[d
 check("two vertical handles exist in the shell", (html.match(/class="resizer" data-resize="(sidebar|list)"/g) || []).length === 2);
 check("they use the ARIA splitter pattern (role=separator + tabindex)",
   (html.match(/role="separator"[^>]*tabindex="0"|tabindex="0"[^>]*role="separator"/g) || []).length >= 2);
-check("the debrief/outputs handle is emitted by renderProcessed", /class="resizer-h" data-resize="debrief"/.test(richHtml));
+check("the debrief/outputs handle is GONE from renderProcessed", !/resizer-h/.test(richHtml),
+  "there is nothing left to divide — one panel shows at a time at full height");
+check("debrief chips and output chips share one tab row", (richHtml.match(/panel-subnav/g) || []).length === 1,
+  "two tab strips was the exact clutter Ivan circled");
+check("actions belong to the active panel only",
+  /id="copyDebrief"[^>]*class="[^"]*hidden|class="[^"]*hidden[^"]*" id="copyDebrief"/.test(richHtml) || /copy-btn hidden" id="copyDebrief"/.test(richHtml),
+  "Copy-all must start hidden when the initial view is an output");
 check("handles declare touch-action:none so a touch drag doesn't scroll the page",
-  /\.resizer\{[^}]*touch-action:none/.test(css1) && /\.resizer-h\{[^}]*touch-action:none/.test(css1));
+  /\.resizer\{[^}]*touch-action:none/.test(css1));
 check("drag uses pointer capture so a fast drag doesn't detach", /setPointerCapture/.test(src));
 
 // Behaviour: clamping, persistence, reset.
@@ -332,7 +341,9 @@ check("sizes persist to localStorage", JSON.parse(store["closer-panes"] || "{}")
 root.removeProperty("--w-list");
 T.loadPanes();
 check("...and are restored on the next load", root.getPropertyValue("--w-list") === "380px");
-check("the debrief max is computed from the pane, not hardcoded", typeof T.PANES.debrief.max === "function");
+// The debrief pane entry is gone with the split (2026-08-06) — assert it STAYS gone, because
+// its return would mean the divider is back.
+check("the retired debrief pane entry stays retired", !T.PANES.debrief);
 check("every pane has a sane min", Object.values(T.PANES).every(p => (typeof p.min === "function" ? p.min() : p.min) >= 100));
 
 console.log("\n== output panels don't repeat the tab label (TASK-092) ==");
@@ -359,7 +370,7 @@ console.log("\n== the outputs row is ONE line, not two (TASK-093) ==");
 check("no panel-head strip is rendered at all",
   !/class="panel-head/.test(richHtml), "the second row is back");
 check("actions live inside the tab strip",
-  /class="panel-subnav"[\s\S]{0,900}?class="oacts/.test(richHtml));
+  /class="panel-subnav"[\s\S]{0,2500}?class="subnav-actions"[\s\S]{0,400}?class="oacts/.test(richHtml));
 check("one action set per tab", (richHtml.match(/class="oacts[^"]*" data-otab=/g) || []).length === 3);
 check("exactly one action set is active", (richHtml.match(/class="oacts active"/g) || []).length === 1);
 check("the active action set matches the active tab",

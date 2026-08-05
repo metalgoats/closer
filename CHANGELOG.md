@@ -33,6 +33,40 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
+## 2026-08-06 (unified) — One section, eleven chips, every panel at full height
+
+Ivan, with an annotated screenshot: the "Debrief" heading struck out, an arrow from the output
+tabs up into the debrief's chip row — *"Unify all the output so that we maximize the screen real
+estate at all times."* The full version of Gabriel's 08-04 ask (TASK-106), which had shipped as
+two stacked sections sharing the column with a draggable divider.
+
+**The debrief pages and the three outputs now share ONE chip row and ONE full-height body.**
+Exactly one panel is in flow at a time and gets every vertical pixel. The separate "Debrief"
+heading is gone, the second tab strip is gone, and the debrief|outputs divider is gone — with
+one panel at a time there is nothing left to divide, so the TASK-091 `--h-debrief` machinery
+retires with it (the sidebar and list dividers stay).
+
+Decisions that needed making:
+
+- **Opens on the output Gabriel said he would send** (TASK-085's adaptive default), not the
+  debrief. His own words on 07-28: *"I can't think of a situation where I would need to copy the
+  full debrief... more often than not [the email] is the thing that I'm wanting to do."* The
+  analysis is one click away, not gone.
+- **Actions belong to the visible panel.** Ivan's literal spec: keep whole-text copy for each
+  output, "but we only need to display those buttons when those elements are displayed." Copy
+  all shows with a debrief page; Mark sent / Copy show with the output they act on. A button for
+  a panel that is not on screen is clutter at best and a mis-click at worst.
+- **An active output pane stretches**, so the email textarea gets the full height for editing —
+  which is where Gabriel actually works (TASK-100's visible selection just made that worth more).
+
+On a phone this is the difference between the email on screen one and the email three screens
+down. Verified by using it at 1280 and 375: the toggle swaps panels and actions both ways, the
+scorecard fills the height, the email owns the pane.
+
+150 assertions in ui-smoke. The old split's tests were not deleted but inverted: the handle must
+now be ABSENT from renderProcessed, `PANES.debrief` must STAY retired, and one `panel-subnav`
+per call view — so the split coming back quietly is a test failure, not a regression.
+
 ## 2026-08-06 (cleanup) — The UI, tightened: five sessions of accretion reconciled
 
 Ivan's read after a week of feature work: *"the UI is drifting and we're creating all these

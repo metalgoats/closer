@@ -2881,7 +2881,7 @@
       "estimated_complexity": "medium",
       "status": "incomplete",
       "dependencies": [],
-      "description": "Gabriel is reading the outputs far more than the debrief but can only give them about a third of the screen, working around it with 'this little mini scroll at the bottom'. Decided on the call: the three outputs become buttons alongside the debrief's own sections rather than a second full pane; every section collapses; any panel expands to full height. Reference the existing resizable panes (TASK-091) — do not fight them. Gabriel: 'I can't think of a situation where I would need to copy the full debrief.'",
+      "description": "Gabriel is reading the outputs far more than the debrief but can only give them about a third of the screen, working around it with 'this little mini scroll at the bottom'. Decided on the call: the three outputs become buttons alongside the debrief's own sections rather than a second full pane; every section collapses; any panel expands to full height. Reference the existing resizable panes (TASK-091) — do not fight them. Gabriel: 'I can't think of a situation where I would need to copy the full debrief.' FINISHED FULLY 2026-08-06 (the first pass had shipped two stacked sections with a divider — Ivan sent an annotated screenshot asking for real unification): debrief pages + outputs share ONE chip row and ONE full-height body, one panel in flow at a time, opens on the TASK-085 adaptive output default, actions follow the active panel (Copy all with debrief, Mark sent/Copy with outputs). The debrief|outputs divider and PANES.debrief retired — tests now assert their ABSENCE.",
       "source": "2026-08-04 Gabriel call"
     },
     {

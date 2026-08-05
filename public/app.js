@@ -157,7 +157,8 @@ const RELEASES = [
       "While a call generates you now watch the analysis being written, live, instead of staring at a progress bar. Same three minutes, no more wondering whether it died.",
       "Generation is faster and cheaper: two model calls per run instead of four.",
       "Call type and tone controls are tucked behind a one-line summary in the header — click it to change them. The debrief and your outputs get the screen back.",
-      "The Activity page now leads with health: how many runs succeeded, failed, or vanished in the last 30 days, and what generation actually costs — cached tokens included, priced at the model you actually run."
+      "The Activity page now leads with health: how many runs succeeded, failed, or vanished in the last 30 days, and what generation actually costs — cached tokens included, priced at the model you actually run.",
+      "The debrief and your three outputs now live in ONE row of tabs sharing the full height of the screen — no more split panes. The app opens straight on the output you said you'd send; the analysis is one click away. Copy / Mark sent appear only for the panel you're looking at."
     ]
   },
   {
@@ -754,11 +755,9 @@ const PANES = {
              measure: () => { const a = rectOf(".app"), s = rectOf(".sidebar"); return a && s ? s.right - a.left : null; } },
   list:    { prop: "--w-list",    axis: "x", min: 200, max: 640,
              measure: () => { const s = rectOf(".sidebar"), l = rectOf(".call-list"); return s && l ? l.right - s.right : null; } },
-  // The debrief cannot grow past its own column — leave room for the outputs below it.
-  debrief: { prop: "--h-debrief", axis: "y", min: 120,
-             measure: () => rectOf("#debriefBody")?.height ?? null,
-             max: () => Math.max(200, (rectOf(".detail")?.height || 900) - 220) }
 };
+// The `debrief` pane entry was removed 2026-08-06: the unified section made the
+// debrief|outputs divider meaningless — one panel shows at a time, at full height.
 const paneBound = v => (typeof v === "function" ? v() : v);
 const paneSize = spec => spec.measure();
 
@@ -858,7 +857,7 @@ function wireResizer(handle) {
 
 function initPanes() {
   loadPanes();
-  document.querySelectorAll(".resizer, .resizer-h").forEach(wireResizer);
+  document.querySelectorAll(".resizer").forEach(wireResizer);
   placeResizers();
   // A ResizeObserver means the handles follow the panes through the collapse transition and any
   // breakpoint change without wiring a listener per cause.
@@ -1087,45 +1086,34 @@ function renderProcessed(call, outputs) {
         </div>
       </div>
     </div>
-    <!-- Debrief: full-width, paginated by the pills. Only one page is in the DOM's flow at a
-         time, so nothing needs scrolling past to reach the next thing (Gabriel's original
-         complaint: "it's just so much, and I don't always read all of it"). -->
-    <div class="debrief-section">
-      <div class="debrief-head"><h3>Debrief</h3>
-        <button class="copy-btn" id="copyDebrief">⧉ Copy all</button></div>
-      <div class="panel-subnav" role="tablist">${DEBRIEF_PAGES.map((p, i) =>
-        `<button class="chip ${i === 0 ? "active" : ""}" data-page="${i}" role="tab"
-                 aria-selected="${i === 0}">${p.label}</button>`).join("")}</div>
-      <div class="debrief-body" id="debriefBody">
-        ${DEBRIEF_PAGES.map((p, i) =>
-          `<div class="dpage ${i === 0 ? "active" : ""}" data-page="${i}">${p.render(d) || `<div class="dpage-empty">Nothing recorded for this section.</div>`}</div>`).join("")}
-      </div>
-    </div>
-
-    <!-- Debrief / outputs boundary — a real flex item, so the two sections genuinely share the
-         column height instead of overlapping (TASK-091). -->
-    <div class="resizer-h" data-resize="debrief" role="separator" aria-orientation="horizontal"
-         tabindex="0" aria-label="Resize debrief" title="Drag to resize · double-click to reset"></div>
-
-    <!-- One output at a time (TASK-088). Gabriel sends the text, then the email, sometimes
-         neither — three panels should not all fight for the screen at once. Segmented exactly
-         like the debrief pages so it keeps the dashboard feel. The tab shown first follows what
-         Gabriel said on the call he would send (statedFollowUps), so the app opens on the thing
-         he actually intends to send. -->
-    <div class="outputs-section">
+    <!-- ONE unified section (Ivan, 2026-08-06, annotated screenshot: "unify all the output so
+         that we maximize the screen real estate at all times" — the full version of what
+         Gabriel asked for on the 08-04 call, TASK-106). The debrief pages and the three
+         outputs share ONE chip row and ONE full-height body; exactly one panel shows at a
+         time, and it gets every vertical pixel. The separate "Debrief" heading, the second
+         tab strip, and the debrief|outputs divider are gone — there is nothing left to divide.
+         Opens on the output Gabriel said on the call he would send (TASK-085); the debrief is
+         one click away. Actions live at the right end of the chip row and belong to the ACTIVE
+         panel only: Copy all with a debrief page, Mark sent / Copy with an output. -->
+    <div class="unified-section">
       <div class="panel-subnav" role="tablist">
+        ${DEBRIEF_PAGES.map((p, i) =>
+          `<button class="chip" data-page="${i}" role="tab" aria-selected="false">${p.label}</button>`).join("")}
+        <span class="subnav-split" aria-hidden="true"></span>
         ${OUTPUT_TABS.map(t =>
           `<button class="chip ${t.key === defTab ? "active" : ""}" data-otab="${t.key}"
                    role="tab" aria-selected="${t.key === defTab}">${t.label}</button>`).join("")}
-        <!-- Copy / Mark sent live IN the tab row, not in a second strip below it. Each tab
-             carries its own set (they act on different output ids) and only the active one
-             shows, so the controls never cost a second line of vertical space. -->
-        ${[["text", sms, true], ["email", email, true], ["ghl", ghl, false]].map(([k, o, sent]) =>
-          `<div class="oacts ${k === defTab ? "active" : ""}" data-otab="${k}">${o ? `
-            ${sent ? `<button class="sent-btn ${o.sent_at ? "is-sent" : ""}" data-out="${o.id}">${o.sent_at ? "✓ Sent" : "Mark sent"}</button>` : ""}
-            <button class="copy-btn" data-out="${o.id}">⧉ Copy</button>` : ""}</div>`).join("")}
+        <span class="subnav-actions">
+          <button class="copy-btn hidden" id="copyDebrief">⧉ Copy all</button>
+          ${[["text", sms, true], ["email", email, true], ["ghl", ghl, false]].map(([k, o, sent]) =>
+            `<div class="oacts ${k === defTab ? "active" : ""}" data-otab="${k}">${o ? `
+              ${sent ? `<button class="sent-btn ${o.sent_at ? "is-sent" : ""}" data-out="${o.id}">${o.sent_at ? "✓ Sent" : "Mark sent"}</button>` : ""}
+              <button class="copy-btn" data-out="${o.id}">⧉ Copy</button>` : ""}</div>`).join("")}
+        </span>
       </div>
-      <div class="outputs">
+      <div class="unified-body" id="debriefBody">
+        ${DEBRIEF_PAGES.map((p, i) =>
+          `<div class="dpage" data-page="${i}">${p.render(d) || `<div class="dpage-empty">Nothing recorded for this section.</div>`}</div>`).join("")}
         <div class="opane ${defTab === "text"  ? "active" : ""}" data-otab="text">${outputPanel("Text Message", sms, { sent: true })}</div>
         <div class="opane ${defTab === "email" ? "active" : ""}" data-otab="email">${outputPanel("Email", email, { sent: true, subject: true })}</div>
         <div class="opane ${defTab === "ghl"   ? "active" : ""}" data-otab="ghl">${outputPanel("GoHighLevel Note", ghl, {})}</div>
@@ -1403,7 +1391,16 @@ function wireDetail(call, outs) {
     $("#dhSummaryBtn").setAttribute("aria-expanded", state.settingsOpen === call.id);
   });
 
-  // Debrief pagination: show one page, hide the rest.
+  // ONE selection across debrief pages AND outputs (2026-08-06). Eleven chips, one active
+  // panel, full height. Selecting from one family deactivates the other, and the actions at
+  // the row's end follow the active panel: Copy-all belongs to the debrief, Mark-sent/Copy to
+  // the output they act on — a button for a panel that is not on screen is clutter at best
+  // and a mis-click at worst.
+  const showDebriefActions = on => {
+    $("#copyDebrief")?.classList.toggle("hidden", !on);
+    if (!on) return;
+    document.querySelectorAll(".oacts").forEach(a => a.classList.remove("active"));
+  };
   document.querySelectorAll(".chip[data-page]").forEach(chip => chip.addEventListener("click", () => {
     const n = chip.dataset.page;
     document.querySelectorAll(".chip[data-page]").forEach(c => {
@@ -1411,11 +1408,15 @@ function wireDetail(call, outs) {
       c.classList.toggle("active", on);
       c.setAttribute("aria-selected", on);
     });
+    document.querySelectorAll(".chip[data-otab]").forEach(c => {
+      c.classList.remove("active"); c.setAttribute("aria-selected", "false");
+    });
     document.querySelectorAll(".dpage").forEach(p => p.classList.toggle("active", p.dataset.page === n));
+    document.querySelectorAll(".opane").forEach(p => p.classList.remove("active"));
+    showDebriefActions(true);
     $("#debriefBody").scrollTop = 0;
   }));
 
-  // Outputs: same one-at-a-time pattern as the debrief pages (TASK-088).
   document.querySelectorAll(".chip[data-otab]").forEach(chip => chip.addEventListener("click", () => {
     const k = chip.dataset.otab;
     document.querySelectorAll(".chip[data-otab]").forEach(c => {
@@ -1423,8 +1424,14 @@ function wireDetail(call, outs) {
       c.classList.toggle("active", on);
       c.setAttribute("aria-selected", on);
     });
+    document.querySelectorAll(".chip[data-page]").forEach(c => {
+      c.classList.remove("active"); c.setAttribute("aria-selected", "false");
+    });
+    document.querySelectorAll(".dpage").forEach(p => p.classList.remove("active"));
     document.querySelectorAll(".opane").forEach(p => p.classList.toggle("active", p.dataset.otab === k));
     document.querySelectorAll(".oacts").forEach(a => a.classList.toggle("active", a.dataset.otab === k));
+    showDebriefActions(false);
+    $("#debriefBody").scrollTop = 0;
   }));
 
   // tone switch
@@ -1438,7 +1445,6 @@ function wireDetail(call, outs) {
   wireTypePicker(call);   // processed calls can be re-typed too, not just new ones
   // The debrief/outputs divider is re-created with the detail markup, so it needs re-wiring
   // on every render (TASK-091). wireResizer is idempotent via its data-wired flag.
-  document.querySelectorAll(".resizer-h").forEach(wireResizer);
 
   // regenerate
   $("#regenBtn").addEventListener("click", async () => {
