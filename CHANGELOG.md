@@ -33,6 +33,54 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
+## 2026-08-05 (last) — Nightly D1 backup, written and restore-verified, shipped dark (TASK-023)
+
+This sat at "low" for weeks because D1 already keeps 30 days of point-in-time recovery. What
+changed is who can reach it: PITR is only usable by whoever can reach the Cloudflare account,
+and for most of this project's life that was not Ivan. **A recovery mechanism you cannot
+personally invoke is not one you have.**
+
+`src/backup.js` dumps every table as replayable SQL — DDL, paged INSERTs, then indexes and
+triggers — and writes it to R2 as `d1/closer-YYYY-MM-DD.sql`, keeping 30 days.
+
+**It is not deployed, and that is deliberate.** `wrangler r2 bucket create` returns *"Please
+enable R2 through the Cloudflare Dashboard [code: 10042]"* — R2 is not switched on for the
+account, and switching it on means accepting terms in the dashboard, which is not something to
+do inside someone else's account unasked. A binding to a bucket that does not exist fails
+`wrangler deploy`, which would block **every** deploy rather than just this feature. So the
+binding and the cron are commented out with the exact steps to enable them, and a test asserts
+those two are enabled together or not at all — a cron with no binding would throw and log
+`backup.failed` every night at 2am.
+
+**Three things the local run found that reading would not have.**
+
+- **R2 refuses a body of unknown length.** The obvious implementation — wrap the row generator
+  in a `ReadableStream`, hand it to `put()` — fails with *"Provided readable stream must have a
+  known length"*. It now uploads multipart: each part carries its own length, memory stays
+  bounded at one part, and there is no size at which it stops working. Buffering the whole dump
+  to get a length would have worked today at ~5MB and become a memory problem later, unattended.
+- **`scheduled()` dispatched with `else -> pollFathom`.** Fine with two triggers; a trap on the
+  third. A new cron with no branch would silently have run the Fathom poller on the backup's
+  schedule, and the only symptom would be the backup appearing never to run. Dispatch is now
+  exhaustive, with a `cron.unrouted` warning for anything unhandled.
+- **The test suite's own parser did not recognise `async function*`**, so it reported `dumpSql`
+  as an undefined call target. Fixed in the detector rather than by renaming around it.
+
+**Verified by restoring, not by reading.** The cron was fired locally, the object pulled out of
+local R2, and the dump replayed into a **fresh empty SQLite database with the `sqlite3` CLI** —
+independent of Wrangler entirely, which also proves the SQL is valid. Every table matched the
+source row for row, and a transcript came back byte-identical. The single difference was
+`events`: 12 in the source, 11 in the backup. That row is `backup.succeeded` itself, written
+after the dump completes — a backup cannot contain the record of its own completion.
+
+**What this still does not solve.** The bucket would live in the same account as the database.
+It protects against a bad migration, a mistaken DELETE, or corruption. It does **not** protect
+against losing access to the account. An off-account copy needs S3 credentials for a bucket
+elsewhere, and that is an ownership decision, not a code one.
+
+253 assertions across four suites; two proven to FAIL by reintroducing the bare `put()` and by
+enabling the cron without its binding.
+
 ## 2026-08-05 (later) — Gabriel can see his own selection, and watch the debrief being written (TASK-100, TASK-101)
 
 Both of these came out of the 08-04 call, and both turned out to be two bugs wearing one coat.

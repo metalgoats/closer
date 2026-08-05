@@ -29,7 +29,9 @@ const defined = new Set([
   "structuredClone", "ReadableStream", "WritableStream", "Uint8Array", "Symbol", "BigInt"
 ]);
 for (const [, src] of Object.entries(sources)) {
-  for (const m of src.matchAll(/(?:^|\n)\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)/g)) defined.add(m[1]);
+  // `function*` and `async function*` count too — a generator is a definition. Missing this
+  // reported src/backup.js's dumpSql as an undefined call target (TASK-023).
+  for (const m of src.matchAll(/(?:^|\n)\s*(?:export\s+)?(?:async\s+)?function\s*\*?\s*(\w+)/g)) defined.add(m[1]);
   for (const m of src.matchAll(/(?:^|\n)\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=/g)) defined.add(m[1]);
   for (const m of src.matchAll(/import\s*\{([^}]+)\}/g)) {
     for (const name of m[1].split(",")) defined.add(name.trim().split(/\s+as\s+/).pop().trim());
@@ -116,6 +118,54 @@ console.log("\n== routes resolve to real handlers ==");
 const index = sources["index.js"] || "";
 for (const m of index.matchAll(/return\s+([a-z]\w*)\(env/g)) {
   check(`route handler ${m[1]} exists`, defined.has(m[1]), "route points at a missing function");
+}
+
+console.log("\n== nightly backup (TASK-023) ==");
+{
+  const idx       = sources["index.js"];
+  const backupSrc = readFileSync(new URL("../src/backup.js", import.meta.url), "utf8");
+  const wrangler  = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+
+  check("cron dispatch is exhaustive, never else->pollFathom",
+    /else if \(event\.cron === "\*\/5 \* \* \* \*"\)\s+await pollFathom/.test(idx)
+      && /cron\.unrouted/.test(idx),
+    "a new trigger with no branch would silently run the Fathom poller on someone else's schedule");
+  check("every backup run leaves evidence, pass or fail",
+    /kind: "backup\.succeeded"/.test(idx) && /kind: "backup\.failed"/.test(idx),
+    "a silent success and a dead 2am job are indistinguishable without a line");
+  check("a failed backup still reaches cron.failed",
+    /kind: "backup\.failed"[\s\S]{0,240}?throw err;/.test(idx),
+    "swallowing the error would hide the failure from the cron handler that also logs it");
+
+  check("the upload is multipart, not a bare stream put",
+    /createMultipartUpload/.test(backupSrc) && !/BACKUPS\.put\(/.test(backupSrc),
+    "R2 rejects a body of unknown length — put() with a generator stream fails at runtime only");
+  check("an aborted upload is cleaned up",
+    /mp\.abort\(\)/.test(backupSrc),
+    "an incomplete multipart never appears in list(), so it would accrue storage and never be pruned");
+  check("the backup is read back before it is called a backup",
+    /BACKUPS\.head\(key\)/.test(backupSrc) && /refusing to call that a backup/.test(backupSrc),
+    "a resolved put is not evidence of a usable object");
+  check("rows are paged with a stable ORDER BY",
+    /ORDER BY rowid LIMIT \? OFFSET \?/.test(backupSrc),
+    "unordered paging can repeat or skip rows and still produce a dump that looks fine");
+  check("string values are SQL-escaped",
+    /replace\(\/'\/g, "''"\)/.test(backupSrc),
+    "every transcript contains an apostrophe");
+  check("old backups are pruned",
+    /KEEP_DAYS/.test(backupSrc) && /BACKUPS\.delete/.test(backupSrc));
+  check("migrations are included in the dump",
+    !/d1_migrations/.test(backupSrc.match(/NOT LIKE 'sqlite_%'[^`]*/)?.[0] || "") ,
+    "restoring without d1_migrations makes the schema look unmigrated and re-applies everything");
+
+  // The binding and the cron must move together, and neither may ship before the bucket exists.
+  const bindingLive = /^\s*\[\[r2_buckets\]\]/m.test(wrangler);
+  const cronLive    = /crons = \[[^\]]*"0 9 \* \* \*"/.test(wrangler);
+  check("the R2 binding and its cron are enabled together, or neither is",
+    bindingLive === cronLive,
+    bindingLive
+      ? "the bucket is bound but nothing triggers the backup"
+      : "the cron is scheduled with no R2 binding — it would throw and log backup.failed every night");
 }
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);

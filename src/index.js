@@ -2,6 +2,7 @@ import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessi
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
 import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
+import { runBackup } from "./backup.js";
 import { logEvent } from "./log.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
@@ -29,8 +30,17 @@ export default {
   // pollFathom only imports and hands off; the minutes-long LLM work happens in the Workflow.
   async scheduled(event, env, ctx) {
     try {
-      if (event.cron === "0 17 * * SUN") await weeklyEditAnalysis(env);
-      else await pollFathom(env);
+      // Dispatch EXHAUSTIVELY, never `else -> pollFathom`. That default was fine with two
+      // triggers and becomes a trap the moment a third is added: a new cron with no branch
+      // would silently run the Fathom poller on someone else's schedule, and the only symptom
+      // would be the new job never appearing to run.
+      if (event.cron === "0 17 * * SUN")      await weeklyEditAnalysis(env);
+      else if (event.cron === "0 9 * * *")    await nightlyBackup(env);
+      else if (event.cron === "*/5 * * * *")  await pollFathom(env);
+      else {
+        await logEvent(env, { level: "warn", kind: "cron.unrouted",
+          detail: `no handler for cron "${event.cron}" — it fired and did nothing` });
+      }
     } catch (err) {
       // A cron that throws is invisible — nobody is watching. Record it.
       console.error("cron failed", event.cron, err);
@@ -39,6 +49,24 @@ export default {
     }
   }
 };
+
+// TASK-023. Leaves a dated line on EVERY run, success or failure (Law 3): a silent success and
+// a dead job look identical from the outside, and this one runs at 2am with nobody watching.
+async function nightlyBackup(env) {
+  const t0 = Date.now();
+  try {
+    const r = await runBackup(env);
+    await logEvent(env, { kind: "backup.succeeded", duration_ms: Date.now() - t0,
+      detail: `${r.key} · ${(r.size / 1024).toFixed(0)}KB · ${r.tables} tables · ${r.rows} rows` +
+              (r.pruned ? ` · pruned ${r.pruned} older than 30d` : "") });
+  } catch (err) {
+    // Rethrow so scheduled()'s cron.failed also fires — two log lines is the right price for
+    // never having a backup fail quietly.
+    await logEvent(env, { level: "error", kind: "backup.failed", duration_ms: Date.now() - t0,
+      detail: String(err?.message || err) });
+    throw err;
+  }
+}
 
 async function route(request, env, url, ctx) {
   const path = url.pathname;
