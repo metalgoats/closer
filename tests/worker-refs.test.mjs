@@ -161,6 +161,14 @@ console.log("\n== nightly backup (TASK-023) ==");
   // The binding and the cron must move together, and neither may ship before the bucket exists.
   const bindingLive = /^\s*\[\[r2_buckets\]\]/m.test(wrangler);
   const cronLive    = /crons = \[[^\]]*"0 9 \* \* \*"/.test(wrangler);
+  check("the manual backup route is authenticated and is a POST",
+    /path === "\/api\/backup" && method === "POST"/.test(idx)
+      && idx.indexOf('path === "/api/backup"') > idx.indexOf("const user = await requireUser"),
+    "an unauthenticated backup endpoint would hand every transcript to anyone who guessed the path");
+  check("the manual route runs the SAME code path as the cron",
+    /if \(path === "\/api\/backup" && method === "POST"\)[\s\S]{0,200}?runBackup\(env\)/.test(idx),
+    "a separate implementation would mean exercising the button proves nothing about the 2am run");
+
   check("the R2 binding and its cron are enabled together, or neither is",
     bindingLive === cronLive,
     bindingLive

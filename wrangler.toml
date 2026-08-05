@@ -22,29 +22,25 @@ database_name = "closer"
 # Local dev (`npm run dev`) uses a local simulated D1 and ignores this.
 database_id = "fcd1b2c4-ded2-4a04-87ee-fac05ed5391f"
 
-# TASK-023 — nightly D1 dump. COMMENTED OUT UNTIL R2 IS ENABLED ON THE ACCOUNT.
-# `wrangler r2 bucket create closer-backups` returns "Please enable R2 through the Cloudflare
-# Dashboard [code: 10042]", which needs someone to accept R2's terms in the dashboard. A binding
-# to a bucket that does not exist fails `wrangler deploy`, which would block EVERY deploy, not
-# just this feature — so the code ships dark and this stays commented until the bucket is real.
-#
-# TO TURN IT ON: enable R2 in the dashboard, `npx wrangler r2 bucket create closer-backups`
-# (with CLOUDFLARE_ACCOUNT_ID=ca893bd7f2b489d2a9d4177cf3239063), then uncomment this block and
-# add "0 9 * * *" to `crons` below. src/backup.js is written, tested and restore-verified.
+# TASK-023 — nightly D1 dump. Bucket created 2026-08-05 after R2 was enabled on the account.
 #
 # PRIVATE bucket: the dump contains every transcript, i.e. real sales calls with real clients.
-# Never attach an r2.dev or custom domain to it.
-# [[r2_buckets]]
-# binding = "BACKUPS"
-# bucket_name = "closer-backups"
+# NEVER attach an r2.dev or custom domain to it. There is no reason to serve a backup over HTTP.
+#
+# This binding and the "0 9 * * *" cron below must be enabled together — a cron with no binding
+# throws and logs backup.failed every night; a binding with no cron is a backup nobody takes.
+# tests/worker-refs.test.mjs fails the build if they disagree.
+[[r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "closer-backups"
 
 [triggers]
 # Every 5 min: poll Fathom for new calls (no-op until keys are configured).
 # Sunday 17:00 UTC: weekly edit-analysis -> prompt suggestions.
-# 09:00 UTC daily (02:00 Pacific): D1 -> R2 backup — PENDING, see the r2_buckets note above.
+# 09:00 UTC daily (02:00 Pacific): D1 -> R2 backup (TASK-023).
 # scheduled() routes crons EXHAUSTIVELY; adding one here without a branch there used to mean it
 # silently ran the Fathom poller instead.
-crons = ["*/5 * * * *", "0 17 * * SUN"]   # add "0 9 * * *" when the R2 bucket exists
+crons = ["*/5 * * * *", "0 17 * * SUN", "0 9 * * *"]
 
 # Secrets (set via `wrangler secret put NAME` — NEVER in git):
 #   ANTHROPIC_API_KEY, OPENAI_API_KEY

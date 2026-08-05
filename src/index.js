@@ -345,6 +345,23 @@ async function route(request, env, url, ctx) {
   // ---- insights ----
   if (path === "/api/insights" && method === "GET") return insights(env, url.searchParams.get("account"), url.searchParams.get("type"));
 
+  // ---- backups ----
+  // On demand, so a backup is something you can TAKE before a risky migration rather than only
+  // something that happened at 2am. Same code path as the cron, so exercising this proves the
+  // scheduled one works. POST because it writes; a GET would be pre-fetched by something one day.
+  if (path === "/api/backup" && method === "POST") {
+    const r = await runBackup(env);
+    await logEvent(env, { kind: "backup.succeeded",
+      detail: `${r.key} · ${(r.size / 1024).toFixed(0)}KB · ${r.tables} tables · ${r.rows} rows · manual` });
+    return json({ ok: true, ...r });
+  }
+  if (path === "/api/backup" && method === "GET") {
+    const listed = await env.BACKUPS.list({ prefix: "d1/" });
+    return json({ backups: listed.objects
+      .map(o => ({ key: o.key, size: o.size, uploaded: o.uploaded }))
+      .sort((a, b) => b.key.localeCompare(a.key)) });
+  }
+
   // ---- events / activity log ----
   if (path === "/api/events" && method === "GET") {
     const level = url.searchParams.get("level");
