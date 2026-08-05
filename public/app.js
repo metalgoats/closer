@@ -147,6 +147,20 @@ function showUpdateBanner() {
 // purpose — seeing the complete day beats seeing only its tail.
 const RELEASES = [
   {
+    v: "2026-08-06",
+    date: "5–6 August 2026",
+    title: "One follow-up written for the buyer, a chat that edits in place, and you can finally see what you select",
+    items: [
+      "The casual / balanced / formal switcher is gone. There is now ONE follow-up, written to how this specific buyer decides — what moved them, what stalled them, how they talked about the money, and whether someone else has a say. A short note above the debrief tells you why it reads the way it does.",
+      "Chat with any processed call, right under the outputs. Ask what actually happened ('what did he really object to?') or ask for a change ('rewrite the email without the price') — it updates the draft in place, and the new text appears above the box.",
+      "Selecting text inside the Text / Email / CRM fields is finally visible. You can highlight a phrase and replace just that, instead of Command-A and paste-over.",
+      "While a call generates you now watch the analysis being written, live, instead of staring at a progress bar. Same three minutes, no more wondering whether it died.",
+      "Generation is faster and cheaper: two model calls per run instead of four.",
+      "Call type and tone controls are tucked behind a one-line summary in the header — click it to change them. The debrief and your outputs get the screen back.",
+      "The Activity page now leads with health: how many runs succeeded, failed, or vanished in the last 30 days, and what generation actually costs — cached tokens included, priced at the model you actually run."
+    ]
+  },
+  {
     v: "2026-07-29",
     date: "29 July 2026",
     title: "The outputs, rebuilt",
@@ -656,6 +670,12 @@ function closeMobileNav() {
   document.querySelector(".sidebar")?.classList.remove("open");
   $("#navScrim")?.classList.remove("show");
 }
+$("#listNavBtn")?.addEventListener("click", () => {
+  // Same slide-over as the phone's ☰ — one nav idiom below 900px.
+  const open = !$(".sidebar").classList.contains("open");
+  $(".sidebar").classList.toggle("open", open);
+  $("#navScrim").classList.toggle("show", open);
+});
 $("#mNavBtn")?.addEventListener("click", () => {
   const sb = document.querySelector(".sidebar");
   const open = sb.classList.toggle("open");
@@ -1036,24 +1056,36 @@ function renderProcessed(call, outputs) {
         </div>
         <div class="dh-actions">${callActions(call, `<button class="regen-btn" id="regenBtn">↻ Regenerate</button>`)}</div>
       </div>
-      <div class="tone-row">
-        <span class="tone-label">Call type</span>
-        <div class="ct-picker">${(state.callTypes || []).map(t =>
-          `<button class="ct-chip ${t.id === call.call_type_id ? "active" : ""}" data-pick="${t.id}">${esc(t.name)}</button>`).join("")}</div>
-        <span class="applies-to" id="ctStale"></span>
+      <!-- UI CLEANUP 2026-08-06. The header had grown to four permanent control rows (~430px
+           before any content): call-type chips, tone segment, and two explainer lines — all
+           editable, on every call, forever. But relabelling a call or switching a legacy tone is
+           an EXCEPTION, not a per-visit action; every comparable surface (Grain, Apollo, Amie)
+           shows the current value and hides the editor behind it. One summary line now; clicking
+           it reveals the exact controls that were always here, so every existing handler,
+           test hook and class name still works. -->
+      <div class="dh-settings ${state.settingsOpen === call.id ? "open" : ""}" id="dhSettings">
+        <button class="dh-summary" id="dhSummaryBtn" aria-expanded="${state.settingsOpen === call.id}">
+          <span class="dh-sum-type">${esc((state.callTypes || []).find(t => t.id === call.call_type_id)?.name || "Untyped")}</span>
+          ${tones.length > 1 ? `<span class="sep">·</span><span>${tone[0].toUpperCase() + tone.slice(1)} tone</span>` : ""}
+          ${call.tone_reason ? `<span class="sep">·</span><span class="dh-sum-note">${esc(call.tone_reason)}</span>` : ""}
+          <span class="dh-sum-chev">${state.settingsOpen === call.id ? "▴" : "▾"}</span>
+        </button>
+        <div class="dh-controls">
+          <div class="tone-row">
+            <span class="tone-label">Call type</span>
+            <div class="ct-picker">${(state.callTypes || []).map(t =>
+              `<button class="ct-chip ${t.id === call.call_type_id ? "active" : ""}" data-pick="${t.id}">${esc(t.name)}</button>`).join("")}</div>
+            <span class="applies-to" id="ctStale"></span>
+          </div>
+          ${tones.length > 1 ? `
+          <div class="tone-row">
+            <span class="tone-label">Text &amp; email tone</span>
+            <div class="tone-seg">${tones.map(t =>
+              `<button class="tone-opt ${t === tone ? "selected" : ""}" data-tone="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
+            ${call.suggested_tone && call.suggested_tone !== tone ? `<span class="tone-suggested">✦ Suggested: ${call.suggested_tone}</span>` : ""}
+          </div>` : ""}
+        </div>
       </div>
-      ${tones.length > 1 ? `
-      <div class="tone-row">
-        <span class="tone-label">Text &amp; email tone</span>
-        <div class="tone-seg">${tones.map(t =>
-          `<button class="tone-opt ${t === tone ? "selected" : ""}" data-tone="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
-        ${call.suggested_tone && call.suggested_tone !== tone ? `<span class="tone-suggested">✦ Suggested: ${call.suggested_tone}</span>` : ""}
-        <span class="applies-to">${esc(call.tone_reason || "")}</span>
-      </div>` : call.tone_reason ? `
-      <div class="tone-row voice-row">
-        <span class="tone-label">Written for</span>
-        <span class="voice-note">${esc(call.tone_reason)}</span>
-      </div>` : ""}
     </div>
     <!-- Debrief: full-width, paginated by the pills. Only one page is in the DOM's flow at a
          time, so nothing needs scrolling past to reach the next thing (Gabriel's original
@@ -1101,10 +1133,15 @@ function renderProcessed(call, outputs) {
     </div>
     <!-- TASK-105. Sits BELOW the outputs, the way ChatGPT and Claude put the box under the
          answer — Ivan's shape from the call. Whatever it rewrites appears above it. -->
+    <!-- UI CLEANUP 2026-08-06. This shipped as a permanently open panel — empty-state paragraph
+         plus composer, ~160px subtracted from the outputs pane even with zero messages. That is
+         the exact pane Gabriel said was too small (TASK-088/106), which made the chat a
+         regression wearing a feature. Apollo and Lightfield both do this right: a slim ask-bar,
+         and the thread only takes space once a thread exists. The hint lives in the placeholder. -->
     <div class="chat-section" id="chatSection">
-      <div class="chat-log" id="chatLog"></div>
+      <div class="chat-log hidden" id="chatLog"></div>
       <form class="chat-input" id="chatForm">
-        <textarea id="chatBox" rows="1" placeholder="Rewrite the email without the price… / What did he actually object to?"></textarea>
+        <textarea id="chatBox" rows="1" placeholder="Ask about the call, or ask for a change — 'rewrite the email without the price'"></textarea>
         <button class="primary-btn" id="chatSend" type="submit">Send</button>
       </form>
     </div>`;
@@ -1127,9 +1164,13 @@ async function loadChat(call) {
   if (!log) return;
   try {
     const { messages } = await api.get(`/calls/${call.id}/chat`);
-    log.innerHTML = messages.length ? messages.map(chatBubble).join("")
-      : `<div class="chat-empty">Ask for a change, or ask about the call. This sees the full debrief — it is you talking to your own notes, not the client.</div>`;
-    log.scrollTop = log.scrollHeight;
+    // The log holds ZERO height until a conversation exists — the outputs pane pays for every
+    // pixel this panel takes, and an empty chat is not worth any of them.
+    if (messages.length) {
+      log.innerHTML = messages.map(chatBubble).join("");
+      log.classList.remove("hidden");
+      log.scrollTop = log.scrollHeight;
+    }
   } catch { /* a chat that fails to load must not take the call view down */ }
 
   const form = $("#chatForm"), box = $("#chatBox"), send = $("#chatSend");
@@ -1144,6 +1185,7 @@ async function loadChat(call) {
     const text = box.value.trim();
     if (!text || send.disabled) return;
     send.disabled = true; box.value = ""; box.style.height = "auto";
+    log.classList.remove("hidden");
     log.insertAdjacentHTML("beforeend", chatBubble({ role: "user", body: text }));
     log.insertAdjacentHTML("beforeend", `<div class="chat-msg chat-a chat-pending" id="chatPending">Thinking…</div>`);
     log.scrollTop = log.scrollHeight;
@@ -1353,6 +1395,14 @@ function outputPanel(title, out, opts) {
 }
 
 function wireDetail(call, outs) {
+  // The settings summary toggles the header controls. Open state is remembered per call so a
+  // re-render mid-edit (e.g. after picking a type) does not slam the drawer shut underneath.
+  $("#dhSummaryBtn")?.addEventListener("click", () => {
+    state.settingsOpen = state.settingsOpen === call.id ? null : call.id;
+    $("#dhSettings").classList.toggle("open", state.settingsOpen === call.id);
+    $("#dhSummaryBtn").setAttribute("aria-expanded", state.settingsOpen === call.id);
+  });
+
   // Debrief pagination: show one page, hide the rest.
   document.querySelectorAll(".chip[data-page]").forEach(chip => chip.addEventListener("click", () => {
     const n = chip.dataset.page;
@@ -1883,70 +1933,44 @@ async function renderActivity() {
     </tr>`;
   }).join("") : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing logged yet.</td></tr>`;
 
-  const runs = n => `${n || 0} generation${n === 1 ? "" : "s"}`;
-  const spend = `<div class="spend-row">
-      <div class="spend-card"><div class="spend-k">Today</div>
-        <div class="spend-v">${cost(today?.input_tokens, today?.output_tokens, today?.cache_read_tokens, today?.cache_write_tokens)}</div>
-        <div class="spend-sub">${runs(today?.runs)}</div></div>
-      <div class="spend-card"><div class="spend-k">Last 7 days</div>
-        <div class="spend-v">${cost(week?.input_tokens, week?.output_tokens, week?.cache_read_tokens, week?.cache_write_tokens)}</div>
-        <div class="spend-sub">${runs(week?.runs)}</div></div>
-      <div class="spend-card"><div class="spend-k">This month</div>
-        <div class="spend-v">${cost(month?.input_tokens, month?.output_tokens, month?.cache_read_tokens, month?.cache_write_tokens)}</div>
-        <div class="spend-sub">${runs(month?.runs)}</div></div>
-      <div class="spend-card"><div class="spend-k">All time</div>
-        <div class="spend-v">${cost(totals?.input_tokens, totals?.output_tokens, totals?.cache_read_tokens, totals?.cache_write_tokens)}</div>
-        <div class="spend-sub">${totals?.runs || 0} runs · ${totals?.failures || 0} errors</div></div>
-      <div class="spend-card"><div class="spend-k">Avg / call</div>
-        <div class="spend-v">${totals?.runs ? cost((totals.input_tokens || 0) / totals.runs, (totals.output_tokens || 0) / totals.runs,
-              (totals.cache_read_tokens || 0) / totals.runs, (totals.cache_write_tokens || 0) / totals.runs) : "$0.00"}</div>
-        <div class="spend-sub">${totals?.avg_ms ? Math.round(totals.avg_ms / 1000) + "s avg" : "—"}</div></div>
-    </div>
-    <div class="insight-note">Estimated from tokens this app logged, at ${esc(model?.label || "current model")} list pricing. It counts Closer's spend only — the billed total and your remaining credit balance live in the Anthropic console, which has no API for either.</div>`;
-
-  // TASK-102 — Gabriel: generation fails "more often than not". Nobody could check, because the
-  // only counter was every error-level event of any kind. This is the answer, and it reports
-  // VANISHED runs separately: a run that died without logging a failure is invisible to a
-  // failed-vs-succeeded ratio, and this app's outage history (TASK-041/043/045) is exactly that
-  // shape. If the two columns disagree, the honest read is that Gabriel is remembering vanished
-  // runs and the failure count alone is understating him.
+  const runsLabel = n => `${n || 0} generation${n === 1 ? "" : "s"}`;
+  // UI CLEANUP 2026-08-06. This page had THREE stacked stat strips from three eras — TASK-076
+  // spend cards, the TASK-102 reliability row, and the original ev-summary — and they disagreed
+  // with each other on the same screen: "5 runs · 3 errors" beside "5 GENERATIONS / 3 ERROR
+  // EVENTS", a 55s average beside a 54.7s one, an all-time total beside an input-only estimate.
+  // Three sources for one fact is zero sources. ONE strip now: health first (if generation is
+  // failing nothing else on the page matters), then volume, then cost — each fact exactly once.
   const rel = reliability?.d30 || reliability?.all;
-  const relBlock = (() => {
-    if (!rel || !rel.started) {
-      return `<div class="insight-note">No generations logged in the last 30 days, so there is no reliability figure to report yet.</div>`;
-    }
-    const pct = n => `${Math.round((n / rel.started) * 100)}%`;
-    const okRate = rel.succeeded / rel.started;
-    const tone = okRate >= 0.95 ? "" : okRate >= 0.8 ? "warn" : "bad";
-    const retry = rel.attempts > rel.started
-      ? `${rel.attempts} attempts for ${rel.started} runs — ${(rel.attempts / rel.started).toFixed(2)}x. Every attempt bills for whatever it produced before it stopped.`
-      : `${rel.attempts} attempts for ${rel.started} runs — no measurable retrying.`;
-    return `<div class="spend-row">
-      <div class="spend-card"><div class="spend-k">Succeeded</div>
-        <div class="spend-v ${tone}">${pct(rel.succeeded)}</div>
-        <div class="spend-sub">${rel.succeeded} of ${rel.started} started</div></div>
-      <div class="spend-card"><div class="spend-k">Failed</div>
-        <div class="spend-v ${rel.failed ? "bad" : ""}">${rel.failed}</div>
-        <div class="spend-sub">logged an error</div></div>
-      <div class="spend-card"><div class="spend-k">Vanished</div>
-        <div class="spend-v ${rel.vanished ? "bad" : ""}">${rel.vanished}</div>
-        <div class="spend-sub">started, never finished, never errored</div></div>
-      <div class="spend-card"><div class="spend-k">Attempts</div>
-        <div class="spend-v">${rel.attempts}</div>
-        <div class="spend-sub">incl. retries</div></div>
+  const okRate = rel && rel.started ? rel.succeeded / rel.started : null;
+  const healthTone = okRate === null ? "" : okRate >= 0.95 ? "" : okRate >= 0.8 ? "warn" : "bad";
+  const problems = rel ? rel.failed + rel.vanished : 0;
+  const avgSecs = totals?.avg_ms ? (totals.avg_ms / 1000).toFixed(1) + "s" : "—";
+  const strip = `<div class="spend-row">
+      <div class="spend-card"><div class="spend-k">Health · 30d</div>
+        <div class="spend-v ${healthTone}">${okRate === null ? "—" : Math.round(okRate * 100) + "%"}</div>
+        <div class="spend-sub">${rel && rel.started ? `${rel.succeeded} of ${rel.started} succeeded` : "no runs in 30 days"}</div></div>
+      ${problems ? `<div class="spend-card"><div class="spend-k">Problems · 30d</div>
+        <div class="spend-v bad">${problems}</div>
+        <div class="spend-sub">${rel.failed} failed${rel.vanished ? ` · ${rel.vanished} vanished` : ""}</div></div>` : ""}
+      <div class="spend-card"><div class="spend-k">Runs</div>
+        <div class="spend-v">${totals?.runs || 0}</div>
+        <div class="spend-sub">${avgSecs} avg · ${totals?.failures || 0} error events</div></div>
+      <div class="spend-card"><div class="spend-k">Tokens</div>
+        <div class="spend-v">${((totals?.input_tokens || 0) / 1000).toFixed(0)}k</div>
+        <div class="spend-sub">in · ${((totals?.output_tokens || 0) / 1000).toFixed(0)}k out</div></div>
+      <div class="spend-card"><div class="spend-k">Cost · 7d</div>
+        <div class="spend-v">${cost(week?.input_tokens, week?.output_tokens, week?.cache_read_tokens, week?.cache_write_tokens)}</div>
+        <div class="spend-sub">${runsLabel(week?.runs)}</div></div>
+      <div class="spend-card"><div class="spend-k">Cost · all time</div>
+        <div class="spend-v">${cost(totals?.input_tokens, totals?.output_tokens, totals?.cache_read_tokens, totals?.cache_write_tokens)}</div>
+        <div class="spend-sub">${totals?.runs ? cost((totals.input_tokens || 0) / totals.runs, (totals.output_tokens || 0) / totals.runs,
+              (totals.cache_read_tokens || 0) / totals.runs, (totals.cache_write_tokens || 0) / totals.runs) + " / call" : "—"}</div></div>
     </div>
-    <div class="insight-note">Last 30 days. ${esc(retry)}</div>`;
-  })();
-  // Reliability leads. If generation is failing, no other number on this page matters.
+    <div class="insight-note">Estimated from tokens this app logged, at ${esc(model?.label || "current model")} list pricing, cached input included at Anthropic's reduced rates. It counts Closer's spend only — the billed total lives in the Anthropic console, which has no API for it.${
+      rel && rel.attempts > rel.started ? ` ${rel.attempts} attempts for ${rel.started} runs — every attempt bills for whatever it produced before it stopped.` : ""}</div>`;
+
   viewShell("Activity", "Everything the app has done — failures, completions, token spend, and which outputs actually get used",
-    relBlock + spend + `<div class="ev-summary">
-       <div><b>${totals.runs || 0}</b><span>generations</span></div>
-       <div class="${totals.failures ? "bad" : ""}"><b>${totals.failures || 0}</b><span>error events</span></div>
-       <div><b>${(totals.input_tokens || 0).toLocaleString()}</b><span>input tokens</span></div>
-       <div><b>${(totals.output_tokens || 0).toLocaleString()}</b><span>output tokens</span></div>
-       <div><b>${totals.avg_ms ? (totals.avg_ms / 1000).toFixed(1) + "s" : "—"}</b><span>avg run</span></div>
-       <div><b>~${cost(totals.input_tokens, 0, totals.cache_read_tokens, totals.cache_write_tokens)}</b><span>input cost (est.)</span></div>
-     </div>
+    strip + `
      <div class="ev-filters">
        <button class="chip" data-evfilter="">All</button>
        <button class="chip" data-evfilter="level=error">Failures only</button>

@@ -65,13 +65,34 @@ button{ font-family:inherit; }
 .app{ display:grid; grid-template-columns:var(--w-sidebar, 208px) var(--w-list, 280px) minmax(0,1fr);
   height:100vh; min-height:640px; background:var(--paper-0); position:relative; }
 @media (max-width:1100px){ .app{ grid-template-columns:var(--w-sidebar, 176px) var(--w-list, 240px) minmax(0,1fr); } }
+/* UI CLEANUP 2026-08-06 — the 641-900px band used to keep a 56px "icon rail" whose nav items
+   were `display:none`. There are no icons in this app, so the rail showed a logo above a blank
+   strip and the ENTIRE navigation (Insights, Suggestions, the account menu's pages) had
+   zero-size hit targets: unreachable, silently, at exactly a half-screen laptop window. The
+   rail is gone; this band now uses the same slide-over the phone uses, driven by the same
+   markup — one nav idiom below 900px instead of two, one of which was broken. */
 @media (max-width:900px){
-  .app{ grid-template-columns:56px 220px minmax(0,1fr); }
-  .sidebar .brand-name, .sidebar .nav-label, .sidebar .nav-item, .sidebar-foot span, .sidebar-foot .linklike{ display:none; }
-  .sidebar{ align-items:center; }
-  /* Below 900px the columns are fixed (icon rail, then single-column mobile), so there is
-     nothing to drag — hide the handles rather than let them move a width nothing reads. */
+  .app{ grid-template-columns:240px minmax(0,1fr); }
+  /* Below 900px the columns are fixed, so there is nothing to drag — hide the handles rather
+     than let them move a width nothing reads. */
   .resizer, .resizer-h{ display:none; }
+  .sb-toggle{ display:none; }
+  .sb-close{ display:block; }
+  body.sb-collapsed .sidebar{ opacity:1; pointer-events:auto; border-width:1px;
+    padding:16px 12px; margin:0; }
+  .sidebar{
+    position:fixed; top:0; bottom:0; left:0; width:250px; z-index:60; align-items:stretch;
+    transform:translateX(-100%); transition:transform .22s ease; padding:16px 12px;
+    margin:0; border-radius:0 14px 14px 0; border-width:0 1px 0 0;
+  }
+  .sidebar.open{ transform:translateX(0); box-shadow:0 0 40px rgba(0,0,0,.6); }
+  @media (prefers-reduced-motion: reduce){ .sidebar{ transition:none; } }
+  /* The call-list header grows a menu button in this band (see .list-nav-btn). */
+  .list-header .list-nav-btn{ display:inline-flex; }
+  /* The scrim belongs to the slide-over, and the slide-over now lives at ≤900, not ≤640.
+     Without it, tapping beside the panel did nothing and the content behind stayed live. */
+  .nav-scrim{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:55; }
+  .nav-scrim.show{ display:block; }
 }
 
 /* ---------- sidebar ----------
@@ -256,7 +277,11 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .debrief-section{ border-bottom:1px solid var(--line); flex-shrink:0; }
 .debrief-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 22px 0; }
 .debrief-head h3{ margin:0; font-family:var(--font-display); font-size:21px; font-weight:600; letter-spacing:0.011em; }
-.panel-subnav{ display:flex; align-items:center; gap:5px; padding:9px 22px; overflow-x:auto; }
+/* Wraps rather than scrolls (2026-08-06): nine debrief pages clipped mid-word at the right
+   edge with no affordance — macOS overlay scrollbars are invisible until touched, which is the
+   TASK-092 dialog lesson again on a different element. A second line of pills costs 30px and
+   hides nothing. */
+.panel-subnav{ display:flex; align-items:center; gap:5px; padding:9px 22px; flex-wrap:wrap; }
 /* The outputs tab strip carries its own actions on the SAME line (TASK-093). Copy and Mark
    sent used to sit in a header strip below the chips, which read as a rendering mistake and
    cost a full row of vertical height on every call. Only the active tab's set is shown. */
@@ -425,7 +450,14 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .ev-summary span{ font-size:12px; color:var(--ink-400); text-transform:uppercase; letter-spacing:0.02em; }
 .ev-summary .bad b{ color:var(--pink-500); }
 .ev-filters{ display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
-.ev-table{ width:100%; border-collapse:collapse; font-size:12px; }
+.ev-table{ width:100%; border-collapse:collapse; font-size:12px; table-layout:fixed; }
+/* Time and kind are fixed-width; the detail column takes everything else. Without this the
+   table's auto layout gave the meta column whatever it asked for and long error text wrapped
+   into eight-line towers in a squeezed detail cell. */
+.ev-table td:nth-child(1){ width:150px; }
+.ev-table td:nth-child(2){ width:170px; }
+.ev-table td:nth-child(4){ width:130px; }
+.ev-table td{ overflow-wrap:break-word; }
 .ev-table td{ padding:7px 10px; border-bottom:1px solid var(--paper-100); vertical-align:top; }
 .ev-at{ font-family:var(--font-mono); font-size:12px; color:var(--ink-400); white-space:nowrap; }
 .ev-kind{ font-family:var(--font-mono); font-size:12px; padding:2px 6px; border-radius:4px; background:var(--paper-200); color:var(--ink-600); white-space:nowrap; }
@@ -439,6 +471,24 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
    invite Gabriel to click it. */
 .voice-row{ align-items:baseline; }
 .voice-note{ font-size:13px; line-height:1.5; color:var(--ink-600); font-style:italic; }
+
+/* Hidden except in the 641-900px band, where it is the only door to navigation. */
+.list-nav-btn{ display:none; background:var(--paper-200); color:var(--ink-950);
+  border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:15px; cursor:pointer; }
+
+/* UI CLEANUP 2026-08-06 — the collapsed header settings (call type + tone editors live inside;
+   the summary line is all that shows until clicked). */
+.dh-settings .dh-controls{ display:none; }
+.dh-settings.open .dh-controls{ display:block; padding-top:2px; }
+.dh-summary{ display:flex; align-items:center; gap:7px; width:100%; text-align:left; flex-wrap:nowrap; overflow:hidden; }
+.dh-summary > span{ white-space:nowrap; }
+.dh-summary{
+  background:none; border:none; padding:4px 0 2px; cursor:pointer;
+  font-family:inherit; font-size:13px; color:var(--ink-600); min-width:0; }
+.dh-summary:hover .dh-sum-type{ color:var(--blue-600); }
+.dh-sum-type{ font-weight:600; color:var(--ink-800); white-space:nowrap; }
+.dh-sum-note{ font-style:italic; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:0 1 auto; }
+.dh-sum-chev{ color:var(--ink-400); font-size:11px; }
 
 /* TASK-105 — the per-call chat. Below the outputs, like ChatGPT and Claude, so anything it
    rewrites appears ABOVE the box where the change is visible. */

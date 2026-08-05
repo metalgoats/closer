@@ -33,6 +33,51 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
+## 2026-08-06 (cleanup) — The UI, tightened: five sessions of accretion reconciled
+
+Ivan's read after a week of feature work: *"the UI is drifting and we're creating all these
+little messy appendages and trailing parts."* Right. Each session had bolted on its own strip,
+row, or panel, and nobody had looked at the whole surface since. Surveyed every view at three
+widths against comparable products (Grain, Apollo, Lightfield, Amie — via Mobbin), then one
+tightening pass. The recurring disease had one shape: **controls and labels that never earn
+their permanence.**
+
+- **The header stacked four permanent control rows (~430px) before any content.** Call-type
+  chips, the tone segment, and two explainer lines — all editable, on every call, forever.
+  Relabelling a call is an exception, not a per-visit action; every comparable product shows the
+  current value and hides the editor behind it. One summary line now ("Sales call · Formal tone
+  · why"); clicking it reveals the same controls, so every handler and workflow survives.
+- **The chat panel ate ~160px of the outputs pane while empty — my own TASK-105 regression.**
+  An empty-state paragraph plus composer, permanently subtracted from the exact pane Gabriel
+  said was too small. It is a slim single bar now; the hint lives in the placeholder; the thread
+  only takes space once a thread exists. Apollo and Lightfield both ship this shape.
+- **Activity had three stat strips from three eras, and they disagreed on screen**: "5 runs · 3
+  errors" beside "5 GENERATIONS / 3 ERROR EVENTS", a 55s average beside a 54.7s one, an
+  all-time total beside an input-only estimate. Three sources for one fact is zero sources.
+  ONE strip: health first, then runs, tokens, cost — each fact exactly once, honest em-dashes
+  when there is no data.
+- **Navigation was unreachable between 641 and 900px — a real bug, not a style choice.** The
+  "icon rail" had `display:none` nav items and no icons: a logo above a blank strip, with
+  Insights, Suggestions and the account pages having zero-size hit targets at exactly a
+  half-screen laptop window. The rail is gone; that band now uses the same slide-over as the
+  phone, same markup, plus the scrim it turned out to be missing.
+- **Debrief pills wrap instead of clipping.** Nine pages overflowed off-screen mid-word with no
+  affordance — invisible macOS overlay scrollbars, the TASK-092 dialog lesson on a new element.
+- The event table stops squeezing long errors into eight-line towers (`table-layout:fixed`,
+  detail gets the width). Seed emails carry real newlines instead of literal `\n`. The release
+  notes finally announce the 5–6 Aug work — they had sat five days stale, which is the exact
+  failure TASK-092 exists to prevent, recurring one layer up.
+
+The release-note staleness test no longer pins a literal date (that assertion is what went
+stale); it asserts newest-first ordering and substance instead.
+
+Verified by logging in and using every changed view at 1280, 800 and 375 — including one
+self-inflicted lesson: wiping the local D1 under a running dev server split the CLI and the
+server onto different database objects, and the migration output was read by grep instead of by
+eye, so 11-of-17 applied looked like success. Read the output, then look at the screen.
+
+148 assertions in ui-smoke; the chat collapse and rail removal proven to FAIL when reverted.
+
 ## 2026-08-06 (last) — First real chat turn, and the cached spend it exposed
 
 Ran one live chat turn against production call 10050 — real debrief (28KB), real outputs, real

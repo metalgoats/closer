@@ -2915,6 +2915,16 @@
       ],
       "source": "2026-08-04 pricing model",
       "description": "At $6,500 installation + $997/seat, roughly half of year-one revenue is installation fees — which means year one is a services business wearing a SaaS hat, and every new client costs Ivan real hours of calibration. That is fine as a starting shape and dangerous as a steady state: revenue stops the month selling stops. Work: a repeatable calibration path (connect recorder + CRM + their key, ingest N of their real calls, tune the master prompt against them, verify against a specimen) that a checklist can drive rather than Ivan's judgment. The luxury positioning depends on the calibration being genuinely good, so this is about making it repeatable, NOT about making it self-serve."
+    },
+    {
+      "id": "TASK-110",
+      "title": "UI cleanup pass: reconcile five sessions of accretion",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "completed",
+      "dependencies": [],
+      "source": "Ivan 2026-08-06: 'the UI is drifting... messy little appendages and trailing parts'",
+      "description": "Surveyed every view at 1280/800/375 and researched comparable products (Grain, Apollo, Lightfield, Amie via Mobbin). One disease, many symptoms: controls and labels that never earn their permanence. FIXED: header's four permanent control rows collapsed to a one-line summary that expands to the same editors (~280px returned to content); TASK-105 chat panel no longer eats ~160px of the outputs pane while empty (slim bar, hint in placeholder, log appears with first message); Activity's three disagreeing stat strips merged to one (health -> runs -> tokens -> cost, each fact once); REAL BUG: nav was unreachable 641-900px (icon rail had display:none items and no icons) — rail removed, phone slide-over + scrim now serve that band; debrief pills wrap instead of clipping off-screen; event table table-layout:fixed; seed \\n literals -> char(10); release notes updated after sitting 5 days stale. The stale-notes TEST was itself pinned to a literal date and had gone stale — replaced with newest-first + substance invariants."
     }
   ],
   "progress_percentage": 77,

@@ -382,8 +382,13 @@ const days = R.map(r => r.v);
 check("no date has two entries — a day accumulates into one", new Set(days).size === days.length,
   days.join(", "));
 check("releases are newest-first", days.every((d, i) => i === 0 || days[i - 1] > d), days.join(", "));
-check("today's work is actually announced", R[0].v === "2026-07-29" && R[0].items.length >= 6,
-  `${R[0].v}, ${R[0].items.length} items`);
+// Not pinned to a literal date — the previous version asserted v === "2026-07-29", which
+// guaranteed the assertion itself went stale the day new work shipped (and it did: the notes
+// sat five days and eight features behind until 2026-08-06). Assert the invariants instead:
+// newest entry first, and it says something.
+check("release entries are newest-first and the top one has substance",
+  R.every((r, i) => i === 0 || r.v < R[i - 1].v) && R[0].items.length >= 3,
+  `${R.map(r => r.v).join(" > ")}, top has ${R[0].items.length} items`);
 
 // The core of the aggregation: an entry Gabriel has already read must re-open when that same day
 // gains an item from a later push. Keying on `v` alone silently swallowed it.
@@ -442,17 +447,20 @@ console.log("\n== generation reliability + model-aware pricing (TASK-102) ==");
 check("Activity reads the reliability block the server sends",
   /const \{ events, totals, today, week, month, reliability, model \} = await api\.get/.test(src),
   "renderActivity destructured the old shape and would silently show nothing");
-check("reliability is rendered ABOVE spend",
-  /relBlock \+ spend \+/.test(src),
-  "if generation is failing, no other number on the page matters — it must lead");
-check("VANISHED runs are surfaced, not just logged failures",
-  /Vanished/.test(src) && /rel\.vanished/.test(src),
+check("health LEADS the merged strip (2026-08-06: three strips became one)",
+  /Health · 30d[\s\S]{0,2500}?Cost · all time/.test(src),
+  "if generation is failing, no other number on the page matters — it must come first");
+check("the three-era strips are actually gone",
+  !/relBlock \+ spend \+/.test(src) && !/class="ev-summary"/.test(src),
+  "three sources for one fact is zero sources — the strips disagreed on screen (55s vs 54.7s)");
+check("VANISHED runs are surfaced when they exist",
+  /rel\.vanished \? ` · \$\{rel\.vanished\} vanished` : ""/.test(src),
   "a run that dies without an error row is invisible to failed-vs-succeeded, and that is this app's entire outage history (TASK-041/043/045)");
-check("the retry line says attempts are billed",
-  /Every attempt bills/.test(src),
+check("when retrying happens, the note says attempts are billed",
+  /every attempt bills for whatever it produced/.test(src),
   "this is the literal question Gabriel asked and it must not be softened away");
 check("no history reports honestly instead of showing 0%",
-  /no reliability figure to report yet/.test(src));
+  /okRate === null \? "—"/.test(src) && /no runs in 30 days/.test(src));
 check("spend is priced from the server's rates, not a hardcoded constant",
   /model\?\.inPerM/.test(src) && /model\?\.outPerM/.test(src),
   "the Sonnet 5 constant is back — it understates Opus 5 spend by ~65%");
@@ -462,8 +470,8 @@ check("no rate constant survives in renderActivity",
 check("the estimate note names the actual model",
   /model\?\.label \|\| "current model"/.test(src),
   "the note claimed Sonnet 5 pricing regardless of what was running");
-check("the all-time counter no longer calls itself 'failures'",
-  /<span>error events<\/span>/.test(src),
+check("error-level events are labelled as such, never as 'failures'",
+  /error events/.test(src) && !/\$\{totals\?\.failures \|\| 0\} failures/.test(src),
   "it counts EVERY error-level event; calling it 'failures' is what made TASK-102 unanswerable");
 
 console.log("\n== selection visibility + live preview (TASK-100, TASK-101) ==");
@@ -510,9 +518,9 @@ check("tones come from the outputs, not a hardcoded list",
 check("the selected tone falls back to one the call actually has",
   /tones\.includes\(toneOf\(call\)\)/.test(src),
   "a legacy default of 'balanced' would select nothing on a call whose only output is 'tuned'");
-check("single-voice calls show why the follow-up reads as it does",
-  /voice-note/.test(src) && /Written for/.test(src),
-  "removing the selector without replacing it loses the one line that explains the draft");
+check("the voice note survives in the header summary line",
+  /dh-sum-note/.test(src) && /call\.tone_reason/.test(src),
+  "collapsing the settings must not lose the one line that explains why the draft reads as it does");
 check("the voice note has styling",
   /\.voice-note\{/.test(css));
 
@@ -575,9 +583,57 @@ check("cached input is priced, not ignored (2026-08-06)",
   /CACHE_WRITE_MULT = 1\.25, CACHE_READ_MULT = 0\.1/.test(src)
     && /cache_read_tokens, totals\?\.cache_write_tokens/.test(src),
   "a live chat turn reported 42 fresh input tokens against a ~10k cached prefix — pricing only fresh input made almost the whole cost invisible");
-check("every window carries the cached columns, not just all-time",
-  (src.match(/cache_read_tokens, \w+\?\.cache_write_tokens/g) || []).length >= 4,
-  "today/week/month would stay wrong while the all-time figure looked fixed");
+{
+  // Stronger than counting call sites: NO invocation of cost() may omit the cache arguments.
+  const activityFn = src.slice(src.indexOf("async function renderActivity"), src.indexOf("\n}", src.indexOf("async function renderActivity")));
+  // Balanced-paren walk, because an inner "(x || 0)" defeats any flat regex.
+  const bare = [];
+  let at = 0;
+  while ((at = activityFn.indexOf("cost(", at)) !== -1) {
+    let depth = 0, end = at + 4;
+    for (; end < activityFn.length; end++) {
+      if (activityFn[end] === "(") depth++;
+      else if (activityFn[end] === ")" && --depth === 0) break;
+    }
+    const args = activityFn.slice(at, end + 1);
+    if (!/cache_read/.test(args) && !/const cost/.test(activityFn.slice(Math.max(0, at - 30), at))) bare.push(args.slice(0, 60));
+    at = end;
+  }
+  check("no cost() call omits the cached-token arguments",
+    bare.length === 0,
+    "an un-cached call site silently under-reports again: " + bare.join(" | "));
+}
+
+console.log("\n== UI cleanup pass (2026-08-06) ==");
+check("header settings are collapsed behind a one-line summary",
+  /dh-settings/.test(src) && /dhSummaryBtn/.test(src) && /\.dh-settings \.dh-controls\{ display:none; \}/.test(css.replace(/\s+/g, " ")),
+  "four permanent control rows ate ~430px before any content — editing a type or tone is an exception, not a per-visit action");
+check("the full editors still exist behind the summary",
+  /ct-picker/.test(src) && /tone-seg/.test(src),
+  "collapsing must hide the controls, never remove them — relabelling calls is a real workflow (TASK-073)");
+check("the chat log holds zero height until a conversation exists",
+  /chat-log hidden/.test(src) && !/chat-empty/.test(src),
+  "an empty chat panel subtracted ~160px from the outputs pane — the exact pane Gabriel said was too small");
+check("the empty-state hint lives in the placeholder, not a paragraph",
+  /placeholder="Ask about the call/.test(src));
+check("debrief pills wrap instead of clipping off-screen",
+  /\.panel-subnav\{[^}]*flex-wrap:wrap/.test(css) && !/\.panel-subnav\{[^}]*overflow-x:auto/.test(css),
+  "nine pages clipped mid-word at the right edge with no affordance — invisible macOS scrollbars again");
+check("the 641-900px band has a working door to navigation",
+  /listNavBtn/.test(src) && /list-nav-btn/.test(css)
+    && /@media \(max-width:900px\)\{[\s\S]*?\.nav-scrim\.show\{ display:block; \}/.test(css),
+  "the icon rail had display:none nav items — Insights and the account pages were unreachable at a half-screen window");
+check("the icon rail is gone",
+  !/grid-template-columns:56px 220px/.test(css),
+  "a 56px rail with no icons showed a logo above a blank strip");
+check("the event table cannot squeeze details into towers",
+  /\.ev-table\{[^}]*table-layout:fixed/.test(css));
+{
+  const seed = readFileSync(join(PUB, "..", "seed", "seed.sql"), "utf8");
+  check("seed bodies carry real newlines, not backslash-n literals",
+    !/\\n/.test(seed.replace(/char\(10\)/g, "")),
+    "the dev email rendered 'Dear Jeffrey,\\n\\nThank you' as literal text");
+}
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
