@@ -1,6 +1,6 @@
 {
   "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
-  "last_updated": "2026-07-16",
+  "last_updated": "2026-08-04",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
   "completion_percentage": 54,
   "tasks": [
@@ -657,10 +657,11 @@
     {
       "id": "TASK-022",
       "title": "Real LLM analysis for weekly edit suggestions",
-      "description": "The Sunday cron correctly batches edits and gates on >=10 per (account, tone), but the 'analysis' it writes is placeholder text, not an actual LLM-written diff analysis. Suggestions are therefore not yet useful.",
+      "description": "The Sunday cron correctly batches edits and gates on >=10 per (account, tone), but the 'analysis' it writes is placeholder text, not an actual LLM-written diff analysis. Suggestions are therefore not yet useful. BLOCKED IN PRACTICE BY TASK-100: because Gabriel cannot see his text selection he select-alls and overwrites, so every captured edit is a whole-document replacement rather than a diff. Analysing them before TASK-100 lands would train on noise.",
       "dependencies": [
+        "TASK-007",
         "TASK-015",
-        "TASK-007"
+        "TASK-100"
       ],
       "priority": "medium",
       "estimated_complexity": "medium",
@@ -2811,6 +2812,88 @@
         "With no history it says so rather than inventing a number."
       ],
       "notes": "Verified against seeded history: 5 runs averaging 36,598 in / 5,402 out / 613 cached gives $0.315 per call on Opus 5, $0.631 on Fable, $0.189 on Sonnet. Default effort stays medium so nothing changed silently for anyone who does not touch it. Ivan asked for High and it is set."
+    },
+    {
+      "id": "TASK-100",
+      "title": "Highlighted text is invisible in the output fields — and it is silently poisoning TASK-022",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Gabriel cannot see his own selection in the Text/Email/CRM textareas, so he never makes a partial edit: 'What I'm doing is like I'm just like Command A. And then when I paste it over, it just overrides it.' TASK-007 captures every pre-copy edit into `edits`, and TASK-022 exists to LEARN from those edits. Because selection is invisible, every stored edit is a whole-document replacement, which is nearly useless as a diff signal. The cosmetic bug and the stalled learning feature are the same bug. Selection renders correctly in the debrief pane, so compare the two — likely a ::selection / -webkit-text-fill-color / appearance rule on the output textareas only. VERIFY BY LOOKING: select a phrase in a real browser and see the highlight, in both themes.",
+      "source": "2026-08-04 Gabriel call"
+    },
+    {
+      "id": "TASK-101",
+      "title": "Stream the generated text to the browser — the tokens already exist and are being thrown away",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Gabriel: generation feels slow. Ivan diagnosed it live as a PERCEPTION problem (ChatGPT streams, Closer doesn't) and then told him 'I don't know [what can be done]'. There is something that can be done. src/workflow.js:58 says it outright — 'the stream reports on every text delta' — the Worker already receives every token and discards the text, writing only a throttled percentage to D1 every 1.5s for the browser to poll. Push the deltas to the client instead. Measured evidence that a faster MODEL is not the fix: Opus 5 high 3m40s vs Fable 5 high 3m35s on the same call — 5 seconds for ~2x cost. This is likely the single highest-satisfaction change available.",
+      "source": "2026-08-04 Gabriel call"
+    },
+    {
+      "id": "TASK-102",
+      "title": "Measure the real generation failure rate, and answer whether failed attempts are billed",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "status": "incomplete",
+      "dependencies": [
+        "TASK-103"
+      ],
+      "description": "Said in passing on the 08-04 call and not stopped on. Gabriel: 'when I hit generate and it doesn't generate ... are we still being charged for every single one of those attempts?' Ivan: 'I can find out.' Gabriel: 'Because that's more often than not.' IF FAILURES OUTNUMBER SUCCESSES, NOTHING ELSE ON THIS LIST MATTERS. It is already logged — events holds generation.succeeded / generation.failed. Blocked on TASK-103 (Ivan cannot currently reach D1). Query: SELECT kind, COUNT(*) FROM events WHERE kind LIKE 'generation%' GROUP BY kind. On billing: Anthropic bills tokens produced, so a mid-stream failure generally DOES bill for what was produced — confirm against logged usage rather than asserting it to Gabriel.",
+      "source": "2026-08-04 Gabriel call"
+    },
+    {
+      "id": "TASK-103",
+      "title": "Production D1 is unreachable by Ivan — only CI can read it",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Found while trying to answer TASK-102. `wrangler d1 list` under Ivan's account (563eb5c6...) returns no databases and a direct query returns 'database fcd1b2c4-... could not be found [code: 7404]', while GitHub Actions deploys and migrations succeed using the CLOUDFLARE_ACCOUNT_ID/API_TOKEN secrets. So the production database is reachable by the pipeline and not by its owner. That blocks every diagnostic question ('how often does it fail', 'what does a call really cost') behind a deploy. Establish which account actually holds the DB and give Ivan a token that can read it.",
+      "source": "2026-08-04 Gabriel call"
+    },
+    {
+      "id": "TASK-104",
+      "title": "Rebuild the master prompt around the client's buying psychology; retire casual/balanced/formal",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Gabriel's central ask on 08-04, and the reason he still runs a third pass in ChatGPT: 'run a comparison of both of these answers, and then catering the answers specifically to the psychological profile of the person that I just met with.' He wants the tone selector gone — 'I almost never necessarily care if it's balanced, casual, or formal. I always default to what is the client's buying behavior.' NOTE two tangled things: (a) replace tone with profile-driven voice, and (b) a real defect — the suggested tone 'doesn't go beyond this point', i.e. the selection is not persisting. Fix (b) even while removing (a). TASK-086 already extracts recipientProfile; this makes it govern the writing rather than garnish it. Gabriel has NOT yet updated his own master prompt for this either — ask for his version before inventing one.",
+      "source": "2026-08-04 Gabriel call"
+    },
+    {
+      "id": "TASK-105",
+      "title": "Per-call chat window — let Gabriel revise in place instead of leaving for ChatGPT",
+      "priority": "high",
+      "estimated_complexity": "high",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "The feature that decides whether Closer replaces the old workflow or stays a third step in it. Gabriel's reference is Notion's AI sidebar: 'if I could just like input the commands directly here ... create an email that has an offer and don't present the price' and have it repopulate. Ivan's shape from the call: the chat sits BELOW the outputs like ChatGPT/Claude, generated content pushes upward, sections collapse. Architectural note — this is not a UI ticket. The app is generate-once-and-hand-back; this makes it conversational, which means per-call message history, the call context on every turn, and a re-generation path that updates one output without re-running the other three.",
+      "source": "2026-08-04 Gabriel call"
+    },
+    {
+      "id": "TASK-106",
+      "title": "Fold Text/Email/CRM into the debrief; collapsible sections; expand any panel full height",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Gabriel is reading the outputs far more than the debrief but can only give them about a third of the screen, working around it with 'this little mini scroll at the bottom'. Decided on the call: the three outputs become buttons alongside the debrief's own sections rather than a second full pane; every section collapses; any panel expands to full height. Reference the existing resizable panes (TASK-091) — do not fight them. Gabriel: 'I can't think of a situation where I would need to copy the full debrief.'",
+      "source": "2026-08-04 Gabriel call"
+    },
+    {
+      "id": "TASK-107",
+      "title": "Closer AI brand script, pricing and 1st/2nd-year projections",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "status": "incomplete",
+      "dependencies": [],
+      "description": "Ivan asked for this out loud on the 08-04 call: a brand script for what Closer AI is, drawing on how it was actually built, plus an onboarding/activation fee, a monthly per-seat price, and year one / year two sales projections. Gabriel's own anchors from the call: activation fee modelled on a ~$1,200 build, monthly in the $40–60 range, go-live in roughly two months, then webinar → ads → evergreen recording. Real unit economics now exist to price against (TASK-099): his last 26 generations averaged ~40k in / ~9.7k out, about $0.45/call on Opus 5. Deliverable is an email to Gabriel, drafted not sent.",
+      "source": "2026-08-04 Gabriel call"
     }
   ],
   "progress_percentage": 77,
