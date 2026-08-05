@@ -199,7 +199,10 @@ check(".hidden really is display:none !important (so the above matters)",
   /\.hidden\{[^}]*display:none\s*!important/.test(css));
 
 console.log("\n== mobile: nav items keep display:flex so counts don't collide with labels ==");
-const mobileBlock = (css.match(/@media \(max-width:640px\)\{[\s\S]*?\n\}/) || [""])[0];
+// ALL the 640px blocks, joined — not just the first. Mobile overrides are allowed to live
+// beside the component they modify, and a first-match grab silently started testing an
+// unrelated block the moment one was added earlier in the file (TASK-105).
+const mobileBlock = (css.match(/@media \(max-width:640px\)\{[\s\S]*?\n\}/g) || []).join("\n");
 check("nav-item restored to flex, not `revert`", /\.sidebar \.nav-item\{\s*display:flex/.test(mobileBlock));
 check("a desktop collapse cannot hide the mobile slide-over",
   /body\.sb-collapsed \.sidebar\{[^}]*opacity:1/.test(mobileBlock));
@@ -544,6 +547,29 @@ check("the voice note has styling",
     stale.tone === "tuned",
     "falling through to 'balanced' would make outputs.find() return undefined and render an empty panel");
 }
+
+console.log("\n== the per-call chat panel (TASK-105) ==");
+check("the chat sits BELOW the outputs, not beside them",
+  src.indexOf('class="outputs-section"') < src.indexOf('id="chatSection"'),
+  "Ivan's shape from the call: the box goes under the answer, so a rewrite appears above it");
+check("a rewrite re-renders the call so the new text is visible",
+  /if \(r\.updatedKind\) await openCall\(call\.id\)/.test(src),
+  "otherwise Gabriel is told it changed and has to go looking for it");
+check("Enter sends, Shift+Enter makes a new line",
+  /e\.key === "Enter" && !e\.shiftKey/.test(src));
+check("a failed chat load cannot take the call view down",
+  /catch \{ \/\* a chat that fails to load must not take the call view down \*\/ \}/.test(src),
+  "the chat is an addition to the pane, never a precondition for it");
+check("the pending bubble is always removed, on success and on error",
+  (src.match(/\$\("#chatPending"\)\?\.remove\(\)/g) || []).length >= 2,
+  "a stuck 'Thinking…' is indistinguishable from a hung request");
+check("send is re-enabled in a finally block",
+  /finally \{\s*send\.disabled = false;/.test(src),
+  "an error would otherwise leave the composer permanently disabled");
+check("the chat log scrolls to the newest message",
+  /log\.scrollTop = log\.scrollHeight/.test(src));
+check("the chat panel has styling and a mobile case",
+  /\.chat-section\{/.test(css) && /\.chat-log\{ display:flex/.test(css) && /max-width:640px\)\{ \.chat-log/.test(css));
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

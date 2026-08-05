@@ -3,6 +3,7 @@ import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.j
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
 import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
 import { runBackup } from "./backup.js";
+import { chatTurn, analyseEdits } from "./llm.js";
 import { logEvent } from "./log.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
@@ -346,6 +347,72 @@ async function route(request, env, url, ctx) {
 
   // ---- insights ----
   if (path === "/api/insights" && method === "GET") return insights(env, url.searchParams.get("account"), url.searchParams.get("type"));
+
+  // ---- per-call chat (TASK-105) ----
+  const chatMatch = path.match(/^\/api\/calls\/(\d+)\/chat$/);
+  if (chatMatch && method === "GET") {
+    const { results } = await env.DB.prepare(
+      "SELECT id, role, body, updated_kind, created_at FROM chat_messages WHERE call_id = ? ORDER BY id"
+    ).bind(+chatMatch[1]).all();
+    return json({ messages: results });
+  }
+  if (chatMatch && method === "POST") {
+    const callId = +chatMatch[1];
+    const { message } = await request.json();
+    if (!message || !message.trim()) return json({ error: "message required" }, 400);
+
+    const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(callId).first();
+    if (!call) return json({ error: "not found" }, 404);
+    if (call.processing_status !== "processed") {
+      return json({ error: "This call has not been generated yet — there is nothing to talk about." }, 400);
+    }
+    const account = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(call.account_id).first();
+    const { results: outputs } = await env.DB.prepare("SELECT * FROM outputs WHERE call_id = ?").bind(callId).all();
+    // Bounded history. An unbounded conversation re-sends every prior turn on every request, so
+    // a long thread would grow the bill quadratically for no added usefulness.
+    const { results: history } = await env.DB.prepare(
+      "SELECT role, body FROM chat_messages WHERE call_id = ? ORDER BY id DESC LIMIT 20"
+    ).bind(callId).all();
+    history.reverse();
+
+    const t0 = Date.now();
+    let out;
+    try {
+      out = await chatTurn(env, { account, call, debrief: JSON.parse(call.debrief_json || "{}"),
+        outputs, history, message: message.trim() });
+    } catch (err) {
+      await logEvent(env, { level: "error", kind: "chat.failed", call_id: callId, account_id: call.account_id,
+        detail: String(err?.message || err) });
+      return json({ error: String(err?.message || err) }, 502);
+    }
+
+    // Persist the user turn only once the model answered. Saving it first would leave an
+    // unanswered question in the thread every time a request failed.
+    await env.DB.prepare("INSERT INTO chat_messages (call_id, role, body) VALUES (?, 'user', ?)")
+      .bind(callId, message.trim()).run();
+
+    let updatedKind = null;
+    if (out.updated) {
+      const u = out.updated;
+      // Replace the matching output IN PLACE. Matching on (kind, tone) rather than id because
+      // the model is told which output it replaced, not our row ids.
+      const row = await env.DB.prepare(
+        "SELECT id FROM outputs WHERE call_id = ? AND kind = ? AND (tone IS ? OR tone = ?) LIMIT 1"
+      ).bind(callId, u.kind, u.tone || null, u.tone || "").first();
+      if (row) {
+        await env.DB.prepare("UPDATE outputs SET body = ?, subject = COALESCE(?, subject) WHERE id = ?")
+          .bind(u.body, u.subject || null, row.id).run();
+        updatedKind = u.kind;
+      }
+    }
+    await env.DB.prepare("INSERT INTO chat_messages (call_id, role, body, updated_kind) VALUES (?, 'assistant', ?, ?)")
+      .bind(callId, out.reply, updatedKind).run();
+    await logEvent(env, { kind: "chat.turn", call_id: callId, account_id: call.account_id,
+      duration_ms: Date.now() - t0, usage: out.usage,
+      detail: `${call.client_name}${updatedKind ? ` · rewrote ${updatedKind}` : ""}` });
+
+    return json({ reply: out.reply, updatedKind });
+  }
 
   // ---- backups ----
   // On demand, so a backup is something you can TAKE before a risky migration rather than only
@@ -1166,9 +1233,40 @@ async function weeklyEditAnalysis(env) {
     const { results: edits } = await env.DB.prepare(
       "SELECT original, edited FROM edits WHERE account_id = ? AND tone IS ? AND folded_into_version IS NULL LIMIT 50"
     ).bind(group.account_id, group.tone).all();
-    const analysis = `${group.n} edits accumulated for tone "${group.tone || "n/a"}". ` +
-      `Review the diffs and consider updating the ${group.tone || "master"} template. ` +
-      `(LLM-written analysis lands here once an API key is configured.)`;
+    const account = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(group.account_id).first();
+
+    // TASK-022. This wrote a placeholder string for weeks. It is real now — but it still fails
+    // SOFT: a suggestion is a nicety, and a Sunday cron that throws would take the whole job
+    // down for every other group behind it.
+    let analysis;
+    try {
+      const r = await analyseEdits(env, { account, tone: group.tone, edits });
+      if (r.skipped) {
+        analysis = `${group.n} edits accumulated for "${group.tone || "master"}", but no analysis: ${r.skipped}.`;
+      } else {
+        const a = r.analysis || {};
+        analysis = a.notAPattern
+          ? `No reliable pattern across ${r.usable} edits yet. ${a.notAPattern}`
+          : [
+              `${a.headline || "Pattern found."}  (confidence: ${a.confidence || "unstated"})`,
+              "",
+              "EVIDENCE",
+              ...(a.evidence || []).map(e => `· ${e}`),
+              "",
+              "SUGGESTED PROMPT CHANGE",
+              a.promptChange || "(none returned)",
+              "",
+              `Based on ${r.usable} usable edits${r.dropped ? `; ${r.dropped} whole-document replacements ignored` : ""}.`,
+            ].join("\n");
+      }
+      await logEvent(env, { kind: "edits.analysed", account_id: group.account_id, usage: r.usage,
+        detail: `${group.tone || "master"} · ${r.usable ?? 0} usable of ${group.n}` });
+    } catch (err) {
+      analysis = `${group.n} edits accumulated for "${group.tone || "master"}". Analysis failed: ${String(err?.message || err)}`;
+      await logEvent(env, { level: "error", kind: "edits.analysis_failed", account_id: group.account_id,
+        detail: String(err?.message || err) });
+    }
+
     await env.DB.prepare(
       "INSERT INTO suggestions (account_id, tone, week_of, analysis) VALUES (?, ?, date('now', 'weekday 0', '-7 days'), ?)"
     ).bind(group.account_id, group.tone, analysis).run();

@@ -380,6 +380,16 @@ function draftContext(call, parsed) {
     statedFollowUps: parsed.statedFollowUps,
     // TASK-086: how THIS client best receives a message. Also client-facing, also safe.
     recipientProfile: parsed.recipientProfile,
+    // TASK-104: how THIS client decides. Analysis of the buyer, not critique of Gabriel, so it
+    // is safe under the guard below — the same category as recipientProfile.
+    //
+    // This has to be here or the whole task is decorative: the drafting prompt instructs the
+    // model to write to buyingProfile, and a prompt that names a field the context does not
+    // contain degrades silently. The instruction is followed vacuously and nothing errors.
+    // `|| null` so the KEY always exists. Without it, a debrief that omitted buyingProfile makes
+    // JSON.stringify drop the field, and the prompt then instructs the model to write to
+    // something that is simply not in the document — silently, with nothing to notice.
+    buyingProfile: parsed.buyingProfile || null,
     // `said` is the client's verbatim objection; `rootFear` is the client's real concern — both
     // client-facing, and a draft that addresses the real fear lands better. `should`/`felt` are
     // coaching notes for Gabriel and stay OUT.
@@ -715,4 +725,131 @@ function mockOutputs(call) {
       email: `Hi ${name},\n\n[Mock ${tone} email body — connect an LLM API key in Integrations to generate the real draft.]\n\n— Gabriel`
     }))
   };
+}
+
+// ---------------------------------------------------------------- TASK-105: per-call chat
+//
+// The feature that decides whether Closer REPLACES Gabriel's workflow or stays a third step
+// inside it. On 2026-08-04 he described running Closer, then his old ChatGPT process, then a
+// comparison pass — three workflows where there was one. Every feature he asked for pointed the
+// same way: he wants a conversation, not a report handed to him.
+//
+// WHAT THIS PASS CAN SEE, and why it differs from the drafting pass:
+//   · The FULL debrief. This is Gabriel talking to his own app about his own call, so the
+//     coaching critique is exactly what he may want to ask about. draftContext()'s guard exists
+//     to keep critique out of CLIENT-FACING TEXT, not out of Gabriel's view.
+//   · The current outputs, so "make the email shorter" has something to shorten.
+//   · NOT the transcript. It is ~19k tokens (TASK-042) and would be re-sent on every turn, and
+//     the debrief is already its distillation. If Gabriel needs to ask "what exactly did he say
+//     about price", that is a real gap and a separate task — do not quietly bolt it on here.
+//
+// THE GUARD STILL APPLIES TO WHAT COMES OUT. The chat may rewrite an sms or email; those are
+// read by a client, so critique must not cross into them even though this pass can see it.
+export async function chatTurn(env, { account, call, debrief, outputs, history, message }) {
+  const provider = account.llm_provider || "anthropic";
+  const model = account.llm_model || DEFAULT_MODEL;
+  const key = await resolveKey(env, account.id, provider);
+  if (!key) throw new Error("No API key is connected for this account. Open Settings > Integrations and paste your Anthropic key.");
+
+  const current = (outputs || []).map(o => ({ kind: o.kind, tone: o.tone, subject: o.subject, body: o.body }));
+  const system = `You are helping Gabriel, a high-ticket sales closer, work on the follow-up for a call he just had with ${call.client_name}.
+
+You can see his full private debrief of the call, including the coaching critique of his own performance. He is the only reader of this conversation, so answer his questions about it directly and honestly.
+
+You can also REWRITE one of the follow-up outputs when he asks. When you do:
+  · Return the complete replacement, not a diff and not a description of the change.
+  · Keep every commitment he made to the client. Never introduce one he did not make.
+  · NEVER put coaching critique of Gabriel into an "sms" or "email". Those are read by the
+    client. His scorecard, what he did badly, and what he should have said are for him alone.
+  · Match how this buyer decides, per buyingProfile and recipientProfile in the debrief.
+
+If he is only asking a question, answer it and return no "updated" field at all. Do not rewrite
+anything he did not ask you to rewrite.
+
+THE CALL DEBRIEF:
+${JSON.stringify(debrief, null, 1)}
+
+THE CURRENT OUTPUTS:
+${JSON.stringify(current, null, 1)}
+
+Return ONLY JSON: {"reply": "your message to Gabriel, plain text, brief", "updated": {"kind": "sms"|"email"|"ghl_note", "tone": "<the tone value of the output you replaced>", "subject": "<only for email>", "body": "..."}}
+Omit "updated" entirely unless you actually rewrote something.`;
+
+  const msgs = [
+    { role: "user", content: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }] },
+    ...(history || []).map(h => ({ role: h.role === "assistant" ? "assistant" : "user", content: h.body })),
+    { role: "user", content: message },
+  ];
+  const res = await completeWithRetry(env, provider, key, msgs,
+    { model, effort: "low", think: false, maxTokens: 4000 });
+  const parsed = parseModelJson(res.text);
+  return {
+    reply: String(parsed.reply || "").trim() || "(no reply)",
+    updated: parsed.updated && parsed.updated.body ? parsed.updated : null,
+    usage: res.usage,
+    model,
+  };
+}
+
+// ---------------------------------------------- TASK-022: what Gabriel's edits are telling us
+//
+// The Sunday cron has been collecting his pre-copy edits since TASK-007 and writing a
+// placeholder string where the analysis should be. Two things had to be true before this was
+// worth building, and the second only became true today:
+//
+//   1. An API key (done long ago).
+//   2. Edits that carry a usable SIGNAL. Until TASK-100 Gabriel could not see his own text
+//      selection, so he never made a partial edit — he select-all-and-replaced. Every stored
+//      row was a whole-document rewrite, which says "he changed it" and nothing about what he
+//      wanted instead. Analysing those would have produced confident nonsense from noise.
+//
+// Returns a suggestion to a HUMAN. It never edits the prompt: TASK-007's rule is that a
+// template change is approved, not applied. The output is therefore written as a proposal with
+// its evidence attached, so Gabriel can disagree with it on the merits.
+export async function analyseEdits(env, { account, tone, edits }) {
+  const provider = account.llm_provider || "anthropic";
+  const model = account.llm_model || DEFAULT_MODEL;
+  const key = await resolveKey(env, account.id, provider);
+  if (!key) throw new Error("No API key connected for this account — cannot analyse edits.");
+
+  // Whole-document rewrites are dropped. They are the TASK-100-era rows, and one of them can
+  // swamp the diff signal from ten real edits.
+  const usable = (edits || []).filter(e => {
+    const a = (e.original || "").trim(), b = (e.edited || "").trim();
+    if (!a || !b || a === b) return false;
+    const changed = Math.abs(b.length - a.length) / Math.max(a.length, 1);
+    return changed < 0.9;
+  });
+  if (usable.length < 3) {
+    return { analysis: null, skipped: `only ${usable.length} usable edit(s) — the rest were whole-document replacements, which carry no diff signal (see TASK-100)` };
+  }
+
+  const pairs = usable.slice(0, 30)
+    .map((e, i) => `--- EDIT ${i + 1} ---\nCLOSER WROTE:\n${e.original}\n\nGABRIEL SENT:\n${e.edited}`)
+    .join("\n\n");
+
+  const res = await completeWithRetry(env, provider, key, [
+    { role: "user", content: `Gabriel is a high-ticket sales closer. An AI drafts his follow-up messages; before sending, he edits them. Below are ${usable.length} pairs of what the AI wrote and what he actually sent.
+
+Your job is to find the PATTERN in his edits and propose one concrete change to the drafting prompt.
+
+Read for what he consistently does: what he cuts every time, what he adds every time, how he changes the opening or the ask, what register he moves toward, which words he never lets through.
+
+Be strict with yourself:
+· A pattern needs at least three examples. Two is a coincidence.
+· Ignore one-off factual corrections — those are about a specific call, not the prompt.
+· If there is no real pattern, say so. A confident answer from thin evidence is worse than "not yet".
+
+Return ONLY JSON:
+{"headline": "one sentence naming the pattern",
+ "evidence": ["short quotes or paraphrases showing it, one per example, at least 3"],
+ "promptChange": "the exact sentence or instruction to ADD to the drafting prompt, written so it could be pasted in verbatim",
+ "confidence": "high"|"medium"|"low",
+ "notAPattern": "if you found nothing solid, explain what you saw instead — otherwise omit"}
+
+${pairs}` }
+  ], { model, effort: "medium", think: false, maxTokens: 2000 });
+
+  const parsed = parseModelJson(res.text);
+  return { analysis: parsed, usable: usable.length, dropped: (edits || []).length - usable.length, usage: res.usage, model };
 }

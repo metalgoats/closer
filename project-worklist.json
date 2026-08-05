@@ -657,7 +657,7 @@
     {
       "id": "TASK-022",
       "title": "Real LLM analysis for weekly edit suggestions",
-      "description": "The Sunday cron correctly batches edits and gates on >=10 per (account, tone), but the 'analysis' it writes is placeholder text, not an actual LLM-written diff analysis. Suggestions are therefore not yet useful. UNBLOCKED 2026-08-05 by TASK-100 (was blocked by it): because Gabriel cannot see his text selection he select-alls and overwrites, so every captured edit is a whole-document replacement rather than a diff. Analysing them before TASK-100 lands would train on noise.",
+      "description": "The Sunday cron correctly batches edits and gates on >=10 per (account, tone), but the 'analysis' it writes is placeholder text, not an actual LLM-written diff analysis. Suggestions are therefore not yet useful. UNBLOCKED 2026-08-05 by TASK-100 (was blocked by it): because Gabriel cannot see his text selection he select-alls and overwrites, so every captured edit is a whole-document replacement rather than a diff. Analysing them before TASK-100 lands would train on noise. DONE 2026-08-06, unblocked by TASK-100. analyseEdits() drops whole-document replacements (>=90% length change) before reading — those are the pre-TASK-100 rows where Gabriel select-all-replaced because he could not see his selection, and they carry no diff signal. Refuses to run on fewer than 3 usable edits. Told that a pattern needs three examples and explicitly permitted to return notAPattern, because an analysis that must produce a finding will invent one and a prompt change built on an invention degrades every future draft. Output is a proposal with evidence and a paste-ready promptChange; never auto-applied (TASK-007's rule). Fails soft so one bad group cannot take the Sunday cron down for the rest.",
       "dependencies": [
         "TASK-007",
         "TASK-015"
@@ -680,7 +680,7 @@
       "files_expected_to_change": [
         "closer-app/src/index.js"
       ],
-      "status": "incomplete",
+      "status": "completed",
       "notes": "Batching rule and approval gate (never auto-apply) already implemented per the call decision — the missing piece is the actual analysis. NOTE: folded_into_version is never set by current code, so edits would be re-analyzed on every run. Must fix as part of this task.",
       "test_results": []
     },
@@ -2869,9 +2869,9 @@
       "title": "Per-call chat window — let Gabriel revise in place instead of leaving for ChatGPT",
       "priority": "high",
       "estimated_complexity": "high",
-      "status": "incomplete",
+      "status": "completed",
       "dependencies": [],
-      "description": "The feature that decides whether Closer replaces the old workflow or stays a third step in it. Gabriel's reference is Notion's AI sidebar: 'if I could just like input the commands directly here ... create an email that has an offer and don't present the price' and have it repopulate. Ivan's shape from the call: the chat sits BELOW the outputs like ChatGPT/Claude, generated content pushes upward, sections collapse. Architectural note — this is not a UI ticket. The app is generate-once-and-hand-back; this makes it conversational, which means per-call message history, the call context on every turn, and a re-generation path that updates one output without re-running the other three.",
+      "description": "The feature that decides whether Closer replaces the old workflow or stays a third step in it. Gabriel's reference is Notion's AI sidebar: 'if I could just like input the commands directly here ... create an email that has an offer and don't present the price' and have it repopulate. Ivan's shape from the call: the chat sits BELOW the outputs like ChatGPT/Claude, generated content pushes upward, sections collapse. Architectural note — this is not a UI ticket. The app is generate-once-and-hand-back; this makes it conversational, which means per-call message history, the call context on every turn, and a re-generation path that updates one output without re-running the other three. DONE 2026-08-06. Chat sits BELOW the outputs (Ivan's shape); a rewrite updates the output row in place and reopens the call so the change is visible rather than merely announced. Sees the FULL debrief including critique — this is Gabriel talking to his own notes — but is instructed never to put critique into an sms or email, because it can rewrite those. Does NOT see the transcript (~19k tokens per turn, and the debrief is its distillation); if he needs verbatim recall that is a separate task, named not bolted on. History capped at 20 turns; the user message is persisted only after the model answers so a failure does not strand an unanswered question. Migration 0017 adds chat_messages.",
       "source": "2026-08-04 Gabriel call"
     },
     {

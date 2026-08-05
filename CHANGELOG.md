@@ -33,6 +33,56 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
+## 2026-08-06 (later) — The chat, and edits that finally say something (TASK-105, TASK-022)
+
+**TASK-105 — the per-call chat.** This is the feature that decides whether Closer replaces
+Gabriel's workflow or stays a third step inside it. He asked for it by describing Notion's
+sidebar: *"if I could just like input the commands directly here... create an email that has an
+offer and don't present the price"* — and have it repopulate.
+
+It sits **below** the outputs, the way ChatGPT and Claude put the box under the answer, so
+anything it rewrites appears above it. A turn that rewrites an output updates the row in place
+and reopens the call, because being *told* the email changed is not the same as seeing it.
+
+What it can see, and why it differs from the drafting pass:
+- **The full debrief, critique included.** This is Gabriel talking to his own notes about his own
+  call. `draftContext()`'s guard exists to keep critique out of *client-facing text*, not out of
+  his view. So the guard moves to the instruction: it may rewrite an sms or email, and it is told
+  explicitly never to put his scorecard or his mistakes into one.
+- **Not the transcript.** ~19k tokens (TASK-042) re-sent every turn, and the debrief is already
+  its distillation. If he needs to ask *what exactly did he say about price*, that is a real gap
+  and a separate task — worth naming rather than quietly bolting on.
+
+History is capped at 20 turns; unbounded, every turn resends the whole thread and cost grows
+quadratically. The user's message is saved only *after* the model answers, so a failed request
+does not leave an unanswered question sitting in the thread.
+
+**TASK-022 — the weekly edit analysis is real.** It shipped as a literal placeholder string
+weeks ago. Two things had to be true first, and the second only became true this session:
+
+1. An API key. Done long ago.
+2. **Edits carrying a usable signal.** Until TASK-100 Gabriel could not see his own text
+   selection, so he never made a partial edit — he select-all-and-replaced. Every stored row was
+   a whole-document rewrite, which says *he changed it* and nothing about what he wanted instead.
+
+So the analysis **drops whole-document replacements** before reading anything, and refuses to run
+on fewer than three real edits. It is told a pattern needs three examples because two is a
+coincidence, and it is explicitly allowed to return *no pattern* — an analysis that must produce
+a finding will invent one, and a prompt change built from an invention makes every future draft
+worse. The output is a proposal with its evidence attached and a paste-ready prompt change. It is
+never applied: TASK-007's rule is that a template change is approved, not applied.
+
+It also fails soft. A Sunday cron that throws on one group would deny every other group behind it.
+
+136 assertions in `llm`, 136 in `ui-smoke`; three proven to FAIL by removing the chat's critique
+guard, unbounding the history, and letting the analyser eat whole-document rewrites.
+
+**And a bug in my own TASK-104 work, caught by a test written after it.** The drafting prompt
+instructed the model to write to `buyingProfile` — but `draftContext()` never included the field.
+The instruction was followed vacuously and nothing errored. It is now carried, and defaulted to
+`null` rather than omitted, because a key that vanishes when the debrief omits it reproduces the
+same silent failure.
+
 ## 2026-08-06 — One follow-up, written to how this buyer decides (TASK-104)
 
 Gabriel on 2026-08-04, on the tone selector: *"I almost never necessarily care if it's balanced,

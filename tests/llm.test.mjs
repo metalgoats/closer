@@ -53,6 +53,9 @@ const DEBRIEF = {
   outcome: "followup",
   followUp: { nextStep: "Call Thursday", timing: "Thu 4pm", commitments: ["send the onboarding overview"], personalDetails: ["daughter graduates in May"] },
   statedFollowUps: [{ channel: "email", said: "SENTINEL_STATED I'll send you an email with the onboarding steps", contains: ["SENTINEL_CONTAINS the onboarding steps", "the pricing breakdown"] }],
+  buyingProfile: { decisionStyle: "SENTINEL_DECIDES sleeps on anything over five figures",
+    convincedBy: ["SENTINEL_CONVINCED a peer running the same rig"], stalledBy: ["SENTINEL_STALLED burned by a prior vendor"],
+    moneyLanguage: "SENTINEL_MONEY compared it to one month of downtime", otherDeciders: ["SENTINEL_DECIDER his business partner"] },
   recipientProfile: { communicationStyle: "SENTINEL_RECIPSTYLE brief and bottom-line", caresAbout: ["SENTINEL_CARES protecting his crew's time"],
                       disclosed: ["SENTINEL_DISCLOSED his daughter is graduating"], bestReceivedAs: "SENTINEL_BESTAS short concrete bullets", detailPreference: "detailed" },
   suggestedTone: "balanced", toneReason: "warm but businesslike",
@@ -388,6 +391,16 @@ console.log("\n== written to how they BUY, not which tone was picked (TASK-104) 
   check("the draft prompt is driven by buyingProfile",
     draftPrompts.every(p => /buyingProfile/.test(p) && /WRITE TO HOW THEY DECIDE/.test(p)),
     "the profile is useless if the drafting pass never reads it");
+  // Instructing the model to use a field the context does not carry fails SILENTLY — the
+  // instruction is followed vacuously and nothing errors. Assert the data is actually there.
+  check("...and the draft context actually CONTAINS buyingProfile",
+    draftPrompts.every(p => {
+      const m = p.match(/Call summary:\n([\s\S]*?)\n\nReturn ONLY JSON/);
+      if (!m) return false;
+      const ctx = JSON.parse(m[1]);
+      return Object.prototype.hasOwnProperty.call(ctx, "buyingProfile");
+    }),
+    "the prompt names buyingProfile but draftContext() never included it — the instruction would be decorative");
   check("no tone instruction survives in the draft prompt",
     draftPrompts.every(p => !/^Tone: /m.test(p)),
     "a tone line would reintroduce the axis Gabriel said he ignores");
@@ -402,6 +415,114 @@ console.log("\n== written to how they BUY, not which tone was picked (TASK-104) 
   check("the UI only shows a tone selector when a call really has several",
     /function availableTones/.test(readFileSync(new URL("../public/app.js", import.meta.url), "utf8")),
     "calls processed before today hold three tones and must keep rendering");
+}
+
+console.log("\n== per-call chat (TASK-105) ==");
+{
+  const { chatTurn } = await import("../src/llm.js");
+  const llmSrc = readFileSync(new URL("../src/llm.js", import.meta.url), "utf8");
+  const idxSrc = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+
+  let sent = null;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (_u, opts) => {
+    sent = JSON.parse(opts.body);
+    const payload = JSON.stringify({ reply: "Shortened it.", updated: { kind: "email", tone: "tuned", body: "Hi Mike — short version." } });
+    return new Response(
+      `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: payload } })}\n\n` +
+      `data: ${JSON.stringify({ type: "message_delta", usage: { input_tokens: 10, output_tokens: 5 } })}\n\n`,
+      { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+
+  const out = await chatTurn(
+    { DB: { prepare: () => ({ bind: () => ({ first: async () => ({ secret_value: "sk-test" }) }) }) } },
+    { account: { id: 1, llm_model: "claude-opus-5" }, call: { id: 1, client_name: "Mike" },
+      debrief: { diagnosis: { headline: "SENTINEL_CRITIQUE he closed too early" }, scorecard: [["rapport", 4, "SENTINEL_SCORE weak"]] },
+      outputs: [{ kind: "email", tone: "tuned", subject: "Following up", body: "long original" }],
+      history: [{ role: "user", body: "earlier turn" }], message: "make the email shorter" });
+
+  globalThis.fetch = realFetch;
+
+  check("a chat turn returns a reply and the rewritten output", out.reply === "Shortened it." && out.updated?.kind === "email");
+  const sys = typeof sent.messages[0].content === "string" ? sent.messages[0].content : sent.messages[0].content[0].text;
+  check("the chat CAN see the coaching critique — it is Gabriel talking to his own notes",
+    /SENTINEL_CRITIQUE/.test(sys) && /SENTINEL_SCORE/.test(sys),
+    "the draft guard exists to keep critique out of client-facing TEXT, not out of Gabriel's view");
+  check("the chat is told never to put critique into an sms or email",
+    /NEVER put coaching critique of Gabriel into an "sms" or "email"/.test(sys),
+    "this pass can see critique and can rewrite a client-facing draft — the guard has to move to the instruction");
+  check("the chat never receives the transcript",
+    !/transcript/i.test(JSON.stringify(sent.messages).replace(/NOT the transcript/gi, "")),
+    "~19k tokens re-sent on every turn, and the debrief is already its distillation");
+  check("prior turns are carried, so it is a conversation not a series of one-shots",
+    sent.messages.some(m => m.content === "earlier turn"));
+  check("the system block is cached",
+    Array.isArray(sent.messages[0].content) && sent.messages[0].content[0].cache_control?.type === "ephemeral",
+    "the debrief and outputs are resent verbatim every turn; uncached that is the whole cost of the feature");
+
+  check("history is bounded",
+    /ORDER BY id DESC LIMIT 20/.test(idxSrc),
+    "an unbounded thread resends every prior turn, so cost grows quadratically for no added use");
+  check("the user turn is saved only after the model answers",
+    idxSrc.indexOf("out = await chatTurn") < idxSrc.indexOf("INSERT INTO chat_messages (call_id, role, body) VALUES (?, 'user'"),
+    "saving first leaves an unanswered question in the thread every time a request fails");
+  check("chat is refused on a call that was never generated",
+    /processing_status !== "processed"/.test(idxSrc),
+    "there is nothing to talk about, and the debrief would be empty");
+  check("a rewrite updates the output row in place",
+    /UPDATE outputs SET body = \?, subject = COALESCE/.test(idxSrc));
+}
+
+console.log("\n== weekly edit analysis is real now (TASK-022) ==");
+{
+  const { analyseEdits } = await import("../src/llm.js");
+  const idxSrc = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  const env = { DB: { prepare: () => ({ bind: () => ({ first: async () => ({ secret_value: "sk-test" }) }) }) } };
+  const account = { id: 1, llm_model: "claude-opus-5" };
+
+  check("the placeholder string is gone from the cron",
+    !/LLM-written analysis lands here/.test(idxSrc),
+    "this shipped as a literal placeholder for weeks");
+
+  // Whole-document rewrites are the TASK-100-era rows and carry no diff signal.
+  const swamp = Array.from({ length: 12 }, (_, i) => ({ original: "a".repeat(400), edited: `totally different text ${i}` }));
+  const r1 = await analyseEdits(env, { account, tone: "tuned", edits: swamp });
+  check("whole-document replacements are refused, not analysed",
+    r1.analysis === null && /no diff signal/.test(r1.skipped),
+    "before TASK-100 Gabriel could not see his selection, so he select-all-replaced — analysing that is training on noise");
+
+  let sent = null;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (_u, opts) => {
+    sent = JSON.parse(opts.body);
+    const payload = JSON.stringify({ headline: "He always cuts the closing question.",
+      evidence: ["a", "b", "c"], promptChange: "Do not end with a question.", confidence: "high" });
+    return new Response(
+      `data: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text: payload } })}\n\n`,
+      { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+  const real = Array.from({ length: 8 }, (_, i) => ({
+    original: `Hi Mike, here is the recap. Does Thursday work for you? ${i}`,
+    edited: `Hi Mike, here is the recap. Thursday works on my end. ${i}` }));
+  const r2 = await analyseEdits(env, { account, tone: "tuned", edits: real });
+  globalThis.fetch = realFetch;
+
+  check("real partial edits ARE analysed", r2.analysis?.headline && r2.usable === 8);
+  const prompt = typeof sent.messages[0].content === "string" ? sent.messages[0].content : sent.messages[0].content[0].text;
+  check("the model is shown both sides of each edit",
+    /CLOSER WROTE:/.test(prompt) && /GABRIEL SENT:/.test(prompt));
+  check("it is told a pattern needs three examples",
+    /at least three examples|needs at least three/i.test(prompt),
+    "two is a coincidence, and a prompt change from a coincidence makes every future draft worse");
+  check("it is allowed to find nothing",
+    /notAPattern/.test(prompt) && /worse than "not yet"/.test(prompt),
+    "an analysis that must produce a finding will invent one");
+  check("the suggestion is a proposal, never applied",
+    /INSERT INTO suggestions/.test(idxSrc) && !/UPDATE prompt_templates[\s\S]{0,200}analysis/.test(idxSrc),
+    "TASK-007's rule: a template change is approved, not applied");
+  check("a failed analysis does not take the Sunday cron down",
+    /catch \(err\) \{[\s\S]{0,300}?edits\.analysis_failed/.test(idxSrc),
+    "one group throwing would deny every other group its suggestion");
 }
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);

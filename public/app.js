@@ -1098,9 +1098,69 @@ function renderProcessed(call, outputs) {
         <div class="opane ${defTab === "email" ? "active" : ""}" data-otab="email">${outputPanel("Email", email, { sent: true, subject: true })}</div>
         <div class="opane ${defTab === "ghl"   ? "active" : ""}" data-otab="ghl">${outputPanel("GoHighLevel Note", ghl, {})}</div>
       </div>
+    </div>
+    <!-- TASK-105. Sits BELOW the outputs, the way ChatGPT and Claude put the box under the
+         answer — Ivan's shape from the call. Whatever it rewrites appears above it. -->
+    <div class="chat-section" id="chatSection">
+      <div class="chat-log" id="chatLog"></div>
+      <form class="chat-input" id="chatForm">
+        <textarea id="chatBox" rows="1" placeholder="Rewrite the email without the price… / What did he actually object to?"></textarea>
+        <button class="primary-btn" id="chatSend" type="submit">Send</button>
+      </form>
     </div>`;
 
   wireDetail(call, { sms, email, ghl, debrief: d });
+  loadChat(call);
+}
+
+// ---------- per-call chat (TASK-105) ----------
+// The whole point is revising IN PLACE. When a turn rewrites an output we reopen the call so the
+// pane above shows the new text — otherwise Gabriel is told it changed and has to go looking.
+function chatBubble(m) {
+  const who = m.role === "assistant" ? "a" : "u";
+  return `<div class="chat-msg chat-${who}">${esc(m.body)}${
+    m.updated_kind ? `<div class="chat-updated">✦ rewrote the ${esc(m.updated_kind === "ghl_note" ? "CRM note" : m.updated_kind)} above</div>` : ""}</div>`;
+}
+
+async function loadChat(call) {
+  const log = $("#chatLog");
+  if (!log) return;
+  try {
+    const { messages } = await api.get(`/calls/${call.id}/chat`);
+    log.innerHTML = messages.length ? messages.map(chatBubble).join("")
+      : `<div class="chat-empty">Ask for a change, or ask about the call. This sees the full debrief — it is you talking to your own notes, not the client.</div>`;
+    log.scrollTop = log.scrollHeight;
+  } catch { /* a chat that fails to load must not take the call view down */ }
+
+  const form = $("#chatForm"), box = $("#chatBox"), send = $("#chatSend");
+  if (!form) return;
+  // Grow with the text, up to a point. A fixed one-line box makes people write one-line asks.
+  box.addEventListener("input", () => { box.style.height = "auto"; box.style.height = Math.min(box.scrollHeight, 140) + "px"; });
+  box.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const text = box.value.trim();
+    if (!text || send.disabled) return;
+    send.disabled = true; box.value = ""; box.style.height = "auto";
+    log.insertAdjacentHTML("beforeend", chatBubble({ role: "user", body: text }));
+    log.insertAdjacentHTML("beforeend", `<div class="chat-msg chat-a chat-pending" id="chatPending">Thinking…</div>`);
+    log.scrollTop = log.scrollHeight;
+    try {
+      const r = await api.post(`/calls/${call.id}/chat`, { message: text });
+      $("#chatPending")?.remove();
+      log.insertAdjacentHTML("beforeend", chatBubble({ role: "assistant", body: r.reply, updated_kind: r.updatedKind }));
+      log.scrollTop = log.scrollHeight;
+      if (r.updatedKind) await openCall(call.id);   // re-render so the new text is actually visible
+    } catch (err) {
+      $("#chatPending")?.remove();
+      log.insertAdjacentHTML("beforeend",
+        `<div class="chat-msg chat-a chat-err">${esc(err?.message || "That did not go through. Try again.")}</div>`);
+    } finally {
+      send.disabled = false;
+    }
+  });
 }
 
 // The debrief pills are pagination, not jump links: each shows exactly one page and hides the
