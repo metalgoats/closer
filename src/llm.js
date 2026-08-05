@@ -47,7 +47,46 @@ const DEBRIEF_SHARE = 70;               // debrief is the long pole: 0-70%, mess
 // outputs to produce. NOTHING about the output shape is hardcoded here any more — that was the
 // TASK-021 blocker: 10 dimensions incl. "pain amplification" were baked in, so editing a prompt
 // could never change what got scored, and a team call was graded like a sales call.
-export async function generateOutputs(env, { account, call, masterPrompt, callType, onStep, onProgress }) {
+// TASK-101 — turn the raw stream into something worth watching.
+//
+// The debrief pass streams JSON, so showing the tail verbatim gives Gabriel `","sayInstead":"`
+// which reads as breakage, not progress. This pulls out the VALUES and drops the keys, so what
+// he sees is the analysis being written in prose, a few lines behind the model.
+//
+// Deliberately forgiving: it runs on a half-finished document on every tick, so it must never
+// throw and must never block the generation it is only decorating. Worst case it returns "".
+const PREVIEW_CHARS = 900;
+export function readableTail(raw, limit = PREVIEW_CHARS) {
+  if (!raw) return "";
+  try {
+    const out = [];
+    // Walk complete "..." literals, honouring backslash escapes so an escaped quote inside a
+    // sentence does not end the string early and shred the line.
+    const re = /"((?:[^"\\]|\\.)*)"(\s*:)?/g;
+    let m;
+    while ((m = re.exec(raw)) !== null) {
+      if (m[2]) continue;                       // trailed by ':' -> it is a key, not content
+      const v = m[1].replace(/\\n/g, " ").replace(/\\"/g, '"').replace(/\\\\/g, "\\").trim();
+      if (v) out.push(v);
+    }
+    // Whatever is mid-flight after the last complete literal — the sentence being typed now.
+    // This is the part that actually makes it feel live, so it is worth the extra care.
+    const openQuote = raw.lastIndexOf('"');
+    if (openQuote !== -1) {
+      const trailing = raw.slice(openQuote + 1);
+      if (trailing && !trailing.includes('"')) {
+        const v = trailing.replace(/\\n/g, " ").trim();
+        if (v) out.push(v);
+      }
+    }
+    const joined = out.join(" · ");
+    return joined.length > limit ? "…" + joined.slice(-limit) : joined;
+  } catch {
+    return "";   // a preview must never be able to break a paid generation
+  }
+}
+
+export async function generateOutputs(env, { account, call, masterPrompt, callType, onStep, onProgress, onPreview }) {
   const provider = account.llm_provider || "anthropic";
   // One model for the whole run. Mixing models mid-generation would let the debrief and the
   // drafts disagree about register, and would make the logged cost unattributable.
@@ -162,7 +201,19 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
     ] }
   ], { model, effort, think: false, maxTokens: 24000,
        onRetry: r => onStep && onStep({ step: "retry", detail: `debrief attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
-       onProgress: chars => report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call") });
+       onProgress: (chars, raw) => {
+         report(Math.min(chars / EXPECTED_DEBRIEF_CHARS, 1) * DEBRIEF_SHARE, "Analysing the call");
+         // Only the debrief streams a preview. It is the pass that takes minutes and the only
+         // one Gabriel ever waits on; the three draft passes finish fast enough that a preview
+         // would flicker. It is also the ONLY pass that has read the transcript, so this stays
+         // inside the app for Gabriel and never travels — same boundary as the specimen.
+         //
+         // Hands over the RAW text and does no work here. This fires on every single delta —
+         // thousands of times per generation — so running the extraction at this point would
+         // re-scan a document that grows to ~90KB on every token and burn the Worker's CPU
+         // budget on decoration. The consumer extracts once, only when it is about to write.
+         if (onPreview) onPreview(raw);
+       } });
   tally(debriefRes.usage);
   const parsed = parseModelJson(debriefRes.text);
   const debriefMs = Date.now() - t0;
@@ -472,7 +523,12 @@ async function readStream(body, onProgress) {
         case "content_block_delta":
           if (ev.delta?.type === "text_delta") {
             text += ev.delta.text;
-            if (onProgress) onProgress(text.length);
+            // The accumulated text rides along as the second argument (TASK-101). It was
+            // already here and was being discarded — every caller got a character count and
+            // nothing else, which is why the UI could only ever draw a progress bar while
+            // Gabriel waited three minutes at a screen that looked frozen. Callers that only
+            // want the count keep working: they just ignore the second argument.
+            if (onProgress) onProgress(text.length, text);
           }
           break;
         case "message_delta":

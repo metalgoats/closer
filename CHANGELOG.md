@@ -33,6 +33,53 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
+## 2026-08-05 (later) — Gabriel can see his own selection, and watch the debrief being written (TASK-100, TASK-101)
+
+Both of these came out of the 08-04 call, and both turned out to be two bugs wearing one coat.
+
+**TASK-100 — the invisible highlight.** `::selection` was set to `--blue-100`, which is the chip
+and badge fill. That colour is deliberately low-contrast because it normally sits *behind* text;
+used as a selection it measured **1.18:1 against the field it covers** in dark and 1.12:1 in
+light. Effectively invisible, which is why Gabriel said *"I'm just like Command A. And then when
+I paste it over, it just overrides it."* Selection now has its own token in both themes
+(3.53:1 dark, 2.01:1 light — deliberately stronger than the native macOS highlight at ~1.42:1),
+sets a **text** colour as well as a background, and names `textarea`/`input` explicitly.
+
+The second cost is the one nobody had connected. `edits` (TASK-007) exists so TASK-022 can learn
+what Gabriel changes. Select-all-and-replace stores a whole-document rewrite, which carries no
+usable diff signal — so **the cosmetic bug and the stalled learning feature were the same bug**,
+and analysing those edits before this landed would have trained on noise.
+
+**TASK-101 — the app was throwing away the words.** `readStream` called `onProgress(text.length)`.
+The text was right there and only its *length* ever left the function, so the UI could draw a bar
+and nothing else while Gabriel sat for three minutes. It now hands the text out too.
+
+Three decisions worth keeping:
+
+- **The preview shows values, not JSON.** The debrief pass streams JSON, so a raw tail gives
+  `","sayInstead":"` — which reads as breakage. `readableTail()` pulls string values, drops keys,
+  and keeps the half-written sentence, because the in-flight sentence is the part that feels live.
+- **Extraction happens once per write, never per delta.** `onPreview` receives the raw text and
+  does no work; the throttled writer extracts. Running the regex on every token would re-scan a
+  document growing to ~90KB thousands of times and spend the Worker's CPU budget on decoration.
+- **Progress and preview share one throttled write.** Two writers on the same row at 1.5s each
+  would double the write rate and could interleave, saving a fresh preview beside a stale percent.
+
+**And the bug found while wiring it up, which may matter more than the feature.** `refreshCalls()`
+re-renders the call list and the nav counts and **never touches `#detailPane`** — so the progress
+bar built in TASK-044 was painted once when the pane opened and then *froze for the entire run*.
+Only the elapsed clock moved. A generation that was working perfectly looked identical to one
+that had died, which is exactly the complaint. `patchWorking()` now updates fill, step, percent
+and preview in place from the poll; patching rather than re-rendering keeps the elapsed timer and
+the stall detection alive.
+
+Migration `0016_processing_preview.sql`. Bounded on the write side, and cleared on both success
+and failure so a finished call never keeps a half-written sentence under it.
+
+Verified by looking, not by reading: selection screenshotted in both themes with a real
+`setSelectionRange`, and the preview panel rendered with a mid-word tail. 242 assertions across
+four suites; six proven to FAIL by reintroducing each bug, then restored.
+
 ## 2026-08-05 — Answer Gabriel's reliability question, from inside the app (TASK-102, TASK-103)
 
 Gabriel, on the 08-04 call, asked whether failed generations are billed and then said the

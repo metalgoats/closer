@@ -18,6 +18,7 @@ const PUB = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 const src = readFileSync(join(PUB, "app.js"), "utf8");
 const html = readFileSync(join(PUB, "index.html"), "utf8");
 const css = readFileSync(join(PUB, "styles.css"), "utf8");
+const workflowSrc = readFileSync(join(PUB, "..", "src", "workflow.js"), "utf8");
 
 let pass = 0, fail = 0;
 const check = (n, c, d = "") => { c ? pass++ : fail++; console.log(`${c ? "  pass" : "  FAIL"}  ${n}${d && !c ? `  <- ${d}` : ""}`); };
@@ -461,6 +462,40 @@ check("the estimate note names the actual model",
 check("the all-time counter no longer calls itself 'failures'",
   /<span>error events<\/span>/.test(src),
   "it counts EVERY error-level event; calling it 'failures' is what made TASK-102 unanswerable");
+
+console.log("\n== selection visibility + live preview (TASK-100, TASK-101) ==");
+check("selection has its own colour, not the chip fill",
+  /--select-bg:/.test(css) && /^::selection\{ background:var\(--select-bg\)/m.test(css),
+  "--blue-100 is the badge fill and measured 1.18:1 against the field it covers — invisible");
+check("selection sets a text colour too",
+  /^::selection\{ background:var\(--select-bg\); color:var\(--select-fg\); \}/m.test(css),
+  "background alone leaves the text unchanged, which is what made it read as 'nothing happened'");
+check("form fields are named explicitly",
+  /textarea::selection, input::selection/.test(css),
+  "the output fields are the exact place this has to work, and a bare ::selection does not reliably reach them");
+check("both themes define a selection colour",
+  (css.match(/--select-bg:/g) || []).length === 2,
+  "a theme without one falls back to the invisible default");
+check("Firefox is covered",
+  /::-moz-selection/.test(css));
+
+check("the working pane patches in place instead of re-rendering",
+  /function patchWorking/.test(src) && /patchWorking\(\(await api\.get/.test(src),
+  "a full re-render every 2.5s restarts the elapsed timer and throws away stall detection");
+check("the poll actually updates the open call",
+  /callState\(cur\) === "processing"/.test(src),
+  "refreshCalls only re-renders the LIST — the detail progress bar froze for the whole run");
+check("the preview element exists and is fed",
+  /id="workPreview"/.test(src) && /call\.processing_preview/.test(src));
+check("the preview follows the text down",
+  /prev\.scrollTop = prev\.scrollHeight/.test(src),
+  "without this the newest words are written off the bottom edge and it looks stuck again");
+check("the preview panel has a fixed height",
+  /\.work-preview\{[^}]*height:88px/.test(css),
+  "it grows for three minutes; reflowing the page under Gabriel every 1.5s is worse than no panel");
+check("the preview is cleared when the run ends",
+  /processing_preview = NULL/.test(workflowSrc),
+  "a finished call must not keep a half-written sentence under it");
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

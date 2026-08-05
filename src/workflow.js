@@ -14,7 +14,7 @@
 // is ~100% waiting on Anthropic. It also genuinely runs with nobody logged in, which is the
 // "like Gmail" requirement waitUntil only ever pretended to satisfy.
 import { WorkflowEntrypoint } from "cloudflare:workers";
-import { generateOutputs } from "./llm.js";
+import { generateOutputs, readableTail } from "./llm.js";
 import { logEvent } from "./log.js";
 
 export class GenerateWorkflow extends WorkflowEntrypoint {
@@ -57,18 +57,28 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
 
         // Throttle progress writes: the stream reports on every text delta, far too often
         // for D1. 1.5s is frequent enough to look live and cheap enough to ignore.
-        let lastWrite = 0;
-        const writeProgress = async ({ percent, step: label }) => {
+        // Progress and preview share ONE throttled write (TASK-101). Two independent writers on
+        // the same row at 1.5s each would double the write rate and can interleave, so a tick
+        // could save a preview next to a stale percentage.
+        let lastWrite = 0, pct = 0, stepLabel = "Starting", rawPreview = "";
+        const flush = async () => {
           if (Date.now() - lastWrite < 1500) return;
           lastWrite = Date.now();
           try {
-            await env.DB.prepare("UPDATE calls SET processing_progress = ?, processing_step = ? WHERE id = ?")
-              .bind(percent, label, callId).run();
+            // Extraction happens HERE, once per write, not on every delta — see the note at the
+            // onPreview call site in llm.js. readableTail also bounds its own output, so this
+            // column cannot grow with the document.
+            const preview = rawPreview ? readableTail(rawPreview) : null;
+            await env.DB.prepare(
+              "UPDATE calls SET processing_progress = ?, processing_step = ?, processing_preview = ? WHERE id = ?")
+              .bind(pct, stepLabel, preview, callId).run();
           } catch (e) {
             // Same rule as logEvent: reporting must never break the run it reports on.
             console.error("progress write failed (non-fatal)", e?.message);
           }
         };
+        const writeProgress = ({ percent, step: label }) => { pct = percent; stepLabel = label; return flush(); };
+        const writePreview = raw => { rawPreview = raw; return flush(); };
 
         const out = await generateOutputs(env, {
           account, call, masterPrompt: tpl?.body || "", callType,
@@ -76,7 +86,8 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
             kind: `generation.${s}_done`, call_id: callId, account_id: account.id,
             duration_ms, usage, detail: `${call.client_name} · ${s}`
           }),
-          onProgress: writeProgress
+          onProgress: writeProgress,
+          onPreview: writePreview
         });
         return { ...out, account_id: account.id, client_name: call.client_name };
       });
@@ -88,7 +99,7 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
           env.DB.prepare("DELETE FROM outputs WHERE call_id = ?").bind(callId),
           env.DB.prepare(
             `UPDATE calls SET processing_status = 'processed', processed_at = datetime('now'),
-                    processing_error = NULL, processing_progress = 100, processing_step = 'Done',
+                    processing_error = NULL, processing_progress = 100, processing_step = 'Done', processing_preview = NULL,
                     debrief_json = ?, suggested_tone = ?, tone_reason = ?,
                     selected_tone = COALESCE(selected_tone, ?), outcome = COALESCE(outcome, ?) WHERE id = ?`
           ).bind(JSON.stringify(gen.debrief), gen.suggestedTone, gen.toneReason, gen.suggestedTone, gen.outcome, callId),
@@ -117,7 +128,7 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
       const msg = String(err?.message || err).slice(0, 500);
       try {
         await env.DB.prepare(
-          "UPDATE calls SET processing_status = 'failed', processing_step = 'Failed', processing_error = ? WHERE id = ?"
+          "UPDATE calls SET processing_status = 'failed', processing_step = 'Failed', processing_preview = NULL, processing_error = ? WHERE id = ?"
         ).bind(msg, callId).run();
       } catch (e) { console.error("could not mark failed", e?.message); }
       await logEvent(env, { level: "error", kind: "generation.failed", call_id: callId,

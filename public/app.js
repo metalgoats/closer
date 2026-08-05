@@ -537,9 +537,14 @@ function syncPolling() {
   if (anyWorking && !pollTimer) {
     pollTimer = setInterval(async () => {
       await refreshCalls();
-      if (state.currentCallId && callState(state.calls.find(c => c.id === state.currentCallId) || {}) !== "processing") {
-        const still = state.calls.find(c => c.id === state.currentCallId);
-        if (still && callState(still) !== "processing") openCall(state.currentCallId);
+      const cur = state.currentCallId && state.calls.find(c => c.id === state.currentCallId);
+      if (cur && callState(cur) === "processing") {
+        // Fetch the single open call for its progress and streaming preview. The list endpoint
+        // deliberately does not carry the preview — 900 characters per row across a full page
+        // would bloat every poll to show text for one call nobody is looking at.
+        try { patchWorking((await api.get(`/calls/${cur.id}`)).call); } catch { /* next tick */ }
+      } else if (state.currentCallId && cur && callState(cur) !== "processing") {
+        openCall(state.currentCallId);
       }
     }, 2500);
   } else if (!anyWorking && pollTimer) {
@@ -1389,6 +1394,41 @@ function renderUnprocessed(call) {
 let progressSeen = { callId: null, percent: -1, atMs: 0 };
 const STALL_MS = 90 * 1000;
 
+// TASK-101 — update the working pane IN PLACE from the poll.
+//
+// Two things were wrong and they compounded. `refreshCalls()` re-renders the call list and the
+// nav counts and never touches #detailPane, so the progress bar built in TASK-044 was painted
+// once when the pane opened and then FROZE for the whole three minutes; only the elapsed clock
+// moved. And nothing ever showed the text. Between them, a run that was working perfectly
+// looked identical to one that had died — which is exactly what Gabriel reported.
+//
+// Patching rather than re-rendering is deliberate: a full innerHTML rebuild every 2.5s would
+// restart the elapsed timer and throw away the stall detection that tells a slow run from a
+// dead one.
+function patchWorking(call) {
+  const fill = $("#progFill");
+  if (!fill) return false;                 // pane is showing something else now
+  const pct = Number.isFinite(call.processing_progress) ? call.processing_progress : null;
+  if (progressSeen.callId !== call.id || progressSeen.percent !== pct) {
+    progressSeen = { callId: call.id, percent: pct, atMs: Date.now() };
+  }
+  fill.classList.toggle("indeterminate", pct === null);
+  fill.style.width = `${pct === null ? 100 : Math.max(pct, 2)}%`;
+  const stepEl = $("#progStep"), pctEl = $("#progPct");
+  if (stepEl) stepEl.textContent = call.processing_step || "Starting";
+  if (pctEl) pctEl.textContent = pct === null ? "" : pct + "%";
+  const prev = $("#workPreview");
+  if (prev) {
+    const t = call.processing_preview || "";
+    prev.textContent = t;
+    prev.classList.toggle("hidden", !t);
+    // Follow the text as it arrives, the way a terminal does. Without this the newest words
+    // are written off the bottom edge and the panel looks stuck again.
+    prev.scrollTop = prev.scrollHeight;
+  }
+  return true;
+}
+
 function renderWorking(call) {
   renderSeq++;
   const pct = Number.isFinite(call.processing_progress) ? call.processing_progress : null;
@@ -1414,6 +1454,7 @@ function renderWorking(call) {
           <span class="progress-pct" id="progPct">${pct === null ? "" : pct + "%"}</span>
         </div>
       </div>
+      <div id="workPreview" class="work-preview ${call.processing_preview ? "" : "hidden"}">${esc(call.processing_preview || "")}</div>
       <div id="workElapsed" class="work-elapsed">Generating…</div>
       <div style="font-size:12px; color:var(--ink-400);">Safe to close this tab — it keeps running.</div>
       <div id="workStale" class="hidden" style="font-size:12px; color:var(--pink-500);"></div>

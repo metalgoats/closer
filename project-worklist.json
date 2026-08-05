@@ -657,11 +657,10 @@
     {
       "id": "TASK-022",
       "title": "Real LLM analysis for weekly edit suggestions",
-      "description": "The Sunday cron correctly batches edits and gates on >=10 per (account, tone), but the 'analysis' it writes is placeholder text, not an actual LLM-written diff analysis. Suggestions are therefore not yet useful. BLOCKED IN PRACTICE BY TASK-100: because Gabriel cannot see his text selection he select-alls and overwrites, so every captured edit is a whole-document replacement rather than a diff. Analysing them before TASK-100 lands would train on noise.",
+      "description": "The Sunday cron correctly batches edits and gates on >=10 per (account, tone), but the 'analysis' it writes is placeholder text, not an actual LLM-written diff analysis. Suggestions are therefore not yet useful. UNBLOCKED 2026-08-05 by TASK-100 (was blocked by it): because Gabriel cannot see his text selection he select-alls and overwrites, so every captured edit is a whole-document replacement rather than a diff. Analysing them before TASK-100 lands would train on noise.",
       "dependencies": [
         "TASK-007",
-        "TASK-015",
-        "TASK-100"
+        "TASK-015"
       ],
       "priority": "medium",
       "estimated_complexity": "medium",
@@ -2818,9 +2817,9 @@
       "title": "Highlighted text is invisible in the output fields — and it is silently poisoning TASK-022",
       "priority": "high",
       "estimated_complexity": "low",
-      "status": "incomplete",
+      "status": "completed",
       "dependencies": [],
-      "description": "Gabriel cannot see his own selection in the Text/Email/CRM textareas, so he never makes a partial edit: 'What I'm doing is like I'm just like Command A. And then when I paste it over, it just overrides it.' TASK-007 captures every pre-copy edit into `edits`, and TASK-022 exists to LEARN from those edits. Because selection is invisible, every stored edit is a whole-document replacement, which is nearly useless as a diff signal. The cosmetic bug and the stalled learning feature are the same bug. Selection renders correctly in the debrief pane, so compare the two — likely a ::selection / -webkit-text-fill-color / appearance rule on the output textareas only. VERIFY BY LOOKING: select a phrase in a real browser and see the highlight, in both themes.",
+      "description": "Gabriel cannot see his own selection in the Text/Email/CRM textareas, so he never makes a partial edit: 'What I'm doing is like I'm just like Command A. And then when I paste it over, it just overrides it.' TASK-007 captures every pre-copy edit into `edits`, and TASK-022 exists to LEARN from those edits. Because selection is invisible, every stored edit is a whole-document replacement, which is nearly useless as a diff signal. The cosmetic bug and the stalled learning feature are the same bug. Selection renders correctly in the debrief pane, so compare the two — likely a ::selection / -webkit-text-fill-color / appearance rule on the output textareas only. VERIFY BY LOOKING: select a phrase in a real browser and see the highlight, in both themes. DONE 2026-08-05. ROOT CAUSE: ::selection was set to --blue-100, the chip/badge fill, which is low-contrast BY DESIGN because it normally sits behind text — measured 1.18:1 dark / 1.12:1 light against the field it covers. Now has its own --select-bg/--select-fg per theme (3.53:1 dark, 2.01:1 light, vs native macOS ~1.42:1), sets a text colour too, and names textarea/input explicitly since a bare ::selection does not reliably reach form fields. Verified by screenshotting a real setSelectionRange in both themes. TASK-022 is now unblocked: partial edits are possible, so `edits` can start carrying real diffs.",
       "source": "2026-08-04 Gabriel call"
     },
     {
@@ -2828,9 +2827,9 @@
       "title": "Stream the generated text to the browser — the tokens already exist and are being thrown away",
       "priority": "high",
       "estimated_complexity": "medium",
-      "status": "incomplete",
+      "status": "completed",
       "dependencies": [],
-      "description": "Gabriel: generation feels slow. Ivan diagnosed it live as a PERCEPTION problem (ChatGPT streams, Closer doesn't) and then told him 'I don't know [what can be done]'. There is something that can be done. src/workflow.js:58 says it outright — 'the stream reports on every text delta' — the Worker already receives every token and discards the text, writing only a throttled percentage to D1 every 1.5s for the browser to poll. Push the deltas to the client instead. Measured evidence that a faster MODEL is not the fix: Opus 5 high 3m40s vs Fable 5 high 3m35s on the same call — 5 seconds for ~2x cost. This is likely the single highest-satisfaction change available.",
+      "description": "Gabriel: generation feels slow. Ivan diagnosed it live as a PERCEPTION problem (ChatGPT streams, Closer doesn't) and then told him 'I don't know [what can be done]'. There is something that can be done. src/workflow.js:58 says it outright — 'the stream reports on every text delta' — the Worker already receives every token and discards the text, writing only a throttled percentage to D1 every 1.5s for the browser to poll. Push the deltas to the client instead. Measured evidence that a faster MODEL is not the fix: Opus 5 high 3m40s vs Fable 5 high 3m35s on the same call — 5 seconds for ~2x cost. This is likely the single highest-satisfaction change available. DONE 2026-08-05. readStream now passes the accumulated text alongside the length; readableTail() turns streaming JSON into prose (values only, keys dropped, half-written sentence kept) and is called ONCE PER WRITE, never per delta — per-delta extraction would re-scan a ~90KB document thousands of times and burn Worker CPU. Progress and preview share one 1.5s throttled write to avoid interleaving. Migration 0016 adds processing_preview, cleared on success AND failure. SECOND BUG FOUND HERE: refreshCalls() never touched #detailPane, so the TASK-044 progress bar was painted once and FROZE for the whole run — a healthy generation looked identical to a dead one. patchWorking() now updates it in place from the poll, patching rather than re-rendering so the elapsed timer and stall detection survive.",
       "source": "2026-08-04 Gabriel call"
     },
     {

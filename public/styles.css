@@ -3,6 +3,10 @@
   --paper-0:#0A0D13; --paper-50:#0D1119; --paper-100:#121729; --paper-200:#1A2136;
   --line:#232B44; --line-strong:#333D5C;
   --blue-500:#5B82FF; --blue-600:#84A2FF; --blue-100:#16203F;
+  /* Selection has its own colour and is NOT --blue-100 (TASK-100). --blue-100 is the chip and
+     badge fill, chosen to be low-contrast because it normally sits behind text. Used as the
+     selection colour it measured 1.18:1 against the textarea it covers — invisible. */
+  --select-bg:#3A62D8; --select-fg:#FFFFFF;
   --violet-500:#A66BFF; --violet-600:#BF92FF; --violet-100:#221A42;
   --pink-500:#FF5FA8; --pink-600:#FF8AC0; --pink-100:#3A1830;
   --focus:#84A2FF;
@@ -22,7 +26,20 @@
 *{box-sizing:border-box;}
 html,body{height:100%;}
 body{ margin:0; font-family:var(--font-ui); font-size:17px; line-height:1.47; letter-spacing:-0.022em; color:var(--ink-950); background:#000; -webkit-font-smoothing:antialiased; }
-::selection{ background:var(--blue-100); }
+/* TASK-100 — Gabriel could not see his own text selection in the output fields, so he stopped
+   making partial edits entirely: "I'm just like Command A. And then when I paste it over, it
+   just overrides it." That has a second cost. `edits` (TASK-007) exists so TASK-022 can learn
+   what he changes; select-all-and-replace stores a whole-document rewrite, which carries no
+   usable signal. The invisible highlight and the stalled learning loop were the same bug.
+   Set BOTH background and colour: background alone leaves the text at its original colour,
+   which is what made the old rule read as "nothing happened". */
+::selection{ background:var(--select-bg); color:var(--select-fg); }
+::-moz-selection{ background:var(--select-bg); color:var(--select-fg); }
+/* Form fields are named explicitly. Some engines give textarea/input their own UA highlight
+   that a bare ::selection does not reliably reach — and the output fields are the exact place
+   this has to work. */
+textarea::selection, input::selection{ background:var(--select-bg); color:var(--select-fg); }
+textarea::-moz-selection, input::-moz-selection{ background:var(--select-bg); color:var(--select-fg); }
 button{ font-family:inherit; }
 :focus-visible{ outline:2px solid var(--focus); outline-offset:2px; }
 .hidden{ display:none !important; }
@@ -417,6 +434,20 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .ev-error td{ color:var(--ink-800); }
 .ev-warn .ev-kind{ background:var(--violet-100); color:var(--violet-600); }
 .work-elapsed{ font-variant-numeric:tabular-nums; }
+/* The live debrief tail (TASK-101). Fixed height on purpose — it grows for three minutes, and
+   a panel that reflows the page under Gabriel every 1.5 seconds is worse than no panel. It
+   scrolls itself to the bottom instead. Muted and monospaced because it is machine output in
+   progress, not a result: it should read as evidence of work, never as something to act on. */
+.work-preview{
+  max-width:min(640px, 100%); height:88px; overflow:hidden;
+  margin:2px auto 0; padding:10px 12px;
+  background:var(--paper-100); border:1px solid var(--line); border-radius:9px;
+  font-family:var(--font-mono); font-size:12px; line-height:1.5; color:var(--ink-600);
+  text-align:left; white-space:pre-wrap; word-break:break-word;
+  /* Fades into the top edge so it reads as a window onto something longer, not a truncated box. */
+  -webkit-mask-image:linear-gradient(180deg, transparent 0, #000 22px);
+          mask-image:linear-gradient(180deg, transparent 0, #000 22px);
+}
 
 /* Generation progress (TASK-044). Driven by real streamed bytes from the server — the fill
    cannot move unless the model actually produced output. The indeterminate state is used
@@ -640,6 +671,9 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
   --paper-0:#FFFFFF; --paper-50:#F7F8FC; --paper-100:#F0F2F9; --paper-200:#E4E8F3;
   --line:#DCE1EE; --line-strong:#C3CADD;
   --blue-500:#3B62E8; --blue-600:#2A4AC4; --blue-100:#E5EBFF;
+  /* 2.01:1 against paper — deliberately stronger than the native macOS highlight (~1.42:1),
+     because Gabriel edits these fields under real light and could not see his own selection. */
+  --select-bg:#8FB0FF; --select-fg:#0F1422;
   --violet-500:#8B45E0; --violet-600:#6F2FBF; --violet-100:#F1E7FF;
   --pink-500:#D6246F; --pink-600:#B01356; --pink-100:#FFE6F0;
   --shadow: 0 1px 2px rgba(16,22,40,.08), 0 12px 32px rgba(16,22,40,.10);

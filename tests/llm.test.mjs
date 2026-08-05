@@ -286,5 +286,45 @@ console.log("\n== per-model thinking, the part that 400s if wrong (TASK-098) =="
     JSON.stringify(body.output_config));
 }
 
+// ---------------------------------------------------------------- TASK-101: live preview
+console.log("\n== streaming preview (TASK-101) ==");
+{
+  const { readableTail } = await import("../src/llm.js");
+  const llmSrc = readFileSync(new URL("../src/llm.js", import.meta.url), "utf8");
+
+  const partial = '{"diagnosis":{"headline":"He is already closed emotionally","body":"Mike agreed twice."},'
+                + '"didWell":[{"what":"Named the objection","sayInstead":"You held the frame when he pushed on pri';
+  const tail = readableTail(partial);
+
+  check("the preview shows values, never JSON keys",
+    !/diagnosis|headline|sayInstead|didWell/.test(tail) && tail.includes("He is already closed emotionally"),
+    "showing raw JSON reads as breakage, not progress: " + tail);
+  check("the half-written sentence is kept",
+    tail.includes("You held the frame when he pushed on pri"),
+    "the in-flight sentence is the part that makes it feel live");
+  check("a preview can never break a paid generation",
+    readableTail("") === "" && readableTail(null) === "" && readableTail('{"a":"\\"unterminated') !== undefined,
+    "readableTail must swallow everything — it decorates a run that costs real money");
+  check("the preview is bounded",
+    readableTail(Array.from({length: 400}, (_, i) => `"sentence ${i}"`).join(","), 300).length <= 301,
+    "this column is rewritten every 1.5s for ~3 minutes; unbounded growth is a hundred growing D1 writes");
+
+  check("extraction does NOT run on every delta",
+    /if \(onPreview\) onPreview\(raw\)/.test(llmSrc) && !/onPreview\(readableTail/.test(llmSrc),
+    "re-scanning a ~90KB document on every token would burn the Worker CPU budget on decoration");
+  check("the stream hands out the text, not just a length",
+    /onProgress\(text\.length, text\)/.test(llmSrc),
+    "this is the whole bug — the tokens were always here and were being thrown away");
+
+  // THE BOUNDARY. The debrief is the only pass that sees the transcript; its preview is
+  // Gabriel's coaching analysis and must never be wired to a draft pass.
+  const previewSites = (llmSrc.match(/onPreview\(/g) || []).length;
+  check("the preview is wired to exactly ONE pass",
+    previewSites === 1 && /const debriefRes[\s\S]*?onPreview\(raw\)/.test(llmSrc)
+      && llmSrc.indexOf("onPreview(raw)") < llmSrc.indexOf("draftContext"),
+    `onPreview is invoked ${previewSites} time(s), and it must be exactly once, inside the DEBRIEF call. `
+    + `A draft pass streaming a preview would put coaching critique of Gabriel on screen built from the transcript.`);
+}
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
