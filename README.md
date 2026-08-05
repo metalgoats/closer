@@ -39,6 +39,36 @@ OPENAI_API_KEY=sk-...
 3. In the GitHub repo settings, add secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` —
    after that every push to `main` auto-deploys via `.github/workflows/deploy.yml`.
 
+## Backups and restore (TASK-023)
+
+A nightly cron (09:00 UTC / 02:00 Pacific) dumps every table to R2 as replayable SQL:
+`closer-backups/d1/closer-YYYY-MM-DD.sql`, 30 days retained. You can also take one on demand —
+`POST /api/backup` (authenticated), same code path as the cron — which is what you want before
+a risky migration.
+
+```bash
+# what exists
+CLOUDFLARE_ACCOUNT_ID=ca893bd7f2b489d2a9d4177cf3239063 npx wrangler r2 object get \
+  closer-backups/d1/closer-2026-08-05.sql --file ./backup.sql --remote
+
+# rehearse the restore into a throwaway SQLite file FIRST — never straight into production
+sqlite3 /tmp/rehearsal.db < ./backup.sql && sqlite3 /tmp/rehearsal.db "SELECT COUNT(*) FROM calls;"
+
+# then, only if that looks right
+npx wrangler d1 execute closer --remote --file=./backup.sql
+```
+
+**The dump contains every transcript** — real sales calls with real clients. Delete local copies
+when you are done, and never attach an `r2.dev` or custom domain to the bucket.
+
+**A restored `events` count is expected to be 1 lower** than production: `backup.succeeded` is
+written after the dump completes, so a backup cannot contain the record of its own completion.
+That is the check working, not a gap.
+
+**What this does not cover.** The bucket is in the same Cloudflare account as the database, so it
+protects against a bad migration, a mistaken `DELETE`, or corruption — not against losing access
+to the account. An off-account copy needs S3 credentials for a bucket elsewhere.
+
 ## Code vs. data (the important invariant)
 
 This repo contains **code and migrations only**. All user data lives in D1, outside the repo.
@@ -52,6 +82,7 @@ D1 keeps 30 days of point-in-time recovery.
 src/index.js     Worker: routing, API handlers, cron jobs (Fathom poll, Sunday edit analysis)
 src/auth.js      email+password (PBKDF2) + session cookies
 src/llm.js       all model calls (server-side only); mock fallback when no keys
+src/backup.js    nightly D1 -> R2 dump (TASK-023); multipart, paged, restore-verified
 migrations/      versioned, additive SQL
 seed/seed.sql    dev-only demo data
 public/          the UI (ported from the design mockup)

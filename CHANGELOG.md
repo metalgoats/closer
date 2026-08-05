@@ -33,7 +33,28 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
-## 2026-08-05 (last) — Nightly D1 backup, written and restore-verified, shipped dark (TASK-023)
+## 2026-08-05 (final) — The backup is live, and verified against real production data (TASK-023)
+
+R2 enabled and `closer-backups` created, so the binding and the 09:00 UTC cron came out of
+comments together. Also added `POST /api/backup` behind auth, running the *same* `runBackup` as
+the cron — a backup should be something you can take before a risky migration, not only
+something that happened at 2am. A test asserts the two share a code path, which is the only
+reason sharing it is worth anything: exercising the button proves the scheduled run works.
+
+**Verified against production, not locally.** Fired the real cron through `wrangler dev --remote`
+so it read the real database and wrote the real bucket: **4.5MB, 12 tables, 718 rows, 1.8s**.
+Downloaded the object, replayed it into a fresh empty SQLite database with the `sqlite3` CLI, and
+compared every table against production. All twelve matched. `events` was short by exactly two,
+and both were identified rather than assumed: id 441 `backup.succeeded`, written after the dump,
+and id 442 `cron.unrouted` — which was my own second test call firing `/__scheduled` with no cron
+parameter, and is therefore also proof that the new exhaustive dispatch works.
+
+The local copy of the dump was deleted afterwards. It contained every transcript.
+
+Restore procedure is now in the README, including the instruction to rehearse into a throwaway
+SQLite file before ever pointing it at production.
+
+## 2026-08-05 (earlier) — Nightly D1 backup, written and restore-verified, shipped dark (TASK-023)
 
 This sat at "low" for weeks because D1 already keeps 30 days of point-in-time recovery. What
 changed is who can reach it: PITR is only usable by whoever can reach the Cloudflare account,
