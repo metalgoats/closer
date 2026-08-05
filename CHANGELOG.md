@@ -3,6 +3,47 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-08-06 (later) — The cache breakpoint was on the smallest static thing in the request
+
+Follow-on from the Spend page, which showed 23,553 cache-write tokens and **zero** reads across
+the entire billing history. Two causes; this fixes the one worth fixing.
+
+**The breakpoint was in the wrong place.** The debrief request is ~50,000 tokens and only the
+specimen — 1,264 of them, about **2%** — sat inside the cached prefix. `prompt` and
+`schemaParts` are equally static (both are pure functions of `callType`, nothing per-call
+interpolated) and were sitting just outside it for no reason. The request is now ordered
+most-stable to least, with breakpoints at the seams:
+
+```
+1. SPECIMEN          identical on every run, forever       <- breakpoint
+2. prompt + schema   identical for a given call type       <- breakpoint
+3. transcript        unique per call, sent once            (never cached)
+```
+
+Two breakpoints rather than one so a call of a *different* type can still read the specimen
+back; with a single breakpoint after the schema, every call type would keep a private cache and
+share nothing.
+
+**The transcript stays outside every cached block, permanently.** It is ~40,000 tokens, unique
+per call, and sent exactly once — caching it could never produce a read, only a 25% surcharge on
+the largest part of the bill, silently, with nothing in the logs to show for it. Asserted.
+
+**What this does not fix:** runs are hours apart and the TTL is 5 minutes, so most runs still
+will not hit. It pays when calls import together — the two runs on 2026-07-29 were 1.0 and 2.2
+minutes apart. Not switching to the 1-hour TTL: it bills 2x to write and our gaps mostly exceed
+an hour anyway, which makes it worse.
+
+**Also calibrated `SPECIMEN_APPROX_TOKENS` against the real bill.** The divisor was 3.7, a
+guess, giving 1,021 tokens. Anthropic's export bills that block at exactly **1,264** — the
+specimen was the only cached thing in production, so `cache_write` is a direct measurement of
+it. The guess ran **19% low**, and it is the number checked against `cacheMinTokens` to decide
+whether the block is big enough to cache at all. Sonnet 5's minimum is 1,024, so the guess said
+"too small to cache" about a block that clears it comfortably. That assertion now tests the
+strictest minimum of any model we offer rather than the default model's.
+
+12 new assertions. The four that matter — breakpoint past the transcript, second breakpoint
+dropped, the `\n\n` lost in the split, estimator reverted — each proven to go red.
+
 ## 2026-08-06 — Spend, and what reconciling it against the real bill revealed
 
 New page under Settings: **Spend** — dollars by day / week / month / year, split by model.

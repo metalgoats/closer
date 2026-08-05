@@ -195,5 +195,101 @@ check("a failed import is logged rather than swallowed", /kind: "spend\.import_f
 const strayRate = /\b(inPerM|outPerM)\s*[:=]\s*\d/.test(readFileSync(join(here, "../src/spend.js"), "utf8"));
 check("spend.js holds no rate constants of its own", !strayRate);
 
+console.log("\nSpend — prompt cache layout (TASK-111)");
+
+// ---- 9. Where the cache breakpoints sit -----------------------------------------------
+// Run the REAL generateOutputs against a stubbed transport and inspect the request that
+// actually goes out. Source-grepping the layout would pass just as happily on a version that
+// never sends it.
+//
+// The bug this guards is expensive and completely silent: put a breakpoint AFTER the
+// transcript and every run writes a ~40,000-token cache entry at 1.25x that can never be read
+// back, because a transcript is sent exactly once and never again. Nothing errors. Nothing
+// looks wrong. The bill just goes up 25% on the largest part of the prompt.
+const { generateOutputs } = await import("../src/llm.js");
+
+function sse(text) {
+  let s = `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { usage: { input_tokens: 10, output_tokens: 1 } } })}\n\n`;
+  s += `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", delta: { type: "text_delta", text } })}\n\n`;
+  s += `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5 } })}\n\n`;
+  s += `event: message_stop\ndata: {"type":"message_stop"}\n\n`;
+  const b = new TextEncoder().encode(s); let p = 0;
+  return new ReadableStream({ pull(c) { if (p >= b.length) return c.close(); c.enqueue(b.slice(p, p += 4096)); } });
+}
+const DEBRIEF = {
+  diagnosis: "d", scorecard: [["rapport", 5, "n"]], overallScore: 7, outcomeSummary: "s",
+  didWell: [], hurtSale: [], lessons: [], missedOpenings: [], objections: [],
+  profile: { dominantFears: [], valuesHierarchy: [], trustTriggers: [], disc: "D" },
+  buyingSignals: { genuine: [], false: [] }, outcome: "followup",
+  followUp: { nextStep: "n", timing: "t", commitments: [], personalDetails: [] },
+  statedFollowUps: [],
+  buyingProfile: { decisionStyle: "s", convincedBy: [], stalledBy: [], moneyLanguage: "m", otherDeciders: [] },
+  recipientProfile: { communicationStyle: "b", caresAbout: [], disclosed: [], bestReceivedAs: "s", detailPreference: "brief" },
+  suggestedTone: "tuned", toneReason: "r", ghlNote: "OUTCOME\n- ok",
+};
+const TRANSCRIPT = "Gabriel: hello.\n" + "Client: I am stuck on the price.\n".repeat(400);
+const CT = { name: "Sales call", prompt_body: "SALES PROMPT BODY", dimensions_json: JSON.stringify(["rapport"]), produces_messages: 1, produces_crm_note: 1 };
+
+let sent = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (_u, opts) => {
+  const body = JSON.parse(opts.body);
+  sent.push(body);
+  const isDebrief = JSON.stringify(body.messages[0].content).includes("Return ONLY valid JSON with keys");
+  return { ok: true, body: sse(JSON.stringify(isDebrief ? DEBRIEF : { sms: "s", emailSubject: "e", email: "b" })) };
+};
+await generateOutputs(
+  { DB: { prepare: () => ({ bind: () => ({ first: async () => ({ secret_value: "sk-test" }) }) }) } },
+  { account: { id: 1, llm_provider: "anthropic" },
+    call: { id: 1, client_name: "Marcus Webb", transcript: TRANSCRIPT },
+    masterPrompt: "M", callType: CT });
+globalThis.fetch = realFetch;
+
+const debrief = sent.find(b => JSON.stringify(b.messages[0].content).includes("Return ONLY valid JSON with keys"));
+const blocks = debrief?.messages?.[0]?.content || [];
+const cached = blocks.filter(b => b.cache_control);
+
+check("the debrief request sends its content as discrete blocks", Array.isArray(blocks) && blocks.length === 3,
+  `got ${Array.isArray(blocks) ? blocks.length : typeof blocks}`);
+check("there are exactly TWO cache breakpoints", cached.length === 2, `got ${cached.length}`);
+// THE ONE THAT MATTERS. A transcript is sent once and never again; caching it is pure surcharge.
+check("the transcript is NOT inside any cached block",
+  cached.every(b => !b.text.includes("I am stuck on the price")),
+  "a breakpoint has moved past the transcript — every run now writes a huge entry it can never read");
+check("no per-call content leaks into the cached prefix at all",
+  cached.every(b => !b.text.includes("Marcus Webb") && !b.text.includes(TRANSCRIPT.slice(0, 40))));
+check("the static call-type prompt IS cached (it was outside the prefix until 2026-08-06)",
+  cached.some(b => b.text.includes("SALES PROMPT BODY")));
+check("the schema instructions are cached with it",
+  cached.some(b => b.text.includes("Return ONLY valid JSON with keys")));
+check("the specimen keeps its own breakpoint, so other call types can still read it back",
+  cached[0] && !cached[0].text.includes("SALES PROMPT BODY") && cached[0].text.length > 500);
+check("breakpoints run most-stable first — specimen, then call-type prompt",
+  blocks.indexOf(cached[0]) === 0 && blocks.indexOf(cached[1]) === 1);
+check("the uncached remainder is the transcript",
+  blocks[2] && !blocks[2].cache_control && blocks[2].text.includes("I am stuck on the price"));
+
+// Splitting one block into three must not change a single byte the model reads. Content blocks
+// concatenate, so the join is empty-string — this is the assertion that keeps a caching change
+// from quietly becoming a prompt change.
+const joined = blocks.map(b => b.text).join("");
+check("the concatenated prompt is byte-identical to the single-block form it replaced",
+  joined.includes("Return ONLY valid JSON with keys") && /\.\n\nTranscript:\nGabriel: hello\./.test(joined),
+  "the \\n\\n between the schema line and 'Transcript:' was lost in the split");
+
+// Minimum cacheable prefix is 512 tokens on Opus 5 / Fable 5 and 1024 on Sonnet 5. A prefix
+// under that silently does not cache — no error, no entry, no symptom but the bill.
+// 2.99 chars/token is measured, not guessed: this block is the only thing that was ever cached
+// in production, and Anthropic's export bills it at exactly 1,264 tokens for 3,779 chars.
+check("the first cached block clears the 1024-token minimum on every model we run",
+  cached[0] && cached[0].text.length / 2.99 > 1024,
+  `~${Math.round((cached[0]?.text.length || 0) / 2.99)} tokens`);
+
+// The drafting pass is deliberately transcript-free, which is also why it has nothing worth
+// caching — its only repeated content is the instruction block, and runs are hours apart.
+const draft = sent.find(b => b !== debrief);
+check("the drafting pass still never receives the transcript",
+  draft && !JSON.stringify(draft.messages).includes("I am stuck on the price"));
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

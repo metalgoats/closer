@@ -272,9 +272,14 @@ console.log("\n== per-model thinking, the part that 400s if wrong (TASK-098) =="
   check("Fable is priced above Opus", MODELS["claude-fable-5"].inPerM > MODELS["claude-opus-5"].inPerM);
   check("cost is computed per model, not from a constant",
     costOf("claude-fable-5", 1e6, 0) === 10 && costOf("claude-opus-5", 1e6, 0) === 5);
-  check("the specimen clears the cache minimum on the default model",
-    SPECIMEN_TOKENS >= modelSpec(DEFAULT_MODEL).cacheMinTokens,
-    `${SPECIMEN_TOKENS} vs ${modelSpec(DEFAULT_MODEL).cacheMinTokens}`);
+  // Checked against the STRICTEST minimum of any model we offer, not the default's. Opus 5
+  // allows 512 and Sonnet 5 needs 1,024, so testing the default let a specimen that would
+  // silently fail to cache on Sonnet pass this assertion. A prefix under the minimum produces
+  // no error and no cache entry — the only symptom is a bill that never goes down.
+  const strictestMin = Math.max(...Object.values(MODELS).map(m => m.cacheMinTokens));
+  check("the specimen clears the cache minimum on EVERY model we offer, not just the default",
+    SPECIMEN_TOKENS >= strictestMin,
+    `${SPECIMEN_TOKENS} vs ${strictestMin} (strictest of ${Object.keys(MODELS).length} models)`);
 
   // The request body must OMIT the key, not send undefined/null.
   const body = JSON.parse(bodies[0] ? JSON.stringify(bodies[0]) : "{}");

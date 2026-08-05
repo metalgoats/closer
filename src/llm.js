@@ -244,14 +244,39 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
     'UPSELL (specific expansion openings, if any), ' +
     'PERSONAL RAPPORT (personal details the client volunteered, for the next human touch))');
 
-  // The worked example goes FIRST and in its own content block (TASK-096): first because a
-  // cached prefix has to be a prefix, and separate because it is static across every call
-  // while everything after it changes. Scoped to the debrief pass alone — see the warning in
-  // specimen.js; this is criticism OF GABRIEL and must never reach a client-facing draft.
+  // CACHE LAYOUT — ordered most-stable to least, with the breakpoints at the seams (TASK-111).
+  //
+  // Caching is a PREFIX match: a breakpoint caches everything from the start of the request up
+  // to it, and one byte of drift anywhere before it invalidates the whole thing. So the request
+  // is built in descending order of stability:
+  //
+  //   1. SPECIMEN          identical on every run, forever          <- breakpoint
+  //   2. prompt + schema   identical for a given call type          <- breakpoint
+  //   3. transcript        unique to this call, never repeated      (never cached)
+  //
+  // The specimen was the only cached block until 2026-08-06, which meant the breakpoint sat on
+  // the SMALLEST static thing in the request: 1,264 tokens of a ~50,000-token prompt, about 2%.
+  // `prompt` and `schemaParts` are equally static — both are pure functions of `callType`, with
+  // nothing per-call interpolated into them — and they were sitting outside the cached prefix
+  // for no reason. Two breakpoints rather than one so that a call of a DIFFERENT type can still
+  // read the specimen back; with a single breakpoint after the schema, every call type would
+  // keep its own private cache and share nothing.
+  //
+  // ‼️ THE TRANSCRIPT MUST STAY OUTSIDE EVERY CACHED BLOCK. It is unique per call and is sent
+  // exactly once, so caching it can never produce a read — it would just write a ~40,000-token
+  // entry at 1.25x on every single run and read none of them back. That is not a missed saving,
+  // it is a 25% surcharge on the largest part of the bill. `tests/spend.test.mjs` asserts this.
+  //
+  // Scoped to the debrief pass alone — see the warning in specimen.js; this is criticism OF
+  // GABRIEL and must never reach a client-facing draft.
   const debriefRes = await completeWithRetry(env, provider, key, [
     { role: "user", content: [
       { type: "text", text: SPECIMEN, cache_control: { type: "ephemeral" } },
-      { type: "text", text: `${prompt}\n\nReturn ONLY valid JSON with keys: ${schemaParts.join(", ")}.\n\nTranscript:\n${call.transcript}` }
+      { type: "text", text: `${prompt}\n\nReturn ONLY valid JSON with keys: ${schemaParts.join(", ")}.`,
+        cache_control: { type: "ephemeral" } },
+      // The leading blank line keeps the concatenated prompt byte-identical to the single block
+      // this replaced, so the split is a caching change and not a prompt change.
+      { type: "text", text: `\n\nTranscript:\n${call.transcript}` }
     ] }
   ], { model, effort, think: false, maxTokens: 24000,
        onRetry: r => onStep && onStep({ step: "retry", detail: `debrief attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
