@@ -15,6 +15,15 @@ const api = {
   },
   get: p => api.req("GET", p),
   post: (p, b) => api.req("POST", p, b || {}),
+  // Raw text body — for the usage-export CSV, which is text and would otherwise be
+  // JSON-encoded into a single string the server then has to unwrap.
+  async postText(path, text) {
+    const res = await fetch(`/api${path}`, { method: "POST", headers: { "Content-Type": "text/csv" }, body: text });
+    if (res.status === 401) { showAuth(); throw new Error("unauthorized"); }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    return data;
+  },
   patch: (p, b) => api.req("PATCH", p, b),
   put: (p, b) => api.req("PUT", p, b)
 };
@@ -348,7 +357,7 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
   });
 });
 
-const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity };
+const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend };
 document.querySelectorAll(".nav-item[data-view]").forEach(el => {
   el.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
@@ -1996,6 +2005,180 @@ async function renderActivity() {
         <td class="ev-meta">${e.duration_ms ? (e.duration_ms/1000).toFixed(1)+"s " : ""}${e.input_tokens ? e.input_tokens.toLocaleString()+" in" : ""}</td></tr>`).join("")
       : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing matches.</td></tr>`;
   }));
+}
+
+// ---------------------------------------------------------------- Spend (TASK-110)
+//
+// Activity says whether it worked. Spend says what it cost. They are separate pages because
+// the last time this app put two questions on one surface it grew three stat strips that
+// contradicted each other on screen.
+//
+// THE ONE RULE ON THIS PAGE: never blend a measured number with an inferred one.
+// Imported figures are Anthropic's own billing export and are spend. Logged figures are our
+// estimate for the days no export covers yet. They are added up separately and labelled
+// differently, because the reconciliation behind them is not uniformly good — before
+// 2026-07-30 our log captured as little as 24% of what was actually billed.
+
+// No chart library: a strict CSP blocks external scripts, and a stacked bar chart is a few
+// divs. Colours are fixed per model so a model keeps its colour between views.
+const MODEL_COLOR = {
+  "claude-opus-5":   "var(--blue-500)",
+  "claude-fable-5":  "var(--violet-500)",
+  // Literal rather than a var: there is no green in the palette, and the two brand colours
+  // are already spoken for. Chosen to read on both the dark and light themes.
+  "claude-sonnet-5": "#2FB39A",
+};
+const FALLBACK_COLORS = ["#D08A32", "#B4436C", "#3F8FA8", "#8A8F98", "#7A6BD8"];
+function modelColor(id, i) { return MODEL_COLOR[id] || FALLBACK_COLORS[i % FALLBACK_COLORS.length]; }
+
+// Sub-cent spend is real and common here — a chat turn costs fractions of a penny — so
+// rounding everything to 2dp would render most of this page as "$0.00" and look broken.
+const money = n => {
+  const v = +n || 0;
+  if (v === 0) return "$0";
+  if (v < 0.01) return "<$0.01";
+  if (v < 10) return "$" + v.toFixed(2);
+  return "$" + v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+const tok = n => {
+  const v = +n || 0;
+  if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";
+  if (v >= 1e3) return Math.round(v / 1e3) + "k";
+  return String(v);
+};
+
+const SPEND_VIEWS = [["day", "Day"], ["week", "Week"], ["month", "Month"], ["year", "Year"]];
+
+async function renderSpend() {
+  const view = state.spendView || "day";
+  const d = await api.get(`/spend?view=${view}`);
+  const models = d.models || [];
+  const buckets = d.buckets || [];
+  const peak = Math.max(...buckets.map(b => b.total.usd), 0.0001);
+
+  const legend = models.map((m, i) =>
+    `<span class="sp-leg"><i style="background:${modelColor(m.id, i)}"></i>${esc(m.label)}
+       <b>${money(m.usd)}</b>${m.priced ? "" : ` <em class="sp-unpriced">unpriced</em>`}</span>`).join("");
+
+  // Stacked bars. Height is share-of-peak so the tallest bucket fills the plot — an absolute
+  // scale would flatten every day to nothing the first time one big month lands in the window.
+  const chart = buckets.length ? buckets.map(b => {
+    const segs = models.map((m, i) => {
+      const v = b.byModel[m.id]?.usd || 0;
+      if (!v) return "";
+      return `<div class="sp-seg" style="height:${(v / b.total.usd) * 100}%; background:${modelColor(m.id, i)}"
+                   title="${esc(m.label)} · ${money(v)}"></div>`;
+    }).join("");
+    return `<div class="sp-col" title="${esc(b.label)} · ${money(b.total.usd)}">
+        <div class="sp-bar-wrap"><div class="sp-bar" style="height:${Math.max(2, (b.total.usd / peak) * 100)}%">${segs}</div></div>
+        <div class="sp-x">${esc(b.label)}</div>
+      </div>`;
+  }).join("") : `<div class="sp-empty">No imported usage yet. Import an export below to see spend.</div>`;
+
+  const t = d.total || {};
+  // A cache read bills 0.1x, so the 0.9x it did not cost is the saving. Writes bill 1.25x —
+  // a 0.25x premium paid UP FRONT on the bet that the prefix gets read back before its TTL.
+  const cacheSaved = (t.cacheRead || 0) * 9;
+  const cachePremium = (t.cacheWrite || 0) * 0.2;   // the 0.25x premium is 20% of the 1.25x paid
+  // The first run of this page found the bet has never paid off once: 23,553 tokens written,
+  // zero read, across the entire billing history. Caching that is never hit is not free — it
+  // is a 25% surcharge on those tokens. A card that showed "$0 saved" and stopped there would
+  // have hidden that, so when there are no reads the card reports the premium instead.
+  const cacheNeverRead = (t.cacheWrite || 0) > 0 && (t.cacheRead || 0) === 0;
+  const rec = d.reconciliation || {};
+  const live = d.live || {};
+
+  const cards = `<div class="spend-row">
+      <div class="spend-card"><div class="spend-k">Spend · window</div>
+        <div class="spend-v">${money(t.usd)}</div>
+        <div class="spend-sub">${buckets.length} ${view}${buckets.length === 1 ? "" : "s"}${d.imported?.from ? ` · ${esc(d.imported.from)}–${esc(d.imported.to)}` : ""}</div></div>
+      <div class="spend-card"><div class="spend-k">Output</div>
+        <div class="spend-v">${money(t.output)}</div>
+        <div class="spend-sub">${tok(t.tokensOut)} tokens · ${t.usd ? Math.round((t.output / t.usd) * 100) : 0}% of spend</div></div>
+      <div class="spend-card"><div class="spend-k">Input</div>
+        <div class="spend-v">${money((t.input || 0) + (t.cacheWrite || 0) + (t.cacheRead || 0))}</div>
+        <div class="spend-sub">${tok(t.tokensIn)} tokens · ${money(t.cacheWrite)} cache writes</div></div>
+      ${cacheNeverRead
+        ? `<div class="spend-card"><div class="spend-k">Cache · never read</div>
+             <div class="spend-v warn">${money(cachePremium)}</div>
+             <div class="spend-sub">written every run, read back zero times</div></div>`
+        : `<div class="spend-card"><div class="spend-k">Saved by caching</div>
+             <div class="spend-v">${money(cacheSaved)}</div>
+             <div class="spend-sub">${money(t.cacheRead)} of reads at 0.1×</div></div>`}
+      ${live.days?.length ? `<div class="spend-card"><div class="spend-k">Since last export</div>
+        <div class="spend-v est">${money(live.usd)}</div>
+        <div class="spend-sub">estimate · ${live.days.length} day${live.days.length === 1 ? "" : "s"} not yet billed</div></div>` : ""}
+    </div>`;
+
+  // The per-model table is the answer to "broken down by model" in a form you can read a
+  // number off, which a chart is not.
+  const rows = models.length ? models.map((m, i) => `<tr>
+      <td><i class="sp-dot" style="background:${modelColor(m.id, i)}"></i>${esc(m.label)}
+          <span class="sp-id">${esc(m.id)}</span></td>
+      <td class="sp-num">${money(m.usd)}</td>
+      <td class="sp-num">${t.usd ? ((m.usd / t.usd) * 100).toFixed(1) + "%" : "—"}</td>
+      <td class="sp-num">${tok(m.tokensIn)}</td>
+      <td class="sp-num">${tok(m.tokensOut)}</td>
+      <td class="sp-num">${money(m.output)}</td>
+    </tr>`).join("") : `<tr><td colspan="6" style="color:var(--ink-400); padding:14px;">Nothing imported yet.</td></tr>`;
+
+  // Reconciliation is on the page rather than in a doc because it is the reason to believe
+  // any of the rest of it, and because it is the first thing to check if the two ever part.
+  const recNote = !rec.daysCompared ? ""
+    : rec.exactDays === 0
+      ? `Closer's own log does not currently match this export on any day, so the figures above come from the export alone.`
+      : `Checked against Anthropic's export on ${rec.daysCompared} day${rec.daysCompared === 1 ? "" : "s"}; ${rec.exactDays} match to the token.${
+          rec.trustedFrom ? ` Closer's log has been accurate since ${esc(rec.trustedFrom)}, which is what makes the estimate above worth showing.` : ""}`;
+
+  viewShell("Spend",
+    "What Closer actually costs to run — billed dollars by day, week, month and year, split by model",
+    `<div class="ct-picker" style="margin-bottom:12px;">
+       ${SPEND_VIEWS.map(([v, label]) => `<button class="ct-chip ${view === v ? "active" : ""}" data-spendview="${v}">${label}</button>`).join("")}
+       <span class="subnav-actions"><button class="chip" id="spImportBtn">Import usage export</button></span>
+     </div>
+     ${cards}
+     ${models.length ? `<div class="sp-legend">${legend}</div>` : ""}
+     <div class="sp-chart">${chart}</div>
+     <div style="overflow-x:auto;"><table class="ev-table sp-table"><thead><tr>
+        <th>Model</th><th class="sp-num">Spend</th><th class="sp-num">Share</th>
+        <th class="sp-num">In</th><th class="sp-num">Out</th><th class="sp-num">Output cost</th>
+     </tr></thead><tbody>${rows}</tbody></table></div>
+     <div class="insight-note">Priced at Anthropic list rates checked ${esc(d.rates?.checked || "")} — cache writes at 1.25× input (2× for 1-hour TTL), cache reads at 0.1×. Sonnet 5 bills at its introductory $2/$10 through 2026-08-31, so July is priced at the rate it was actually charged, not today's. ${recNote}</div>
+     <div id="spImport" class="sp-import" hidden>
+       <h4>Import usage export</h4>
+       <div class="insight-note">platform.claude.com › Usage › Export. Re-importing an overlapping month is safe — rows are replaced, not added.</div>
+       <input type="file" id="spFile" accept=".csv,text/csv">
+       <textarea id="spPaste" placeholder="…or paste the CSV here"></textarea>
+       <div><button class="chip" id="spDoImport">Import</button> <span id="spMsg" class="sp-msg"></span></div>
+     </div>`);
+
+  document.querySelectorAll("[data-spendview]").forEach(b => b.addEventListener("click", () => {
+    state.spendView = b.dataset.spendview;
+    renderSpend();
+  }));
+  $("#spImportBtn").addEventListener("click", () => {
+    const p = $("#spImport"); p.hidden = !p.hidden;
+    if (!p.hidden) p.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  });
+  $("#spFile").addEventListener("change", async e => {
+    const f = e.target.files?.[0]; if (!f) return;
+    $("#spPaste").value = await f.text();
+    $("#spMsg").textContent = `${f.name} loaded — press Import.`;
+  });
+  $("#spDoImport").addEventListener("click", async () => {
+    const text = $("#spPaste").value.trim();
+    const msg = $("#spMsg");
+    if (!text) { msg.textContent = "Choose a file or paste the CSV first."; return; }
+    msg.textContent = "Importing…";
+    try {
+      const r = await api.postText("/spend/import", text);
+      msg.textContent = `Imported ${r.rows} rows, ${r.from} to ${r.to}.`;
+      state.spendView = view;
+      setTimeout(renderSpend, 600);
+    } catch (err) {
+      msg.textContent = String(err?.message || err);
+    }
+  });
 }
 
 // Restored: these were deleted by accident in 4f66512 (the same commit that dropped

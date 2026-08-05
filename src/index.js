@@ -5,6 +5,7 @@ import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
 import { runBackup } from "./backup.js";
 import { chatTurn, analyseEdits } from "./llm.js";
 import { logEvent } from "./log.js";
+import { spendReport, importUsage, reconcile } from "./spend.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
 export { GenerateWorkflow } from "./workflow.js";
@@ -408,7 +409,7 @@ async function route(request, env, url, ctx) {
     await env.DB.prepare("INSERT INTO chat_messages (call_id, role, body, updated_kind) VALUES (?, 'assistant', ?, ?)")
       .bind(callId, out.reply, updatedKind).run();
     await logEvent(env, { kind: "chat.turn", call_id: callId, account_id: call.account_id,
-      duration_ms: Date.now() - t0, usage: out.usage,
+      duration_ms: Date.now() - t0, usage: out.usage, model: out.model,
       detail: `${call.client_name}${updatedKind ? ` · rewrote ${updatedKind}` : ""}` });
 
     return json({ reply: out.reply, updatedKind });
@@ -429,6 +430,60 @@ async function route(request, env, url, ctx) {
     return json({ backups: listed.objects
       .map(o => ({ key: o.key, size: o.size, uploaded: o.uploaded }))
       .sort((a, b) => b.key.localeCompare(a.key)) });
+  }
+
+  // ---- spend (TASK-110) ----
+  // Dollars, by day/week/month/year, split by model. Separate from /api/events on purpose:
+  // Activity answers "is it working", Spend answers "what did it cost", and the last time
+  // those two questions shared one surface the page grew three stat strips that disagreed.
+  if (path === "/api/spend" && method === "GET") {
+    const view = url.searchParams.get("view") || "day";
+    const limit = +(url.searchParams.get("limit") || (view === "day" ? 30 : view === "week" ? 12 : view === "month" ? 12 : 5));
+    const acct = await env.DB.prepare("SELECT llm_model FROM accounts ORDER BY id LIMIT 1").first();
+    const currentModel = acct?.llm_model || DEFAULT_MODEL;
+
+    const report = await spendReport(env, { view, limit });
+    const rec = await reconcile(env, { fallbackModel: currentModel });
+
+    // The live tail: days Closer has logged that no export covers yet. Shown as an ESTIMATE,
+    // never folded into the imported total — the whole design rests on not blending a measured
+    // number with an inferred one and presenting the result as a fact.
+    const through = report.imported.to;
+    const live = rec.days
+      .filter(d => !through || d.date > through)
+      .map(d => ({ date: d.date, usd: d.loggedUsd, tokensIn: d.loggedIn, tokensOut: d.loggedOut }));
+
+    return json({
+      ...report,
+      live: {
+        days: live,
+        usd: live.reduce((s, d) => s + d.usd, 0),
+        pricedAt: currentModel,   // history has no per-row model; see spend.js
+        since: through,
+      },
+      reconciliation: rec.summary,
+      reconciliationDays: rec.days.slice(-30),
+      currentModel,
+    });
+  }
+
+  // CSV in the body rather than multipart: the file is a few KB of text, the Worker has no
+  // form parser, and this keeps the import path identical whether it comes from the UI or a
+  // curl one-liner during a backfill.
+  if (path === "/api/spend/import" && method === "POST") {
+    const text = await request.text();
+    if (!text || text.length < 20) return json({ error: "Paste or upload the CSV from platform.claude.com › Usage." }, 400);
+    try {
+      const r = await importUsage(env, text);
+      await logEvent(env, { kind: "spend.imported",
+        detail: `${r.rows} rows · ${r.from}..${r.to} · ${r.models.join(", ")}` });
+      return json({ ok: true, ...r });
+    } catch (err) {
+      // A rejected import must say WHY. An import that silently drops rows shows up later as
+      // a month that looks cheap, which is the failure mode this whole page exists to prevent.
+      await logEvent(env, { level: "warn", kind: "spend.import_failed", detail: String(err?.message || err) });
+      return json({ error: String(err?.message || err) }, 400);
+    }
   }
 
   // ---- events / activity log ----
@@ -1268,6 +1323,7 @@ async function weeklyEditAnalysis(env) {
             ].join("\n");
       }
       await logEvent(env, { kind: "edits.analysed", account_id: group.account_id, usage: r.usage,
+        model: r.model,
         detail: `${group.tone || "master"} · ${r.usable ?? 0} usable of ${group.n}` });
     } catch (err) {
       analysis = `${group.n} edits accumulated for "${group.tone || "master"}". Analysis failed: ${String(err?.message || err)}`;

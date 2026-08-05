@@ -898,3 +898,51 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
 .mp-eopt:hover{ color:var(--ink-950); }
 .mp-eopt.on{ background:var(--paper-0); color:var(--ink-950); box-shadow:0 1px 2px rgba(0,0,0,.4); }
 .mp-enote{ font-size:13px; color:var(--ink-400); flex:1; min-width:180px; }
+
+/* ---- Spend (TASK-110) ------------------------------------------------------------------
+   A stacked bar chart in plain CSS. No library, because a strict CSP blocks external
+   scripts and because the entire chart is a grid of divs with percentage heights. */
+.sp-legend{ display:flex; flex-wrap:wrap; gap:14px; margin:2px 0 10px; font-size:12px; color:var(--ink-600); }
+.sp-leg{ display:inline-flex; align-items:center; gap:6px; }
+.sp-leg i{ width:9px; height:9px; border-radius:2px; display:inline-block; }
+.sp-leg b{ color:var(--ink-950); font-variant-numeric:tabular-nums; }
+.sp-unpriced{ font-style:normal; color:#D08A32; font-weight:600; }
+/* .spend-v.warn and .bad have been emitted by the Activity health card since it shipped and
+   were never defined, so a failing health score rendered in the same brand gradient as a
+   healthy one. Defined here because Spend uses .warn too. The gradient is painted via
+   background-clip:text, so an explicit color simply paints over it. */
+.spend-v.warn{ color:#D08A32; }
+.spend-v.bad{ color:#E5484D; }
+
+.sp-chart{ display:flex; align-items:flex-end; gap:3px; height:190px; padding:10px 2px 0;
+           border:1px solid var(--line); border-radius:10px; background:var(--paper-50);
+           margin-bottom:16px; overflow-x:auto; }
+.sp-col{ flex:1 1 0; min-width:16px; display:flex; flex-direction:column; height:100%; }
+/* The wrapper is the full-height track; the bar sits at its bottom. Without it a short bar
+   would float, because flex-end on the column applies to the whole stack including the label. */
+.sp-bar-wrap{ flex:1; min-height:0; display:flex; align-items:flex-end; padding:0 2px; }
+.sp-bar{ width:100%; border-radius:3px 3px 0 0; overflow:hidden; display:flex; flex-direction:column-reverse; }
+.sp-seg{ width:100%; }
+.sp-col:hover .sp-bar{ filter:brightness(1.18); }
+.sp-x{ font-size:12px; color:var(--ink-400); text-align:center; padding:6px 0 8px;
+       white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sp-empty{ margin:auto; color:var(--ink-400); font-size:13px; padding:20px; }
+
+.sp-table th{ font-size:12px; text-transform:uppercase; letter-spacing:.02em; color:var(--ink-400);
+              font-weight:700; text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); }
+.sp-table td:nth-child(1), .sp-table th:nth-child(1){ width:auto; }
+.sp-table td:nth-child(n+2), .sp-table th:nth-child(n+2){ width:88px; }
+.sp-num{ text-align:right; font-variant-numeric:tabular-nums; }
+.sp-dot{ width:9px; height:9px; border-radius:2px; display:inline-block; margin-right:7px; }
+.sp-id{ color:var(--ink-400); font-family:var(--font-mono); font-size:12px; margin-left:7px; }
+/* Marks a figure inferred from our own log rather than billed by Anthropic. The whole page
+   depends on those two never being mistaken for each other. */
+.spend-v.est{ color:var(--ink-600); }
+.spend-v.est::after{ content:"≈"; font-size:14px; vertical-align:super; margin-left:3px; color:var(--ink-400); }
+
+.sp-import{ border:1px solid var(--line); border-radius:10px; padding:14px 16px; background:var(--paper-50); margin-top:14px; }
+.sp-import textarea{ width:100%; min-height:110px; margin:10px 0; resize:vertical;
+                     border:1px solid var(--line); border-radius:8px; background:var(--paper-0);
+                     padding:10px; font-family:var(--font-mono); font-size:12px; color:var(--ink-950); }
+.sp-import textarea:focus{ outline:none; border-color:var(--blue-500); }
+.sp-msg{ font-size:12px; color:var(--ink-600); margin-left:8px; }

@@ -16,6 +16,7 @@
 import { WorkflowEntrypoint } from "cloudflare:workers";
 import { generateOutputs, readableTail } from "./llm.js";
 import { logEvent } from "./log.js";
+import { DEFAULT_MODEL } from "./models.js";
 
 export class GenerateWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
@@ -82,9 +83,14 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
 
         const out = await generateOutputs(env, {
           account, call, masterPrompt: tpl?.body || "", callType,
+          // The step events carry the model too, and that matters more than it looks: when a
+          // run dies after the debrief, its `_done` row is the ONLY record that those tokens
+          // were billed. 21 such debriefs sit in the log unattributed. Spend counts them
+          // (see loggedDaily in spend.js) and can only price them if they say what ran.
           onStep: ({ step: s, duration_ms, usage }) => logEvent(env, {
             kind: `generation.${s}_done`, call_id: callId, account_id: account.id,
-            duration_ms, usage, detail: `${call.client_name} · ${s}`
+            duration_ms, usage, model: account.llm_model || DEFAULT_MODEL,
+            detail: `${call.client_name} · ${s}`
           }),
           onProgress: writeProgress,
           onPreview: writePreview
@@ -118,9 +124,9 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
       });
 
       await logEvent(env, { kind: "generation.succeeded", call_id: callId, account_id: gen.account_id,
-        duration_ms: Date.now() - t0, usage: gen.usage,
-        detail: `${gen.client_name} · ${gen.model} · outcome=${gen.outcome}`,
-        meta: { model: gen.model, outputs: 1 + gen.messages.length * 2 } });
+        duration_ms: Date.now() - t0, usage: gen.usage, model: gen.modelId,
+        detail: `${gen.client_name} · ${gen.modelId || gen.model} · outcome=${gen.outcome}`,
+        meta: { provider: gen.model, model: gen.modelId, outputs: 1 + gen.messages.length * 2 } });
     } catch (err) {
       // A wedged 'processing' row is what made every previous failure look like a hang.
       // Whatever else breaks, the call must not be left spinning.

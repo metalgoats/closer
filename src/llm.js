@@ -330,6 +330,12 @@ Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
 
   return {
     model: provider,
+    // The actual Claude model id, NOT the provider. `model` above is "anthropic" and always
+    // has been — which is why every generation ever logged is indistinguishable from every
+    // other one, and why the Spend page cannot split a single day of history by model even
+    // though 2026-07-30 billed against Opus 5 and Sonnet 5 at once. Left alongside rather
+    // than replacing `model`, because `outputs.model` and the log detail string both read it.
+    modelId: model,
     usage: total,
     debrief: parsed,
     ghlNote: wantCrmNote ? parsed.ghlNote : null,

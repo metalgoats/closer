@@ -3,6 +3,55 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-08-06 — Spend, and what reconciling it against the real bill revealed
+
+New page under Settings: **Spend** — dollars by day / week / month / year, split by model.
+It is built on Anthropic's own billing export rather than on our event log, and the reason is
+the most useful thing this session produced.
+
+**Reconciling the two, day by day, over the whole history:**
+
+```
+2026-07-17 .. 07-29   our log captured 24–55% of what Anthropic actually billed
+2026-07-30 .. 08-04   exact, to the token, every single day
+```
+
+The gap is not rounding. It is runs that died before writing a usage row — the outage era of
+TASK-041/043/045 — plus retried attempts whose first try billed and then vanished. A Spend page
+built only on `events` would have understated July by roughly half **and shown a confident
+number while doing it.** So imported figures are reported as spend, logged figures as an
+estimate for the tail no export covers yet, and the two are never summed into one total.
+
+**Three things the build found that nothing else would have:**
+
+- **`meta.model` has never held a model.** It holds the *provider* — the literal string
+  `"anthropic"` — for all 27 generations ever logged. 2026-07-30 billed against Opus 5 *and*
+  Sonnet 5 on the same day and our data cannot say which run was which. `events.model` is now a
+  real column, written from the real model id; that history is not reconstructable.
+- **The cache is written on every run and has never once been read.** 23,553 cache-write tokens,
+  zero cache reads, across the entire billing history. That is not neutral: a write bills 1.25×,
+  so it is a 25% surcharge on those tokens for a benefit never collected. The page says so
+  rather than reporting "$0 saved".
+- **21 debriefs billed on runs that then failed**, leaving only a `generation.debrief_done` row.
+  Every cost query in this app has always missed them. Spend counts them.
+
+**Pricing moved to `src/pricing.js`, dated.** Rates are keyed by date because Sonnet 5 bills at
+its introductory $2/$10 through 2026-08-31 — every Sonnet row in July is on that rate, and
+pricing it from `models.js` ($3/$15, the price of a run started *today*) would have overstated
+July by 50%. Cache multipliers are explicit: 1.25× for a 5-minute write, **2× for a 1-hour
+write**, 0.1× for a read. An unknown model prices to `null`, never to a default — a model launch
+must surface as "we cannot price this", never as a number that happens to be false.
+
+This is the third pricing bug in this app's history and the first two are why the file exists:
+Activity hardcoded Sonnet's rate and kept it after the default moved to Opus (~65% low for
+weeks), and cached input was priced at zero until yesterday.
+
+Also fixed in passing: `.spend-v.warn` and `.spend-v.bad` have been emitted by the Activity
+health card since it shipped and were never defined in CSS, so a failing health score rendered
+in the same brand gradient as a healthy one.
+
+52 new assertions, each proven to fail when the bug it guards is reintroduced.
+
 ## 2026-07-30 — One type scale, and it is not a guess
 
 Adopted the interface type scale now shared across Ivan's tools, measured off apple.com rather
