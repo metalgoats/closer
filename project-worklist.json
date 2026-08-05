@@ -2892,8 +2892,30 @@
       "estimated_complexity": "medium",
       "status": "completed",
       "dependencies": [],
-      "description": "Ivan asked for this out loud on the 08-04 call: a brand script for what Closer AI is, drawing on how it was actually built, plus an onboarding/activation fee, a monthly per-seat price, and year one / year two sales projections. Gabriel's own anchors from the call: activation fee modelled on a ~$1,200 build, monthly in the $40–60 range, go-live in roughly two months, then webinar → ads → evergreen recording. Real unit economics now exist to price against (TASK-099): his last 26 generations averaged ~40k in / ~9.7k out, about $0.45/call on Opus 5. Deliverable is an email to Gabriel, drafted not sent. DONE 2026-08-04: drafted to Gabriel. Priced AGAINST his $40-60 anchor rather than on it, at Ivan's instruction ('price it properly and let the number be the conversation'). $1,950 installation + $197/seat/mo incl. 100 calls + $0.75 overage; optional $497 done-with-you. The argument that carries it is one row: at $50 a 120-call user costs $53, so the heaviest user is a LOSS. Year 1 $67k/$143k/$234k, year 2 base ~$400k exiting ~$27.6k MRR. Three caveats stated in the email: 55% of year-one revenue is installation (services wearing a SaaS hat), the projections are void until TASK-102 lands, and the Ivan/Gabriel ownership split has never been written down.",
+      "description": "Ivan asked for this out loud on the 08-04 call: a brand script for what Closer AI is, drawing on how it was actually built, plus an onboarding/activation fee, a monthly per-seat price, and year one / year two sales projections. Gabriel's own anchors from the call: activation fee modelled on a ~$1,200 build, monthly in the $40–60 range, go-live in roughly two months, then webinar → ads → evergreen recording. Real unit economics now exist to price against (TASK-099): his last 26 generations averaged ~40k in / ~9.7k out, about $0.45/call on Opus 5. Deliverable is an email to Gabriel, drafted not sent. DONE 2026-08-04: drafted to Gabriel. Priced AGAINST his $40-60 anchor rather than on it, at Ivan's instruction ('price it properly and let the number be the conversation'). $1,950 installation + $197/seat/mo incl. 100 calls + $0.75 overage; optional $497 done-with-you. The argument that carries it is one row: at $50 a 120-call user costs $53, so the heaviest user is a LOSS. Year 1 $67k/$143k/$234k, year 2 base ~$400k exiting ~$27.6k MRR. Three caveats stated in the email: 55% of year-one revenue is installation (services wearing a SaaS hat), the projections are void until TASK-102 lands, and the Ivan/Gabriel ownership split has never been written down. REPRICED SAME DAY at Ivan's direction — BYOK + luxury. Client brings their own Claude key (see TASK-108), so our marginal cost per seat drops to hosting only and THE COST-BASED FLOOR ARGUMENT DISAPPEARS: the price is now value-justified, not cost-justified. $6,500 installation + $997/seat/mo on a 12-month term ($9,950 annual), $3,450/mo team up to 5 seats, 8 installations per quarter, application not signup, no free trial. Y1 $150k/$250k/$374k, Y2 base ~$676k exiting ~$54.8k MRR. The line that carries it: at $197 it takes 169 seats to reach $400k/yr; at $997 it takes 33.",
       "source": "2026-08-04 Gabriel call"
+    },
+    {
+      "id": "TASK-108",
+      "title": "BYOK is the product decision — remove the platform API-key fallback before a second tenant exists",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "status": "incomplete",
+      "dependencies": [],
+      "source": "2026-08-04 Gabriel call + Ivan pricing decision",
+      "description": "Ivan's decision 2026-08-04: every client brings their own Anthropic key, as Gabriel did. Reason is liability, in his words — owning the client's Claude interactions 'leaves us open to having our API abused and owing hundreds of thousands.' THE CODE CURRENTLY CONTRADICTS THIS. src/llm.js resolveKey() and keyForRow() both fall back to env.ANTHROPIC_API_KEY when an account has no integrations row: `return envKeys[kind] || null`. Single-tenant that is a convenience; the day a second customer has a login it is an unbounded liability, and it fails SILENTLY — a client who never pastes a key, or deletes a bad one, just quietly bills Ivan. Required: (1) resolve keys per account with NO platform fallback for anthropic/openai once an account is not the house account; (2) refuse generation with a clear 'connect your Claude key' state rather than falling through; (3) surface each account's own spend, since BYOK makes it their number to watch; (4) test that an account with no key CANNOT generate. Fathom's fallback is a separate question — that key is Ivan's to provide."
+    },
+    {
+      "id": "TASK-109",
+      "title": "Onboarding must become repeatable — it is 52% of year-one revenue and all of Ivan's hours",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "status": "incomplete",
+      "dependencies": [
+        "TASK-108"
+      ],
+      "source": "2026-08-04 pricing model",
+      "description": "At $6,500 installation + $997/seat, roughly half of year-one revenue is installation fees — which means year one is a services business wearing a SaaS hat, and every new client costs Ivan real hours of calibration. That is fine as a starting shape and dangerous as a steady state: revenue stops the month selling stops. Work: a repeatable calibration path (connect recorder + CRM + their key, ingest N of their real calls, tune the master prompt against them, verify against a specimen) that a checklist can drive rather than Ivan's judgment. The luxury positioning depends on the calibration being genuinely good, so this is about making it repeatable, NOT about making it self-serve."
     }
   ],
   "progress_percentage": 77,
