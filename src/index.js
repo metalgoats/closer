@@ -333,6 +333,37 @@ async function route(request, env, url, ctx) {
        FROM events WHERE kind = 'generation.succeeded'`
     ).first();
     const fails = await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE level = 'error'").first();
+
+    // TASK-102. Gabriel said generation fails "more often than not" and nobody could check,
+    // because the only counter here was every error-level event of any kind. This answers the
+    // actual question, and it MUST count `started` rather than just succeeded-vs-failed:
+    // this app's whole history of outages (TASK-041, 043, 045) is runs that died leaving no
+    // failure row at all. A run that vanished is invisible to `generation.failed` and is
+    // exactly the kind Gabriel would remember. started - succeeded - failed = vanished.
+    // `attempts` is the retry counter (TASK-053) and is the honest answer to "are we billed
+    // for the ones that fail" — every attempt is a real request that bills for what it produced.
+    const rel = await env.DB.prepare(
+      `SELECT
+         COALESCE(SUM(kind = 'generation.started'),0)   AS started,
+         COALESCE(SUM(kind = 'generation.succeeded'),0) AS succeeded,
+         COALESCE(SUM(kind = 'generation.failed'),0)    AS failed,
+         COALESCE(SUM(kind = 'generation.attempt'),0)   AS attempts,
+         COALESCE(SUM(kind = 'generation.started'   AND at >= date('now','-30 days')),0) AS d30_started,
+         COALESCE(SUM(kind = 'generation.succeeded' AND at >= date('now','-30 days')),0) AS d30_succeeded,
+         COALESCE(SUM(kind = 'generation.failed'    AND at >= date('now','-30 days')),0) AS d30_failed,
+         COALESCE(SUM(kind = 'generation.attempt'   AND at >= date('now','-30 days')),0) AS d30_attempts
+       FROM events WHERE kind LIKE 'generation.%'`
+    ).first();
+    const window = (s, ok, f, a) => ({
+      started: s, succeeded: ok, failed: f, attempts: a,
+      // Clamped: a run that started before this window but finished inside it would otherwise
+      // push this negative, which would read as a bug rather than as a boundary effect.
+      vanished: Math.max(0, s - ok - f),
+    });
+    const reliability = {
+      all: window(rel?.started || 0, rel?.succeeded || 0, rel?.failed || 0, rel?.attempts || 0),
+      d30: window(rel?.d30_started || 0, rel?.d30_succeeded || 0, rel?.d30_failed || 0, rel?.d30_attempts || 0),
+    };
     // Rolling spend so cost is visible without exporting the log. One pass over the same rows —
     // separate queries per window would scan events four times for the same answer.
     // NOTE: this is OUR logged token spend, not Anthropic's billed total. Anthropic exposes real
@@ -357,7 +388,18 @@ async function route(request, env, url, ctx) {
     const today = { runs: w?.d_runs || 0, input_tokens: w?.d_in || 0, output_tokens: w?.d_out || 0 };
     const week  = { runs: w?.w_runs || 0, input_tokens: w?.w_in || 0, output_tokens: w?.w_out || 0 };
     const month = { runs: w?.m_runs || 0, input_tokens: w?.m_in || 0, output_tokens: w?.m_out || 0 };
-    return json({ events: results, totals: { ...totals, failures: fails?.n || 0 }, today, week, month });
+    // The model this account actually runs on, so the UI can price spend at the right rate
+    // instead of the Sonnet 5 constant it was hardcoded to before TASK-098 made model a setting.
+    const acct = await env.DB.prepare("SELECT llm_model FROM accounts ORDER BY id LIMIT 1").first();
+    const mid = acct?.llm_model || DEFAULT_MODEL;
+    const mspec = MODELS[mid] || MODELS[DEFAULT_MODEL];
+    // Rates ride along so the Activity view prices spend without a second round trip — and so
+    // there is no second copy of the price table in the front-end to drift out of date.
+    const model = { id: mid, label: mspec.label, inPerM: mspec.inPerM, outPerM: mspec.outPerM };
+    return json({
+      events: results, totals: { ...totals, failures: fails?.n || 0 }, today, week, month,
+      reliability, model,
+    });
   }
 
   // ---- suggestions ----

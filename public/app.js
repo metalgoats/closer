@@ -1732,11 +1732,13 @@ function openTypeEditor(t) {
 }
 
 async function renderActivity() {
-  const { events, totals, today, week, month } = await api.get("/events?limit=200");
-  // Rough but honest: Sonnet 5 list pricing, input $3/M and output $15/M. Labelled an estimate
-  // because the real invoice is Anthropic's, not ours.
-  const cost = (inp, outp) => `$${((inp || 0) / 1e6 * 3 + (outp || 0) / 1e6 * 15).toFixed(2)}`;
-  const money = t => t ? `$${(t / 1e6 * 2).toFixed(2)}` : "$0.00";
+  const { events, totals, today, week, month, reliability, model } = await api.get("/events?limit=200");
+  // Priced at the model this account ACTUALLY runs, sent by the server. It was hardcoded to
+  // Sonnet 5 ($3/$15) and stayed that way after TASK-098 made the model a setting and the
+  // default moved to Opus 5 ($5/$25) — so every figure on this page understated real spend by
+  // about 65%. Never reintroduce a rate constant here; the server owns the price table.
+  const IN_PER_M = model?.inPerM ?? 3, OUT_PER_M = model?.outPerM ?? 15;
+  const cost = (inp, outp) => `$${((inp || 0) / 1e6 * IN_PER_M + (outp || 0) / 1e6 * OUT_PER_M).toFixed(2)}`;
 
   const rows = events.length ? events.map(e => {
     const cls = e.level === "error" ? "ev-error" : e.level === "warn" ? "ev-warn" : "ev-info";
@@ -1770,15 +1772,50 @@ async function renderActivity() {
         <div class="spend-v">${totals?.runs ? cost((totals.input_tokens || 0) / totals.runs, (totals.output_tokens || 0) / totals.runs) : "$0.00"}</div>
         <div class="spend-sub">${totals?.avg_ms ? Math.round(totals.avg_ms / 1000) + "s avg" : "—"}</div></div>
     </div>
-    <div class="insight-note">Estimated from tokens this app logged, at Sonnet 5 list pricing. It counts Closer's spend only — the billed total and your remaining credit balance live in the Anthropic console, which has no API for either.</div>`;
+    <div class="insight-note">Estimated from tokens this app logged, at ${esc(model?.label || "current model")} list pricing. It counts Closer's spend only — the billed total and your remaining credit balance live in the Anthropic console, which has no API for either.</div>`;
+
+  // TASK-102 — Gabriel: generation fails "more often than not". Nobody could check, because the
+  // only counter was every error-level event of any kind. This is the answer, and it reports
+  // VANISHED runs separately: a run that died without logging a failure is invisible to a
+  // failed-vs-succeeded ratio, and this app's outage history (TASK-041/043/045) is exactly that
+  // shape. If the two columns disagree, the honest read is that Gabriel is remembering vanished
+  // runs and the failure count alone is understating him.
+  const rel = reliability?.d30 || reliability?.all;
+  const relBlock = (() => {
+    if (!rel || !rel.started) {
+      return `<div class="insight-note">No generations logged in the last 30 days, so there is no reliability figure to report yet.</div>`;
+    }
+    const pct = n => `${Math.round((n / rel.started) * 100)}%`;
+    const okRate = rel.succeeded / rel.started;
+    const tone = okRate >= 0.95 ? "" : okRate >= 0.8 ? "warn" : "bad";
+    const retry = rel.attempts > rel.started
+      ? `${rel.attempts} attempts for ${rel.started} runs — ${(rel.attempts / rel.started).toFixed(2)}x. Every attempt bills for whatever it produced before it stopped.`
+      : `${rel.attempts} attempts for ${rel.started} runs — no measurable retrying.`;
+    return `<div class="spend-row">
+      <div class="spend-card"><div class="spend-k">Succeeded</div>
+        <div class="spend-v ${tone}">${pct(rel.succeeded)}</div>
+        <div class="spend-sub">${rel.succeeded} of ${rel.started} started</div></div>
+      <div class="spend-card"><div class="spend-k">Failed</div>
+        <div class="spend-v ${rel.failed ? "bad" : ""}">${rel.failed}</div>
+        <div class="spend-sub">logged an error</div></div>
+      <div class="spend-card"><div class="spend-k">Vanished</div>
+        <div class="spend-v ${rel.vanished ? "bad" : ""}">${rel.vanished}</div>
+        <div class="spend-sub">started, never finished, never errored</div></div>
+      <div class="spend-card"><div class="spend-k">Attempts</div>
+        <div class="spend-v">${rel.attempts}</div>
+        <div class="spend-sub">incl. retries</div></div>
+    </div>
+    <div class="insight-note">Last 30 days. ${esc(retry)}</div>`;
+  })();
+  // Reliability leads. If generation is failing, no other number on this page matters.
   viewShell("Activity", "Everything the app has done — failures, completions, token spend, and which outputs actually get used",
-    spend + `<div class="ev-summary">
+    relBlock + spend + `<div class="ev-summary">
        <div><b>${totals.runs || 0}</b><span>generations</span></div>
-       <div class="${totals.failures ? "bad" : ""}"><b>${totals.failures || 0}</b><span>failures</span></div>
+       <div class="${totals.failures ? "bad" : ""}"><b>${totals.failures || 0}</b><span>error events</span></div>
        <div><b>${(totals.input_tokens || 0).toLocaleString()}</b><span>input tokens</span></div>
        <div><b>${(totals.output_tokens || 0).toLocaleString()}</b><span>output tokens</span></div>
        <div><b>${totals.avg_ms ? (totals.avg_ms / 1000).toFixed(1) + "s" : "—"}</b><span>avg run</span></div>
-       <div><b>~${money(totals.input_tokens)}</b><span>input cost (est.)</span></div>
+       <div><b>~${cost(totals.input_tokens, 0)}</b><span>input cost (est.)</span></div>
      </div>
      <div class="ev-filters">
        <button class="chip" data-evfilter="">All</button>

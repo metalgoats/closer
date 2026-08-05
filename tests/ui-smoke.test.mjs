@@ -434,5 +434,33 @@ check("the note warns when a level forces thinking on",
   /Thinking is on at this level/.test(src));
 check("the effort segment has styles", /\.mp-eopt\.on\{/.test(css));
 
+console.log("\n== generation reliability + model-aware pricing (TASK-102) ==");
+check("Activity reads the reliability block the server sends",
+  /const \{ events, totals, today, week, month, reliability, model \} = await api\.get/.test(src),
+  "renderActivity destructured the old shape and would silently show nothing");
+check("reliability is rendered ABOVE spend",
+  /relBlock \+ spend \+/.test(src),
+  "if generation is failing, no other number on the page matters — it must lead");
+check("VANISHED runs are surfaced, not just logged failures",
+  /Vanished/.test(src) && /rel\.vanished/.test(src),
+  "a run that dies without an error row is invisible to failed-vs-succeeded, and that is this app's entire outage history (TASK-041/043/045)");
+check("the retry line says attempts are billed",
+  /Every attempt bills/.test(src),
+  "this is the literal question Gabriel asked and it must not be softened away");
+check("no history reports honestly instead of showing 0%",
+  /no reliability figure to report yet/.test(src));
+check("spend is priced from the server's rates, not a hardcoded constant",
+  /model\?\.inPerM/.test(src) && /model\?\.outPerM/.test(src),
+  "the Sonnet 5 constant is back — it understates Opus 5 spend by ~65%");
+check("no rate constant survives in renderActivity",
+  !/1e6 \* 3 \+/.test(src) && !/t \/ 1e6 \* 2/.test(src),
+  "a second copy of the price table in the front-end will drift the day the model changes");
+check("the estimate note names the actual model",
+  /model\?\.label \|\| "current model"/.test(src),
+  "the note claimed Sonnet 5 pricing regardless of what was running");
+check("the all-time counter no longer calls itself 'failures'",
+  /<span>error events<\/span>/.test(src),
+  "it counts EVERY error-level event; calling it 'failures' is what made TASK-102 unanswerable");
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

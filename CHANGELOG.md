@@ -33,6 +33,52 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
+## 2026-08-05 — Answer Gabriel's reliability question, from inside the app (TASK-102, TASK-103)
+
+Gabriel, on the 08-04 call, asked whether failed generations are billed and then said the
+failures happen **"more often than not."** It went by inside a cost question and neither he nor
+Ivan stopped on it. If it is true, nothing else on the roadmap matters.
+
+**Nobody could check, for two separate reasons, and the second one is the real finding.**
+
+*Reason one: the app never counted it.* The only failure figure on the Activity page was
+`SELECT COUNT(*) FROM events WHERE level='error'` — every error-level event of any kind, Fathom
+polls and cron failures included. Labelled "failures", so it read like a generation count and
+was not one. Now there is a real reliability block: **started, succeeded, failed, and
+vanished**, over 30 days, rendered *above* spend because if generation is failing no other
+number on the page matters.
+
+**Vanished is the column that earns its place.** A run that dies without writing a
+`generation.failed` row is invisible to any succeeded-vs-failed ratio — and this project's
+entire outage history is exactly that shape (TASK-041 silent 10-minute hangs, TASK-043
+non-streaming stalls, TASK-045 the 30-second `waitUntil` cap that killed every run at 0:30).
+Those are the runs Gabriel would remember. `started - succeeded - failed` is the only way to
+see them. If the two columns disagree, the failure count is understating him.
+
+`attempts` answers the question he actually asked: every retry is a real request that bills for
+whatever it produced before it stopped.
+
+*Reason two: **Ivan cannot reach production**.* Chasing the query first surfaced this. The
+`closer` Worker and its D1 database are **not in any Cloudflare account Ivan's login can see** —
+his account holds seven Workers and two D1 databases, none of them Closer's. The live URL says
+where they are: `closer.gabriel-galindo.workers.dev`. The only credential that reaches
+production is the GitHub Actions `CLOUDFLARE_API_TOKEN`, whose value nobody can read back.
+
+So Ivan can deploy and cannot inspect, query, back up, or recover. TASK-023 (nightly D1 backup
+to R2) has never shipped, so there is no independent copy of Gabriel's real client call
+transcripts anywhere. **This is why the measurement was built into the product rather than run
+as a one-off query** — a number in the app outlives the access problem and does not need
+anyone's console. TASK-103 stays open; it is an ownership question, not a permissions one.
+
+**A pricing bug found on the way past.** Activity priced every figure at Sonnet 5 list rates
+($3/$15), hardcoded, and stayed that way after TASK-098 made the model a setting and moved the
+default to Opus 5 ($5/$25). Every cost on the page understated real spend by about 65% — and it
+was the page Ivan would have checked while pricing the product. The server now sends the
+account's actual rates; the front end keeps no copy of the price table.
+
+109 assertions in `ui-smoke` (was 100). Three were proven to FAIL by restoring the Sonnet
+constant and dropping the reliability strip, then restored to green.
+
 ## 2026-07-29 (evening) — Gabriel says the outputs are usable (TASK-093…099)
 
 The day ended with the sentence the whole effort was resting on. Gabriel, on a live
