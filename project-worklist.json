@@ -2890,9 +2890,9 @@
       "title": "Closer AI brand script, pricing and 1st/2nd-year projections",
       "priority": "medium",
       "estimated_complexity": "medium",
-      "status": "incomplete",
+      "status": "completed",
       "dependencies": [],
-      "description": "Ivan asked for this out loud on the 08-04 call: a brand script for what Closer AI is, drawing on how it was actually built, plus an onboarding/activation fee, a monthly per-seat price, and year one / year two sales projections. Gabriel's own anchors from the call: activation fee modelled on a ~$1,200 build, monthly in the $40–60 range, go-live in roughly two months, then webinar → ads → evergreen recording. Real unit economics now exist to price against (TASK-099): his last 26 generations averaged ~40k in / ~9.7k out, about $0.45/call on Opus 5. Deliverable is an email to Gabriel, drafted not sent.",
+      "description": "Ivan asked for this out loud on the 08-04 call: a brand script for what Closer AI is, drawing on how it was actually built, plus an onboarding/activation fee, a monthly per-seat price, and year one / year two sales projections. Gabriel's own anchors from the call: activation fee modelled on a ~$1,200 build, monthly in the $40–60 range, go-live in roughly two months, then webinar → ads → evergreen recording. Real unit economics now exist to price against (TASK-099): his last 26 generations averaged ~40k in / ~9.7k out, about $0.45/call on Opus 5. Deliverable is an email to Gabriel, drafted not sent. DONE 2026-08-04: drafted to Gabriel. Priced AGAINST his $40-60 anchor rather than on it, at Ivan's instruction ('price it properly and let the number be the conversation'). $1,950 installation + $197/seat/mo incl. 100 calls + $0.75 overage; optional $497 done-with-you. The argument that carries it is one row: at $50 a 120-call user costs $53, so the heaviest user is a LOSS. Year 1 $67k/$143k/$234k, year 2 base ~$400k exiting ~$27.6k MRR. Three caveats stated in the email: 55% of year-one revenue is installation (services wearing a SaaS hat), the projections are void until TASK-102 lands, and the Ivan/Gabriel ownership split has never been written down.",
       "source": "2026-08-04 Gabriel call"
     }
   ],
