@@ -8,7 +8,7 @@
 //      row in Closer's July history is on that rate. `models.js` says $3/$15 — the price of a
 //      run started today — so pricing history from there overstates July by 50%.
 //   2. CACHE MULTIPLIERS. Cached input was priced at ZERO on the Activity page until
-//      2026-08-06, hiding almost the entire cost of a chat turn. 5m writes bill 1.25x, 1h
+//      2026-08-05, hiding almost the entire cost of a chat turn. 5m writes bill 1.25x, 1h
 //      writes 2x, reads 0.1x — three distinct numbers, and collapsing any two loses money.
 //   3. UNKNOWN MODELS MUST NOT SILENTLY COST $0 (or default-model money). A model launch
 //      should surface as "we cannot price this", never as a number that happens to be false.
@@ -258,7 +258,7 @@ check("the transcript is NOT inside any cached block",
   "a breakpoint has moved past the transcript — every run now writes a huge entry it can never read");
 check("no per-call content leaks into the cached prefix at all",
   cached.every(b => !b.text.includes("Marcus Webb") && !b.text.includes(TRANSCRIPT.slice(0, 40))));
-check("the static call-type prompt IS cached (it was outside the prefix until 2026-08-06)",
+check("the static call-type prompt IS cached (it was outside the prefix until 2026-08-05)",
   cached.some(b => b.text.includes("SALES PROMPT BODY")));
 check("the schema instructions are cached with it",
   cached.some(b => b.text.includes("Return ONLY valid JSON with keys")));

@@ -3,7 +3,7 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
-## 2026-08-06 (later) — The cache breakpoint was on the smallest static thing in the request
+## 2026-08-05 (later) — The cache breakpoint was on the smallest static thing in the request
 
 Follow-on from the Spend page, which showed 23,553 cache-write tokens and **zero** reads across
 the entire billing history. Two causes; this fixes the one worth fixing.
@@ -44,7 +44,7 @@ strictest minimum of any model we offer rather than the default model's.
 12 new assertions. The four that matter — breakpoint past the transcript, second breakpoint
 dropped, the `\n\n` lost in the split, estimator reverted — each proven to go red.
 
-## 2026-08-06 — Spend, and what reconciling it against the real bill revealed
+## 2026-08-05 — Spend, and what reconciling it against the real bill revealed
 
 New page under Settings: **Spend** — dollars by day / week / month / year, split by model.
 It is built on Anthropic's own billing export rather than on our event log, and the reason is
@@ -123,7 +123,7 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
-## 2026-08-06 (unified) — One section, eleven chips, every panel at full height
+## 2026-08-05 (unified) — One section, eleven chips, every panel at full height
 
 Ivan, with an annotated screenshot: the "Debrief" heading struck out, an arrow from the output
 tabs up into the debrief's chip row — *"Unify all the output so that we maximize the screen real
@@ -157,7 +157,7 @@ scorecard fills the height, the email owns the pane.
 now be ABSENT from renderProcessed, `PANES.debrief` must STAY retired, and one `panel-subnav`
 per call view — so the split coming back quietly is a test failure, not a regression.
 
-## 2026-08-06 (cleanup) — The UI, tightened: five sessions of accretion reconciled
+## 2026-08-05 (cleanup) — The UI, tightened: five sessions of accretion reconciled
 
 Ivan's read after a week of feature work: *"the UI is drifting and we're creating all these
 little messy appendages and trailing parts."* Right. Each session had bolted on its own strip,
@@ -202,7 +202,7 @@ eye, so 11-of-17 applied looked like success. Read the output, then look at the 
 
 148 assertions in ui-smoke; the chat collapse and rail removal proven to FAIL when reverted.
 
-## 2026-08-06 (last) — First real chat turn, and the cached spend it exposed
+## 2026-08-05 (last) — First real chat turn, and the cached spend it exposed
 
 Ran one live chat turn against production call 10050 — real debrief (28KB), real outputs, real
 key, real model — read-only, writing nothing back. Asked it to shorten the balanced email, strip
@@ -227,7 +227,7 @@ because fixing only the headline figure would have left today/week/month quietly
 That is the second cost bug on this page in a day: it was still pricing Opus 5 at Sonnet 5 rates
 until this morning. Both had the same shape — a number that looked authoritative and was not.
 
-## 2026-08-06 (later) — The chat, and edits that finally say something (TASK-105, TASK-022)
+## 2026-08-05 (later) — The chat, and edits that finally say something (TASK-105, TASK-022)
 
 **TASK-105 — the per-call chat.** This is the feature that decides whether Closer replaces
 Gabriel's workflow or stays a third step inside it. He asked for it by describing Notion's
@@ -277,7 +277,7 @@ The instruction was followed vacuously and nothing errored. It is now carried, a
 `null` rather than omitted, because a key that vanishes when the debrief omits it reproduces the
 same silent failure.
 
-## 2026-08-06 — One follow-up, written to how this buyer decides (TASK-104)
+## 2026-08-05 — One follow-up, written to how this buyer decides (TASK-104)
 
 Gabriel on 2026-08-04, on the tone selector: *"I almost never necessarily care if it's balanced,
 casual, or formal. I always default to what is the client's buying behavior."* And on what he was

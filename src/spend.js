@@ -5,7 +5,7 @@
 // `usage_daily`  — Anthropic's billing export, imported. Authoritative. Has the model.
 // `events`       — what Closer logged as it ran. Live. Until now, had NO usable model.
 //
-// Reconciling them on 2026-08-06 produced the number that decided this design:
+// Reconciling them on 2026-08-05 produced the number that decided this design:
 //
 //     2026-07-17 .. 07-29   our log captured 24–55% of what Anthropic billed
 //     2026-07-30 .. 08-04   exact, to the token, every single day
@@ -293,7 +293,7 @@ export async function reconcile(env, { fallbackModel = null } = {}) {
   for (const l of logged) {
     const cur = byDate.get(l.date) || { date: l.date, loggedIn: 0, loggedOut: 0, loggedUsd: 0, orphanedIn: 0 };
     // Priced at the model the row records; where history has none (everything before
-    // 2026-08-06, because `meta.model` held the provider name) fall back to the account's
+    // 2026-08-05, because `meta.model` held the provider name) fall back to the account's
     // current model and SAY SO — the caller labels this an estimate.
     const p = priceUsage(l.model || fallbackModel, l.date, {
       noCache: l.noCache, cacheWrite5m: l.cacheWrite, cacheRead: l.cacheRead, output: l.output,

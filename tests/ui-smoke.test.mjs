@@ -303,7 +303,7 @@ check("the ≤640px mobile layout ignores them too", !/--w-sidebar|--w-list/.tes
 check("handles are hidden below 900px where the columns are fixed", /\.resizer\{ display:none/.test(rail900));
 check("collapsed sidebar keeps the dragged list width",
   /body\.sb-collapsed \.app\{ grid-template-columns:0 var\(--w-list/.test(css1));
-// 2026-08-06: the debrief|outputs split is GONE — one unified body, full height, one panel at
+// 2026-08-05: the debrief|outputs split is GONE — one unified body, full height, one panel at
 // a time. The old assertion pinned the split's mechanism; these pin the unification's.
 check("the unified body takes the full height", /\.unified-body\{[^}]*flex:1/.test(css1) && !/--h-debrief/.test(css1),
   "a leftover height:var(--h-debrief) means the split quietly came back");
@@ -341,7 +341,7 @@ check("sizes persist to localStorage", JSON.parse(store["closer-panes"] || "{}")
 root.removeProperty("--w-list");
 T.loadPanes();
 check("...and are restored on the next load", root.getPropertyValue("--w-list") === "380px");
-// The debrief pane entry is gone with the split (2026-08-06) — assert it STAYS gone, because
+// The debrief pane entry is gone with the split (2026-08-05) — assert it STAYS gone, because
 // its return would mean the divider is back.
 check("the retired debrief pane entry stays retired", !T.PANES.debrief);
 check("every pane has a sane min", Object.values(T.PANES).every(p => (typeof p.min === "function" ? p.min() : p.min) >= 100));
@@ -395,7 +395,7 @@ check("no date has two entries — a day accumulates into one", new Set(days).si
 check("releases are newest-first", days.every((d, i) => i === 0 || days[i - 1] > d), days.join(", "));
 // Not pinned to a literal date — the previous version asserted v === "2026-07-29", which
 // guaranteed the assertion itself went stale the day new work shipped (and it did: the notes
-// sat five days and eight features behind until 2026-08-06). Assert the invariants instead:
+// sat five days and eight features behind until 2026-08-05). Assert the invariants instead:
 // newest entry first, and it says something.
 check("release entries are newest-first and the top one has substance",
   R.every((r, i) => i === 0 || r.v < R[i - 1].v) && R[0].items.length >= 3,
@@ -458,7 +458,7 @@ console.log("\n== generation reliability + model-aware pricing (TASK-102) ==");
 check("Activity reads the reliability block the server sends",
   /const \{ events, totals, today, week, month, reliability, model \} = await api\.get/.test(src),
   "renderActivity destructured the old shape and would silently show nothing");
-check("health LEADS the merged strip (2026-08-06: three strips became one)",
+check("health LEADS the merged strip (2026-08-05: three strips became one)",
   /Health · 30d[\s\S]{0,2500}?Cost · all time/.test(src),
   "if generation is failing, no other number on the page matters — it must come first");
 check("the three-era strips are actually gone",
@@ -590,7 +590,7 @@ check("the chat log scrolls to the newest message",
 check("the chat panel has styling and a mobile case",
   /\.chat-section\{/.test(css) && /\.chat-log\{ display:flex/.test(css) && /max-width:640px\)\{ \.chat-log/.test(css));
 
-check("cached input is priced, not ignored (2026-08-06)",
+check("cached input is priced, not ignored (2026-08-05)",
   /CACHE_WRITE_MULT = 1\.25, CACHE_READ_MULT = 0\.1/.test(src)
     && /cache_read_tokens, totals\?\.cache_write_tokens/.test(src),
   "a live chat turn reported 42 fresh input tokens against a ~10k cached prefix — pricing only fresh input made almost the whole cost invisible");
@@ -615,7 +615,7 @@ check("cached input is priced, not ignored (2026-08-06)",
     "an un-cached call site silently under-reports again: " + bare.join(" | "));
 }
 
-console.log("\n== UI cleanup pass (2026-08-06) ==");
+console.log("\n== UI cleanup pass (2026-08-05) ==");
 check("header settings are collapsed behind a one-line summary",
   /dh-settings/.test(src) && /dhSummaryBtn/.test(src) && /\.dh-settings \.dh-controls\{ display:none; \}/.test(css.replace(/\s+/g, " ")),
   "four permanent control rows ate ~430px before any content — editing a type or tone is an exception, not a per-visit action");

@@ -254,7 +254,7 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
   //   2. prompt + schema   identical for a given call type          <- breakpoint
   //   3. transcript        unique to this call, never repeated      (never cached)
   //
-  // The specimen was the only cached block until 2026-08-06, which meant the breakpoint sat on
+  // The specimen was the only cached block until 2026-08-05, which meant the breakpoint sat on
   // the SMALLEST static thing in the request: 1,264 tokens of a ~50,000-token prompt, about 2%.
   // `prompt` and `schemaParts` are equally static — both are pure functions of `callType`, with
   // nothing per-call interpolated into them — and they were sitting outside the cached prefix

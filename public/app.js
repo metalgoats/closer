@@ -156,8 +156,8 @@ function showUpdateBanner() {
 // purpose — seeing the complete day beats seeing only its tail.
 const RELEASES = [
   {
-    v: "2026-08-06",
-    date: "5–6 August 2026",
+    v: "2026-08-05",
+    date: "4–5 August 2026",
     title: "One follow-up written for the buyer, a chat that edits in place, and you can finally see what you select",
     items: [
       "The casual / balanced / formal switcher is gone. There is now ONE follow-up, written to how this specific buyer decides — what moved them, what stalled them, how they talked about the money, and whether someone else has a say. A short note above the debrief tells you why it reads the way it does.",
@@ -765,7 +765,7 @@ const PANES = {
   list:    { prop: "--w-list",    axis: "x", min: 200, max: 640,
              measure: () => { const s = rectOf(".sidebar"), l = rectOf(".call-list"); return s && l ? l.right - s.right : null; } },
 };
-// The `debrief` pane entry was removed 2026-08-06: the unified section made the
+// The `debrief` pane entry was removed 2026-08-05: the unified section made the
 // debrief|outputs divider meaningless — one panel shows at a time, at full height.
 const paneBound = v => (typeof v === "function" ? v() : v);
 const paneSize = spec => spec.measure();
@@ -1064,7 +1064,7 @@ function renderProcessed(call, outputs) {
         </div>
         <div class="dh-actions">${callActions(call, `<button class="regen-btn" id="regenBtn">↻ Regenerate</button>`)}</div>
       </div>
-      <!-- UI CLEANUP 2026-08-06. The header had grown to four permanent control rows (~430px
+      <!-- UI CLEANUP 2026-08-05. The header had grown to four permanent control rows (~430px
            before any content): call-type chips, tone segment, and two explainer lines — all
            editable, on every call, forever. But relabelling a call or switching a legacy tone is
            an EXCEPTION, not a per-visit action; every comparable surface (Grain, Apollo, Amie)
@@ -1095,7 +1095,7 @@ function renderProcessed(call, outputs) {
         </div>
       </div>
     </div>
-    <!-- ONE unified section (Ivan, 2026-08-06, annotated screenshot: "unify all the output so
+    <!-- ONE unified section (Ivan, 2026-08-05, annotated screenshot: "unify all the output so
          that we maximize the screen real estate at all times" — the full version of what
          Gabriel asked for on the 08-04 call, TASK-106). The debrief pages and the three
          outputs share ONE chip row and ONE full-height body; exactly one panel shows at a
@@ -1130,7 +1130,7 @@ function renderProcessed(call, outputs) {
     </div>
     <!-- TASK-105. Sits BELOW the outputs, the way ChatGPT and Claude put the box under the
          answer — Ivan's shape from the call. Whatever it rewrites appears above it. -->
-    <!-- UI CLEANUP 2026-08-06. This shipped as a permanently open panel — empty-state paragraph
+    <!-- UI CLEANUP 2026-08-05. This shipped as a permanently open panel — empty-state paragraph
          plus composer, ~160px subtracted from the outputs pane even with zero messages. That is
          the exact pane Gabriel said was too small (TASK-088/106), which made the chat a
          regression wearing a feature. Apollo and Lightfield both do this right: a slim ask-bar,
@@ -1400,7 +1400,7 @@ function wireDetail(call, outs) {
     $("#dhSummaryBtn").setAttribute("aria-expanded", state.settingsOpen === call.id);
   });
 
-  // ONE selection across debrief pages AND outputs (2026-08-06). Eleven chips, one active
+  // ONE selection across debrief pages AND outputs (2026-08-05). Eleven chips, one active
   // panel, full height. Selecting from one family deactivates the other, and the actions at
   // the row's end follow the active panel: Copy-all belongs to the debrief, Mark-sent/Copy to
   // the output they act on — a button for a panel that is not on screen is clutter at best
@@ -1921,7 +1921,7 @@ async function renderActivity() {
   // default moved to Opus 5 ($5/$25) — so every figure on this page understated real spend by
   // about 65%. Never reintroduce a rate constant here; the server owns the price table.
   const IN_PER_M = model?.inPerM ?? 3, OUT_PER_M = model?.outPerM ?? 15;
-  // Cached input is REAL SPEND and was priced at zero here until 2026-08-06. Since TASK-096 every
+  // Cached input is REAL SPEND and was priced at zero here until 2026-08-05. Since TASK-096 every
   // debrief carries a cached specimen prefix, and the TASK-105 chat sends the whole debrief as a
   // cached block — a live chat turn reported 42 fresh input tokens against a ~10k-token prefix,
   // so almost the entire cost of a turn was invisible on this page. Anthropic's multipliers:
@@ -1949,7 +1949,7 @@ async function renderActivity() {
   }).join("") : `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Nothing logged yet.</td></tr>`;
 
   const runsLabel = n => `${n || 0} generation${n === 1 ? "" : "s"}`;
-  // UI CLEANUP 2026-08-06. This page had THREE stacked stat strips from three eras — TASK-076
+  // UI CLEANUP 2026-08-05. This page had THREE stacked stat strips from three eras — TASK-076
   // spend cards, the TASK-102 reliability row, and the original ev-summary — and they disagreed
   // with each other on the same screen: "5 runs · 3 errors" beside "5 GENERATIONS / 3 ERROR
   // EVENTS", a 55s average beside a 54.7s one, an all-time total beside an input-only estimate.

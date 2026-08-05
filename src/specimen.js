@@ -86,7 +86,7 @@ Now analyse the actual call below to that same standard.`;
 // Rough token count. Deliberately an estimate with an honest name rather than a number
 // pretending to be exact — the real figure comes back in usage on every call.
 //
-// CALIBRATED AGAINST THE REAL BILL, 2026-08-06. The divisor was 3.7, a guess, and it made this
+// CALIBRATED AGAINST THE REAL BILL, 2026-08-05. The divisor was 3.7, a guess, and it made this
 // 1,021 tokens. Anthropic's usage export bills this block at exactly **1,264** on every run —
 // the specimen was the only cached block for weeks, so `cache_write` is a direct measurement of
 // it. That is 2.99 chars per token, and the old guess was running 19% LOW.

@@ -5,7 +5,7 @@
 //
 //   * Activity hardcoded Sonnet 5 ($3/$15) and kept using it after the default model moved to
 //     Opus 5 ($5/$25) — every figure on that page was ~65% low for weeks.
-//   * Cached input was priced at ZERO until 2026-08-06, while every debrief carries a cached
+//   * Cached input was priced at ZERO until 2026-08-05, while every debrief carries a cached
 //     specimen prefix. A live chat turn showed 42 fresh input tokens against a ~10k cached
 //     prefix, so almost the whole cost of a turn was invisible.
 //
@@ -33,9 +33,9 @@
 //   cache read       0.10x   the saving that makes caching worth doing
 //
 // Sources: the model table and prompt-caching economics in the `claude-api` skill, read
-// 2026-08-06. Re-check on any model launch; that is what `RATES_CHECKED` is for.
+// 2026-08-05. Re-check on any model launch; that is what `RATES_CHECKED` is for.
 
-export const RATES_CHECKED = "2026-08-06";
+export const RATES_CHECKED = "2026-08-05";
 
 export const CACHE_MULT = Object.freeze({
   noCache:      1.00,

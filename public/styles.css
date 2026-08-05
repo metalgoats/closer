@@ -65,7 +65,7 @@ button{ font-family:inherit; }
 .app{ display:grid; grid-template-columns:var(--w-sidebar, 208px) var(--w-list, 280px) minmax(0,1fr);
   height:100vh; min-height:640px; background:var(--paper-0); position:relative; }
 @media (max-width:1100px){ .app{ grid-template-columns:var(--w-sidebar, 176px) var(--w-list, 240px) minmax(0,1fr); } }
-/* UI CLEANUP 2026-08-06 — the 641-900px band used to keep a 56px "icon rail" whose nav items
+/* UI CLEANUP 2026-08-05 — the 641-900px band used to keep a 56px "icon rail" whose nav items
    were `display:none`. There are no icons in this app, so the rail showed a logo above a blank
    strip and the ENTIRE navigation (Insights, Suggestions, the account menu's pages) had
    zero-size hit targets: unreachable, silently, at exactly a half-screen laptop window. The
@@ -268,7 +268,7 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .brief-body{ font-size:15px; line-height:1.5; border-top:1px solid var(--line); padding-top:8px; }
 
 /* NEW LAYOUT: debrief full-width on top, then three output columns */
-/* The unified section (2026-08-06): debrief pages and outputs share one chip row and one
+/* The unified section (2026-08-05): debrief pages and outputs share one chip row and one
    full-height body. Exactly one panel is in flow at a time and it gets every vertical pixel —
    Gabriel's screen-real-estate ask, finished. */
 .unified-section{ flex:1; min-height:0; display:flex; flex-direction:column; }
@@ -281,7 +281,7 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .unified-body .opane textarea.msg-edit{ flex:1; min-height:180px; }
 .subnav-split{ width:1px; align-self:stretch; margin:4px 6px; background:var(--line-strong); }
 .subnav-actions{ margin-left:auto; display:flex; align-items:center; gap:6px; }
-/* Wraps rather than scrolls (2026-08-06): nine debrief pages clipped mid-word at the right
+/* Wraps rather than scrolls (2026-08-05): nine debrief pages clipped mid-word at the right
    edge with no affordance — macOS overlay scrollbars are invisible until touched, which is the
    TASK-092 dialog lesson again on a different element. A second line of pills costs 30px and
    hides nothing. */
@@ -480,7 +480,7 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .list-nav-btn{ display:none; background:var(--paper-200); color:var(--ink-950);
   border:1px solid var(--line); border-radius:8px; padding:5px 10px; font-size:15px; cursor:pointer; }
 
-/* UI CLEANUP 2026-08-06 — the collapsed header settings (call type + tone editors live inside;
+/* UI CLEANUP 2026-08-05 — the collapsed header settings (call type + tone editors live inside;
    the summary line is all that shows until clicked). */
 .dh-settings .dh-controls{ display:none; }
 .dh-settings.open .dh-controls{ display:block; padding-top:2px; }
