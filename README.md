@@ -164,8 +164,14 @@ public/          the UI (ported from the design mockup)
   control and show one at a time** (TASK-088) — Gabriel sends them separately, so they no longer
   all hold screen at once. The app opens on whatever Gabriel said on the call he'd send. The
   selected chip is the panel's **only** label — the panels print no title of their own (TASK-092).
-- SMS + email generate in **all three tones** up front; switching is instant. The **SMS is never
-  suppressed** — even an email-only call gets a warm, send-worthy text (TASK-085).
+- **One follow-up, written to how the buyer decides (TASK-104).** The casual/balanced/formal
+  selector is gone: Gabriel ignored it and it cost three LLM calls a run. The debrief extracts a
+  `buyingProfile` (decisionStyle, convincedBy, stalledBy, moneyLanguage, otherDeciders) and the
+  drafting pass writes to it. A run is now 2 paid calls, not 4. New message rows are stored under
+  the tone marker `tuned`; **calls processed before 2026-08-06 hold three tone rows and must keep
+  rendering** — `availableTones()` derives the selector from the outputs, never from a fixed list.
+  The **SMS is still never suppressed** — even an email-only call gets a warm, send-worthy text
+  (TASK-085).
 - Outputs are **editable in place**; every pre-copy edit is stored in `edits`.
 - Sunday cron: once ≥10 unfolded edits exist per (account, tone), a **suggestion** is created for
   approval — the prompt is never changed automatically.

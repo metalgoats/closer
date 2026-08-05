@@ -434,6 +434,11 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .ev-error td{ color:var(--ink-800); }
 .ev-warn .ev-kind{ background:var(--violet-100); color:var(--violet-600); }
 .work-elapsed{ font-variant-numeric:tabular-nums; }
+/* TASK-104. Replaces the tone segmented control on single-voice calls. Reads as a quiet note
+   from the app, not a control — there is nothing to pick, and styling it like a chip would
+   invite Gabriel to click it. */
+.voice-row{ align-items:baseline; }
+.voice-note{ font-size:13px; line-height:1.5; color:var(--ink-600); font-style:italic; }
 /* The live debrief tail (TASK-101). Fixed height on purpose — it grows for three minutes, and
    a panel that reflows the page under Gabriel every 1.5 seconds is worse than no panel. It
    scrolls itself to the bottom instead. Muted and monospaced because it is machine output in

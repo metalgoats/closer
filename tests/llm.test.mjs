@@ -85,7 +85,9 @@ const draftPrompts = bodies.slice(1).map(b => textOf(b.messages[0].content));
 const allDrafts = draftPrompts.join("\n");
 
 console.log("\n== the pipeline ran the expected calls ==");
-check("1 debrief + 3 tone drafts", bodies.length === 4, `got ${bodies.length}`);
+check("1 debrief + 1 buyer-tuned draft = 2 paid calls, down from 4 (TASK-104)",
+  bodies.length === 2,
+  `got ${bodies.length} — three tone variants were three LLM calls for an axis Gabriel ignored`);
 check("the debrief is the only call carrying the transcript",
   bodies.filter(b => textOf(b.messages[0].content).includes("Client: I'm stuck")).length === 1);
 
@@ -123,8 +125,11 @@ check("draft prompt: use bounded certainty (no absolute claims)", draftPrompts.e
 check("draft prompt still tells the model to deliver what Gabriel promised", draftPrompts.every(p => /DELIVER WHAT GABRIEL PROMISED/.test(p)));
 
 console.log("\n== the SMS is never suppressed (email-only call) ==");
-check("all three tones generated", out.messages.length === 3, `got ${out.messages.length}`);
-check("every tone returns a non-empty SMS", out.messages.every(m => m.sms && m.sms.trim().length));
+check("exactly one message set, written for the buyer", out.messages.length === 1, `got ${out.messages.length}`);
+check("it is stored under the 'tuned' marker, not a tone name",
+  out.messages[0].tone === "tuned",
+  `got "${out.messages[0].tone}" — legacy calls keep casual/balanced/formal, new ones must not add a fourth`);
+check("the SMS is still never suppressed (TASK-085 survives the collapse to one voice)", out.messages.every(m => m.sms && m.sms.trim().length));
 check("the draft prompt instructs: never return an empty SMS", draftPrompts.every(p => /Never return an empty "sms"|Return a non-empty SMS/i.test(p)));
 
 console.log("\n== token budget: the enriched debrief gets more headroom so it can't silently truncate ==");
@@ -181,8 +186,8 @@ try { smoothOut = await generateOutputs(env, { account, call, masterPrompt: "M",
 catch (e) { smoothErr = e; }
 check("a call with a rich profile but no objections/personalDetails still drafts", !smoothErr,
   smoothErr ? `${smoothErr.message.slice(0, 140)}` : "");
-check("...and still produces all three tones with an SMS",
-  !!smoothOut && smoothOut.messages.length === 3 && smoothOut.messages.every(m => m.sms));
+check("...and still produces its one message set with an SMS",
+  !!smoothOut && smoothOut.messages.length === 1 && smoothOut.messages.every(m => m.sms));
 
 console.log("\n== hasContent reads either shape ==");
 check("array with items -> true", hasContent(["x"]));
@@ -370,6 +375,33 @@ console.log("\n== every account uses its own key (TASK-108) ==");
     /env\.ALLOW_MOCK_GENERATION === "1"/.test(llmSrc)
       && !/ALLOW_MOCK_GENERATION/.test(readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8")),
     "if the flag were set in wrangler.toml it would apply in production, which is the entire bug");
+}
+
+console.log("\n== written to how they BUY, not which tone was picked (TASK-104) ==");
+{
+  const llmSrc = readFileSync(new URL("../src/llm.js", import.meta.url), "utf8");
+  check("the debrief extracts a buying profile",
+    /buyingProfile \(object/.test(llmSrc) && /decisionStyle/.test(llmSrc)
+      && /convincedBy/.test(llmSrc) && /stalledBy/.test(llmSrc) && /moneyLanguage/.test(llmSrc)
+      && /otherDeciders/.test(llmSrc),
+    "recipientProfile covers how they TALK; this is how they DECIDE, which is what Gabriel writes to");
+  check("the draft prompt is driven by buyingProfile",
+    draftPrompts.every(p => /buyingProfile/.test(p) && /WRITE TO HOW THEY DECIDE/.test(p)),
+    "the profile is useless if the drafting pass never reads it");
+  check("no tone instruction survives in the draft prompt",
+    draftPrompts.every(p => !/^Tone: /m.test(p)),
+    "a tone line would reintroduce the axis Gabriel said he ignores");
+  check("the prompt says explicitly there is no tone setting",
+    draftPrompts.every(p => /There is no tone setting/.test(p)));
+  check("a forwardable email is required when someone else decides",
+    draftPrompts.every(p => /survive being forwarded/.test(p)),
+    "otherDeciders is worthless if the email only makes sense with Gabriel in the room");
+  check("voiceNote replaces suggestedTone in the schema",
+    /voiceNote \(string/.test(llmSrc) && !/'suggestedTone \("casual"/.test(llmSrc),
+    "the useful sentence is no longer 'which of three' but 'why does it read this way'");
+  check("the UI only shows a tone selector when a call really has several",
+    /function availableTones/.test(readFileSync(new URL("../public/app.js", import.meta.url), "utf8")),
+    "calls processed before today hold three tones and must keep rendering");
 }
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);

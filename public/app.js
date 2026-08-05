@@ -916,6 +916,15 @@ function wireTypePicker(call) {
 
 function toneOf(call) { return call.selected_tone || call.suggested_tone || "balanced"; }
 
+// TASK-104. Which tones this call ACTUALLY has outputs for. New calls have exactly one, written
+// for the buyer; calls processed before 2026-08-05 have three (casual/balanced/formal) and must
+// keep working — the shape-tolerance rule from TASK-089, applied to data instead of JSON.
+// Derived from the outputs themselves rather than from a version flag, because the outputs are
+// the thing that has to be selectable.
+function availableTones(outputs) {
+  return [...new Set((outputs || []).filter(o => o.tone).map(o => o.tone))];
+}
+
 // The title must be its OWN element, separate from the status pill: making the whole
 // .dh-name contentEditable would let you edit the pill text too.
 // (The previous rename attempt targeted #callName, which no element ever had — so `if (nameEl)`
@@ -1005,7 +1014,10 @@ function wireRename(call) {
 
 function renderProcessed(call, outputs) {
   const d = JSON.parse(call.debrief_json || "{}");
-  const tone = toneOf(call);
+  const tones = availableTones(outputs);
+  // A legacy call selected 'balanced'; a new one has only 'tuned'. Falling back to the first
+  // available tone stops toneOf() pointing at a tone this call has no output for.
+  const tone = tones.includes(toneOf(call)) ? toneOf(call) : (tones[0] || toneOf(call));
   const sms = outputs.find(o => o.kind === "sms" && o.tone === tone);
   const email = outputs.find(o => o.kind === "email" && o.tone === tone);
   const ghl = outputs.find(o => o.kind === "ghl_note");
@@ -1030,13 +1042,18 @@ function renderProcessed(call, outputs) {
           `<button class="ct-chip ${t.id === call.call_type_id ? "active" : ""}" data-pick="${t.id}">${esc(t.name)}</button>`).join("")}</div>
         <span class="applies-to" id="ctStale"></span>
       </div>
+      ${tones.length > 1 ? `
       <div class="tone-row">
         <span class="tone-label">Text &amp; email tone</span>
-        <div class="tone-seg">${["casual", "balanced", "formal"].map(t =>
+        <div class="tone-seg">${tones.map(t =>
           `<button class="tone-opt ${t === tone ? "selected" : ""}" data-tone="${t}">${t[0].toUpperCase() + t.slice(1)}</button>`).join("")}</div>
         ${call.suggested_tone && call.suggested_tone !== tone ? `<span class="tone-suggested">✦ Suggested: ${call.suggested_tone}</span>` : ""}
         <span class="applies-to">${esc(call.tone_reason || "")}</span>
-      </div>
+      </div>` : call.tone_reason ? `
+      <div class="tone-row voice-row">
+        <span class="tone-label">Written for</span>
+        <span class="voice-note">${esc(call.tone_reason)}</span>
+      </div>` : ""}
     </div>
     <!-- Debrief: full-width, paginated by the pills. Only one page is in the DOM's flow at a
          time, so nothing needs scrolling past to reach the next thing (Gabriel's original

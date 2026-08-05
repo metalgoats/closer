@@ -33,6 +33,43 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
+## 2026-08-06 — One follow-up, written to how this buyer decides (TASK-104)
+
+Gabriel on 2026-08-04, on the tone selector: *"I almost never necessarily care if it's balanced,
+casual, or formal. I always default to what is the client's buying behavior."* And on what he was
+doing instead: running Closer, running his old ChatGPT process, then a third pass to cater the
+result to the psychological profile of the person he had just met.
+
+Closer generated **three variants along an axis he ignored**, at three LLM calls a run, and
+handed him a menu where he wanted an answer.
+
+**The debrief now extracts how they BUY, not just how they talk.** `recipientProfile` (TASK-086)
+described communication style. `buyingProfile` is new and describes decision-making:
+`decisionStyle`, `convincedBy`, `stalledBy`, `moneyLanguage`, `otherDeciders`. The drafting pass
+is written against it — reinforce what already moved them in their own words, address what
+stalled them once and plainly, use their comparison when money comes up, and if someone else has
+a say, the email has to **survive being forwarded to that person** without Gabriel in the room.
+
+**Three tone passes became one voice.** Generation is now **2 paid LLM calls instead of 4** —
+the debrief plus a single follow-up — which also removes two thirds of the drafting wall-clock.
+
+`suggestedTone`/`toneReason` are replaced by **`voiceNote`**: one sentence naming how the
+follow-up is pitched and which specific thing about this buyer decided that. With one output,
+the useful sentence stopped being *which of three did we pick* and became *why does it read like
+this*. That also disposes of the defect underneath Gabriel's complaint — he said the suggestion
+*"doesn't go beyond this point"*, i.e. never stuck. There is nothing left to stick.
+
+**Calls processed before today are untouched and still render.** They hold three tone rows each;
+the selector appears only when a call genuinely has more than one, derived from the outputs
+rather than from a hardcoded list. A saved `selected_tone` of `balanced` on a single-voice call
+falls back to the tone that call actually has — without that, `outputs.find()` returns undefined
+and the outputs pane renders empty, which is the regression this would have shipped with.
+
+Verified behaviourally, not by pattern: the tone-selection logic is extracted from `app.js` and
+executed against both shapes — legacy three-tone, new single-voice, and the stale-selection case.
+128 assertions in `ui-smoke`, 117 in `llm`; two proven to FAIL by removing the buying-psychology
+instruction and by forcing the selector to always render.
+
 ## 2026-08-05 (later still) — No platform key, and a missing key can no longer fabricate a debrief (TASK-108)
 
 Ivan's reason for BYOK, on 2026-08-04: owning the client's model access *"leaves us open to

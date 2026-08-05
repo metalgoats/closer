@@ -497,5 +497,53 @@ check("the preview is cleared when the run ends",
   /processing_preview = NULL/.test(workflowSrc),
   "a finished call must not keep a half-written sentence under it");
 
+console.log("\n== one voice, and legacy calls keep theirs (TASK-104) ==");
+check("the tone selector renders only when a call has more than one tone",
+  /\$\{tones\.length > 1 \? `/.test(src),
+  "a single-voice call would show a segmented control with one button and nothing to pick");
+check("tones come from the outputs, not a hardcoded list",
+  /function availableTones/.test(src) && !/\["casual", "balanced", "formal"\]\.map/.test(src),
+  "hardcoding three would render buttons for outputs that do not exist on new calls");
+check("the selected tone falls back to one the call actually has",
+  /tones\.includes\(toneOf\(call\)\)/.test(src),
+  "a legacy default of 'balanced' would select nothing on a call whose only output is 'tuned'");
+check("single-voice calls show why the follow-up reads as it does",
+  /voice-note/.test(src) && /Written for/.test(src),
+  "removing the selector without replacing it loses the one line that explains the draft");
+check("the voice note has styling",
+  /\.voice-note\{/.test(css));
+
+// Executed, not pattern-matched: pull the two functions out of app.js and run them against both
+// data shapes. The regex checks above prove the code is written; these prove it behaves.
+{
+  const grab = name => {
+    const m = src.match(new RegExp(`function ${name}\\([^)]*\\)\\s*\\{[\\s\\S]*?\\n\\}`));
+    if (!m) throw new Error(`could not extract ${name}`);
+    return m[0];
+  };
+  const fns = new Function(`${grab("toneOf")}\n${grab("availableTones")}
+    return { toneOf, availableTones };`)();
+  const pick = (call, outputs) => {
+    const tones = fns.availableTones(outputs);
+    return { tones, tone: tones.includes(fns.toneOf(call)) ? fns.toneOf(call) : (tones[0] || fns.toneOf(call)) };
+  };
+
+  const legacy = pick({ selected_tone: "balanced" },
+    ["casual", "balanced", "formal"].flatMap(t => [{ kind: "sms", tone: t }, { kind: "email", tone: t }]));
+  check("LEGACY call: three tones offered, the saved choice honoured",
+    legacy.tones.length === 3 && legacy.tone === "balanced", JSON.stringify(legacy));
+
+  const fresh = pick({ selected_tone: null, suggested_tone: "tuned" },
+    [{ kind: "sms", tone: "tuned" }, { kind: "email", tone: "tuned" }, { kind: "ghl_note", tone: null }]);
+  check("NEW call: one voice, selector suppressed, ghl_note not counted as a tone",
+    fresh.tones.length === 1 && fresh.tone === "tuned", JSON.stringify(fresh));
+
+  // The regression that would silently blank the outputs pane.
+  const stale = pick({ selected_tone: "balanced" }, [{ kind: "sms", tone: "tuned" }, { kind: "email", tone: "tuned" }]);
+  check("a stale 'balanced' selection on a single-voice call still finds its output",
+    stale.tone === "tuned",
+    "falling through to 'balanced' would make outputs.find() return undefined and render an empty panel");
+}
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

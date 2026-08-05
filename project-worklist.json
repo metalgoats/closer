@@ -1,6 +1,6 @@
 {
   "project": "Closer — post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
-  "last_updated": "2026-08-05",
+  "last_updated": "2026-08-06",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) — now the sole template, so it affects 100% of calls.",
   "completion_percentage": 54,
   "tasks": [
@@ -2859,9 +2859,9 @@
       "title": "Rebuild the master prompt around the client's buying psychology; retire casual/balanced/formal",
       "priority": "high",
       "estimated_complexity": "medium",
-      "status": "incomplete",
+      "status": "completed",
       "dependencies": [],
-      "description": "Gabriel's central ask on 08-04, and the reason he still runs a third pass in ChatGPT: 'run a comparison of both of these answers, and then catering the answers specifically to the psychological profile of the person that I just met with.' He wants the tone selector gone — 'I almost never necessarily care if it's balanced, casual, or formal. I always default to what is the client's buying behavior.' NOTE two tangled things: (a) replace tone with profile-driven voice, and (b) a real defect — the suggested tone 'doesn't go beyond this point', i.e. the selection is not persisting. Fix (b) even while removing (a). TASK-086 already extracts recipientProfile; this makes it govern the writing rather than garnish it. Gabriel has NOT yet updated his own master prompt for this either — ask for his version before inventing one.",
+      "description": "Gabriel's central ask on 08-04, and the reason he still runs a third pass in ChatGPT: 'run a comparison of both of these answers, and then catering the answers specifically to the psychological profile of the person that I just met with.' He wants the tone selector gone — 'I almost never necessarily care if it's balanced, casual, or formal. I always default to what is the client's buying behavior.' NOTE two tangled things: (a) replace tone with profile-driven voice, and (b) a real defect — the suggested tone 'doesn't go beyond this point', i.e. the selection is not persisting. Fix (b) even while removing (a). TASK-086 already extracts recipientProfile; this makes it govern the writing rather than garnish it. Gabriel has NOT yet updated his own master prompt for this either — ask for his version before inventing one. DONE 2026-08-06. Added buyingProfile to the debrief schema (decisionStyle, convincedBy, stalledBy, moneyLanguage, otherDeciders) — recipientProfile covered how they TALK, this covers how they DECIDE, which is what Gabriel was doing by hand in ChatGPT. Collapsed 3 tone passes into ONE voice driven by that profile: generation is now 2 paid LLM calls instead of 4. suggestedTone/toneReason replaced by voiceNote (one sentence on why the draft reads as it does), which also dissolves the 'suggestion doesn't stick' defect — there is nothing left to stick. New rows stored under tone='tuned'; legacy 3-tone calls still render because availableTones() derives the selector from the outputs, and a stale 'balanced' selection falls back to a tone the call actually has (otherwise outputs.find() returns undefined and the pane renders empty). Verified by EXECUTING the selection logic against legacy, new, and stale-selection shapes, not by pattern-matching. NOTE: Gabriel had not updated his own master prompt for this either — ask for his version and reconcile.",
       "source": "2026-08-04 Gabriel call"
     },
     {

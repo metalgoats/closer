@@ -3,7 +3,16 @@
 import { SPECIMEN } from "./specimen.js";
 import { thinkingFor, DEFAULT_MODEL, modelSpec, DEFAULT_EFFORT } from "./models.js";
 
-const TONES = ["casual", "balanced", "formal"];
+// TASK-104 retired casual/balanced/formal. Gabriel: "I almost never necessarily care if it's
+// balanced, casual, or formal. I always default to what is the client's buying behavior."
+// Generating three variants of an axis he ignored cost three LLM calls a run and produced a
+// menu instead of an answer.
+//
+// The `tone` COLUMN stays, and every new message row is written as VOICE_TONE. Processed calls
+// from before today still hold three rows each, and the UI must keep rendering them — so this
+// is a marker meaning "one voice, tuned to the buyer", not a fourth tone alongside
+// casual/balanced/formal.
+const VOICE_TONE = "tuned";
 
 // What a call scored on before call types existed. Used ONLY as the fallback for a call with no
 // type, so pre-existing calls keep behaving exactly as they did.
@@ -11,10 +20,9 @@ const LEGACY_DIMENSIONS = ["rapport", "authority", "trust", "emotional connectio
   "pain amplification", "vision building", "objection handling", "certainty transfer",
   "close attempt", "follow-up positioning"];
 
-// Resolves an API key for an account+provider. Prefers the key pasted into the
-// Integrations UI (stored in D1); falls back to a Cloudflare secret so anything
-// previously set via `wrangler secret put` keeps working. Returns null if neither
-// exists, which puts generation into labeled mock mode rather than erroring.
+// Resolves an API key for an account+provider, from the key pasted into the Integrations UI
+// and stored in D1. Returns null if this account has none.
+//
 // EVERY ACCOUNT USES ITS OWN KEY. There is no platform fallback, and adding one back is a
 // product decision, not a convenience (TASK-108).
 //
@@ -55,7 +63,7 @@ export function keyForRow(row) {
 // They are estimates and are treated as such: progress is capped at each step's ceiling
 // rather than allowed to overshoot, and it cannot advance unless real bytes arrive.
 const EXPECTED_DEBRIEF_CHARS = 20000;   // enriched, structured debrief + richer GHL note (TASK-089)
-const EXPECTED_MESSAGE_CHARS = 1500;    // one tone's SMS + email
+const EXPECTED_MESSAGE_CHARS = 1500;    // the single follow-up: SMS + email
 const DEBRIEF_SHARE = 70;               // debrief is the long pole: 0-70%, messages 70-100%
 
 // `callType` (from the call's label) supplies the prompt, the scorecard dimensions and which
@@ -200,7 +208,21 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
   if (dims.length) {
     schemaParts.push('missedOpenings (array of {moment (string: the point in the call), askInstead (string: the exact micro-commitment question to have asked there)} — use [] if none)');
   }
-  if (wantMessages) schemaParts.push('suggestedTone ("casual"|"balanced"|"formal")', "toneReason (string)");
+  // TASK-104. recipientProfile describes how this person COMMUNICATES. buyingProfile describes
+  // how they DECIDE — which is what Gabriel actually writes to, and what he was leaving Closer
+  // to do by hand in ChatGPT: "catering the answers specifically to the psychological profile
+  // of the person that I just met with... the buying behaviour."
+  if (wantMessages) schemaParts.push(
+    'buyingProfile (object: {' +
+      'decisionStyle (string: how this person actually decides — instinctive and fast, needs to sleep on it, builds a spreadsheet, defers to a partner. Base it on what they DID on the call, not on a personality label), ' +
+      'convincedBy (string[]: what visibly moved them toward yes, in their own words — proof, a peer example, risk reversal, speed, status, relief), ' +
+      'stalledBy (string[]: what pulled them back — price, timing, trust, a prior bad experience, needing someone else), ' +
+      'moneyLanguage (string: how they talked about the money — what they compared it to, what they called it, which number they anchored on), ' +
+      'otherDeciders (string[]: anyone else named who has a say — spouse, partner, board. [] if none)})',
+    // Replaces suggestedTone/toneReason. There is one message now, so the useful sentence is
+    // not "which of three did we pick" but "why does it read the way it does".
+    'voiceNote (string: ONE sentence, to Gabriel, naming how this follow-up is pitched and which specific thing about this buyer decided that)'
+  );
   // TASK-089 (GHL note, finished against the specimen). The Brandon report is now the reference,
   // so the note matches its richer section set — not just a recap, but retention risk, upsell
   // openings, personal rapport, and a follow-up task checklist a teammate could act on cold.
@@ -259,14 +281,22 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
   // instant. Each job is fed the debrief's distillation, NOT the transcript — see draftContext.
   if (wantMessages) assertDraftable(parsed);
   const ctx = draftContext(call, parsed);
-  const toneChars = new Map(TONES.map(t => [t, 0]));   // shared so the 3 jobs report one combined bar
-  const msgJobs = !wantMessages ? [] : TONES.map(async tone => {
+  const msgJobs = !wantMessages ? [] : [(async () => {
+    const tone = VOICE_TONE;
     const res = await completeWithRetry(env, provider, key, [
       { role: "user", content: `You are drafting a follow-up SMS and email from Gabriel, a high-ticket sales closer, to a client he just got off a call with.
 
 You are NOT given the transcript. The summary below was extracted from it by a prior analysis pass — treat it as the complete and authoritative record of what happened. Do NOT invent facts, commitments, prices, or dates that are not in it.
 
-Tone: ${tone}.
+WRITE ONE VERSION, PITCHED AT THIS BUYER. There is no tone setting and no house style to satisfy. The register is decided entirely by "buyingProfile" and "recipientProfile" below — a message that is warmer or blunter or more precise than those call for is wrong, however well written.
+
+WRITE TO HOW THEY DECIDE, NOT JUST HOW THEY TALK. "buyingProfile" is the spine of this message:
+  · decisionStyle — someone who sleeps on it needs room and a reason to come back; someone instinctive needs one clear next step now; someone who defers to a partner needs something forwardable they can hand over.
+  · convincedBy — reinforce what already moved them, in the words THEY used. Do not introduce a new argument they never responded to.
+  · stalledBy — address what pulled them back, once, plainly. Never pretend it was not said, and never re-litigate it.
+  · moneyLanguage — if you refer to the money at all, use their frame and their comparison, not ours.
+  · otherDeciders — if someone else has a say, the email must survive being forwarded to that person without Gabriel there to explain it.
+
 Write to the actual outcome (${parsed.outcome}) — do not imply a close that did not happen.
 
 DELIVER WHAT GABRIEL PROMISED. If "statedFollowUps" is non-empty, it is what Gabriel told the client on the call he would send or do next. The email must deliver exactly those things, including the specific items he named in "contains" — do not drop anything he promised, and do not add promises he did not make.
@@ -287,15 +317,12 @@ ${ctx}
 Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
     ], { model, effort: "low", think: false,
          onRetry: r => onStep && onStep({ step: "retry", detail: `${tone} attempt ${r.attempt} failed (${r.error}) — retrying in ${r.backoffMs}ms` }),
-         onProgress: chars => {
-      toneChars.set(tone, chars);
-      const done = [...toneChars.values()].reduce((a, b) => a + b, 0);
-      report(DEBRIEF_SHARE + Math.min(done / (EXPECTED_MESSAGE_CHARS * TONES.length), 1) * (100 - DEBRIEF_SHARE),
-        "Writing the follow-ups");
-    }});
+         onProgress: chars => report(
+           DEBRIEF_SHARE + Math.min(chars / EXPECTED_MESSAGE_CHARS, 1) * (100 - DEBRIEF_SHARE),
+           "Writing the follow-up")});
     tally(res.usage);
     return { tone, ...parseModelJson(res.text) };
-  });
+  })()];
   const t1 = Date.now();
   const messages = await Promise.all(msgJobs);
   if (wantMessages && onStep) await onStep({ step: "messages", duration_ms: Date.now() - t1 });
@@ -307,8 +334,10 @@ Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
     debrief: parsed,
     ghlNote: wantCrmNote ? parsed.ghlNote : null,
     messages,
-    suggestedTone: parsed.suggestedTone,
-    toneReason: parsed.toneReason,
+    // suggested_tone now records WHICH voice was used (always VOICE_TONE) and tone_reason
+    // carries the one-line explanation of why it reads that way (TASK-104).
+    suggestedTone: VOICE_TONE,
+    toneReason: parsed.voiceNote || parsed.toneReason || null,
     outcome: parsed.outcome
   };
 }
@@ -643,8 +672,8 @@ function mockOutputs(call) {
   return {
     model: "mock",
     usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
-    suggestedTone: "balanced",
-    toneReason: "Mock generation — connect an LLM API key in Integrations for real tone analysis",
+    suggestedTone: VOICE_TONE,
+    toneReason: "[Mock] voice note — connect an API key in Integrations for the real read.",
     outcome: "followup",
     debrief: {
       // Enriched shapes (TASK-089) so dev/mock mode shows the real structure.
@@ -679,7 +708,7 @@ function mockOutputs(call) {
       `UPSELL`, `- [mock] expansion opening`, ``,
       `PERSONAL RAPPORT`, `- [mock] a personal detail for the next touch`
     ].join("\n"),
-    messages: TONES.map(tone => ({
+    messages: [VOICE_TONE].map(tone => ({
       tone,
       sms: `[Mock ${tone} SMS] Hi ${name}, great talking today — I'll follow up shortly.`,
       emailSubject: `[Mock ${tone}] Following up on our call`,
