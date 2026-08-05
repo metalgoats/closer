@@ -1856,7 +1856,18 @@ async function renderActivity() {
   // default moved to Opus 5 ($5/$25) — so every figure on this page understated real spend by
   // about 65%. Never reintroduce a rate constant here; the server owns the price table.
   const IN_PER_M = model?.inPerM ?? 3, OUT_PER_M = model?.outPerM ?? 15;
-  const cost = (inp, outp) => `$${((inp || 0) / 1e6 * IN_PER_M + (outp || 0) / 1e6 * OUT_PER_M).toFixed(2)}`;
+  // Cached input is REAL SPEND and was priced at zero here until 2026-08-06. Since TASK-096 every
+  // debrief carries a cached specimen prefix, and the TASK-105 chat sends the whole debrief as a
+  // cached block — a live chat turn reported 42 fresh input tokens against a ~10k-token prefix,
+  // so almost the entire cost of a turn was invisible on this page. Anthropic's multipliers:
+  // a cache WRITE bills 1.25x the input rate, a cache READ 0.1x.
+  const CACHE_WRITE_MULT = 1.25, CACHE_READ_MULT = 0.1;
+  const cost = (inp, outp, cr, cw) => `$${(
+    (inp || 0) / 1e6 * IN_PER_M +
+    (outp || 0) / 1e6 * OUT_PER_M +
+    (cr || 0) / 1e6 * IN_PER_M * CACHE_READ_MULT +
+    (cw || 0) / 1e6 * IN_PER_M * CACHE_WRITE_MULT
+  ).toFixed(2)}`;
 
   const rows = events.length ? events.map(e => {
     const cls = e.level === "error" ? "ev-error" : e.level === "warn" ? "ev-warn" : "ev-info";
@@ -1875,19 +1886,20 @@ async function renderActivity() {
   const runs = n => `${n || 0} generation${n === 1 ? "" : "s"}`;
   const spend = `<div class="spend-row">
       <div class="spend-card"><div class="spend-k">Today</div>
-        <div class="spend-v">${cost(today?.input_tokens, today?.output_tokens)}</div>
+        <div class="spend-v">${cost(today?.input_tokens, today?.output_tokens, today?.cache_read_tokens, today?.cache_write_tokens)}</div>
         <div class="spend-sub">${runs(today?.runs)}</div></div>
       <div class="spend-card"><div class="spend-k">Last 7 days</div>
-        <div class="spend-v">${cost(week?.input_tokens, week?.output_tokens)}</div>
+        <div class="spend-v">${cost(week?.input_tokens, week?.output_tokens, week?.cache_read_tokens, week?.cache_write_tokens)}</div>
         <div class="spend-sub">${runs(week?.runs)}</div></div>
       <div class="spend-card"><div class="spend-k">This month</div>
-        <div class="spend-v">${cost(month?.input_tokens, month?.output_tokens)}</div>
+        <div class="spend-v">${cost(month?.input_tokens, month?.output_tokens, month?.cache_read_tokens, month?.cache_write_tokens)}</div>
         <div class="spend-sub">${runs(month?.runs)}</div></div>
       <div class="spend-card"><div class="spend-k">All time</div>
-        <div class="spend-v">${cost(totals?.input_tokens, totals?.output_tokens)}</div>
+        <div class="spend-v">${cost(totals?.input_tokens, totals?.output_tokens, totals?.cache_read_tokens, totals?.cache_write_tokens)}</div>
         <div class="spend-sub">${totals?.runs || 0} runs · ${totals?.failures || 0} errors</div></div>
       <div class="spend-card"><div class="spend-k">Avg / call</div>
-        <div class="spend-v">${totals?.runs ? cost((totals.input_tokens || 0) / totals.runs, (totals.output_tokens || 0) / totals.runs) : "$0.00"}</div>
+        <div class="spend-v">${totals?.runs ? cost((totals.input_tokens || 0) / totals.runs, (totals.output_tokens || 0) / totals.runs,
+              (totals.cache_read_tokens || 0) / totals.runs, (totals.cache_write_tokens || 0) / totals.runs) : "$0.00"}</div>
         <div class="spend-sub">${totals?.avg_ms ? Math.round(totals.avg_ms / 1000) + "s avg" : "—"}</div></div>
     </div>
     <div class="insight-note">Estimated from tokens this app logged, at ${esc(model?.label || "current model")} list pricing. It counts Closer's spend only — the billed total and your remaining credit balance live in the Anthropic console, which has no API for either.</div>`;
@@ -1933,7 +1945,7 @@ async function renderActivity() {
        <div><b>${(totals.input_tokens || 0).toLocaleString()}</b><span>input tokens</span></div>
        <div><b>${(totals.output_tokens || 0).toLocaleString()}</b><span>output tokens</span></div>
        <div><b>${totals.avg_ms ? (totals.avg_ms / 1000).toFixed(1) + "s" : "—"}</b><span>avg run</span></div>
-       <div><b>~${cost(totals.input_tokens, 0)}</b><span>input cost (est.)</span></div>
+       <div><b>~${cost(totals.input_tokens, 0, totals.cache_read_tokens, totals.cache_write_tokens)}</b><span>input cost (est.)</span></div>
      </div>
      <div class="ev-filters">
        <button class="chip" data-evfilter="">All</button>

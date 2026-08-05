@@ -571,5 +571,13 @@ check("the chat log scrolls to the newest message",
 check("the chat panel has styling and a mobile case",
   /\.chat-section\{/.test(css) && /\.chat-log\{ display:flex/.test(css) && /max-width:640px\)\{ \.chat-log/.test(css));
 
+check("cached input is priced, not ignored (2026-08-06)",
+  /CACHE_WRITE_MULT = 1\.25, CACHE_READ_MULT = 0\.1/.test(src)
+    && /cache_read_tokens, totals\?\.cache_write_tokens/.test(src),
+  "a live chat turn reported 42 fresh input tokens against a ~10k cached prefix — pricing only fresh input made almost the whole cost invisible");
+check("every window carries the cached columns, not just all-time",
+  (src.match(/cache_read_tokens, \w+\?\.cache_write_tokens/g) || []).length >= 4,
+  "today/week/month would stay wrong while the all-time figure looked fixed");
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

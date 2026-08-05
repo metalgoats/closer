@@ -443,7 +443,8 @@ async function route(request, env, url, ctx) {
     const { results } = await env.DB.prepare(sql).bind(...binds, limit).all();
     const totals = await env.DB.prepare(
       `SELECT COUNT(*) AS runs, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens,
-              SUM(cache_read_tokens) AS cache_read_tokens, AVG(duration_ms) AS avg_ms
+              SUM(cache_read_tokens) AS cache_read_tokens, SUM(cache_write_tokens) AS cache_write_tokens,
+              AVG(duration_ms) AS avg_ms
        FROM events WHERE kind = 'generation.succeeded'`
     ).first();
     const fails = await env.DB.prepare("SELECT COUNT(*) AS n FROM events WHERE level = 'error'").first();
@@ -491,17 +492,24 @@ async function route(request, env, url, ctx) {
          COALESCE(SUM(CASE WHEN at >= date('now')                  THEN 1 ELSE 0 END),0) AS d_runs,
          COALESCE(SUM(CASE WHEN at >= date('now')                  THEN input_tokens  ELSE 0 END),0) AS d_in,
          COALESCE(SUM(CASE WHEN at >= date('now')                  THEN output_tokens ELSE 0 END),0) AS d_out,
+         COALESCE(SUM(CASE WHEN at >= date('now') THEN cache_read_tokens  ELSE 0 END),0) AS d_cr,
+         COALESCE(SUM(CASE WHEN at >= date('now') THEN cache_write_tokens ELSE 0 END),0) AS d_cw,
          COALESCE(SUM(CASE WHEN at >= date('now','-7 days')         THEN 1 ELSE 0 END),0) AS w_runs,
          COALESCE(SUM(CASE WHEN at >= date('now','-7 days')         THEN input_tokens  ELSE 0 END),0) AS w_in,
          COALESCE(SUM(CASE WHEN at >= date('now','-7 days')         THEN output_tokens ELSE 0 END),0) AS w_out,
+         COALESCE(SUM(CASE WHEN at >= date('now','-7 days') THEN cache_read_tokens  ELSE 0 END),0) AS w_cr,
+         COALESCE(SUM(CASE WHEN at >= date('now','-7 days') THEN cache_write_tokens ELSE 0 END),0) AS w_cw,
          COALESCE(SUM(CASE WHEN at >= date('now','start of month')  THEN 1 ELSE 0 END),0) AS m_runs,
          COALESCE(SUM(CASE WHEN at >= date('now','start of month')  THEN input_tokens  ELSE 0 END),0) AS m_in,
          COALESCE(SUM(CASE WHEN at >= date('now','start of month')  THEN output_tokens ELSE 0 END),0) AS m_out
        FROM events WHERE kind = 'generation.succeeded'`
     ).first();
-    const today = { runs: w?.d_runs || 0, input_tokens: w?.d_in || 0, output_tokens: w?.d_out || 0 };
-    const week  = { runs: w?.w_runs || 0, input_tokens: w?.w_in || 0, output_tokens: w?.w_out || 0 };
-    const month = { runs: w?.m_runs || 0, input_tokens: w?.m_in || 0, output_tokens: w?.m_out || 0 };
+    const today = { runs: w?.d_runs || 0, input_tokens: w?.d_in || 0, output_tokens: w?.d_out || 0,
+                    cache_read_tokens: w?.d_cr || 0, cache_write_tokens: w?.d_cw || 0 };
+    const week  = { runs: w?.w_runs || 0, input_tokens: w?.w_in || 0, output_tokens: w?.w_out || 0,
+                    cache_read_tokens: w?.w_cr || 0, cache_write_tokens: w?.w_cw || 0 };
+    const month = { runs: w?.m_runs || 0, input_tokens: w?.m_in || 0, output_tokens: w?.m_out || 0,
+                    cache_read_tokens: w?.m_cr || 0, cache_write_tokens: w?.m_cw || 0 };
     // The model this account actually runs on, so the UI can price spend at the right rate
     // instead of the Sonnet 5 constant it was hardcoded to before TASK-098 made model a setting.
     const acct = await env.DB.prepare("SELECT llm_model FROM accounts ORDER BY id LIMIT 1").first();

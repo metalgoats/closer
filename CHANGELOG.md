@@ -33,6 +33,31 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
+## 2026-08-06 (last) — First real chat turn, and the cached spend it exposed
+
+Ran one live chat turn against production call 10050 — real debrief (28KB), real outputs, real
+key, real model — read-only, writing nothing back. Asked it to shorten the balanced email, strip
+the price, and say what the client actually objected to.
+
+It worked, and worked well. The email came back 974 -> 873 characters with every commitment
+intact (both options, the gear audit, the studio tour link, the performance guarantee) and no
+mention of price. The answer to the question was the kind of thing the tone selector could never
+have produced: *"he never objected to price on principle, he objected to being anchored at $25K
+when he'd already found the $7K tier himself and has his own tech guy — the only real objection
+was timing."* No coaching critique crossed into the client-facing draft. 6.5s.
+
+**The finding was in the token counts: 42 input tokens.** For a 28KB debrief plus seven outputs.
+That is the cached-prefix accounting — and the Activity page priced cached tokens at **zero**.
+
+Since TASK-096 every debrief carries a cached specimen prefix, and the TASK-105 chat sends the
+entire debrief as a cached block, so most of a chat turn's real cost was invisible on the one
+page used to judge cost. Cached input is now priced at Anthropic's actual multipliers — a cache
+**write** bills 1.25x the input rate, a cache **read** 0.1x — across all-time *and* each window,
+because fixing only the headline figure would have left today/week/month quietly wrong.
+
+That is the second cost bug on this page in a day: it was still pricing Opus 5 at Sonnet 5 rates
+until this morning. Both had the same shape — a number that looked authoritative and was not.
+
 ## 2026-08-06 (later) — The chat, and edits that finally say something (TASK-105, TASK-022)
 
 **TASK-105 — the per-call chat.** This is the feature that decides whether Closer replaces
