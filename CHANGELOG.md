@@ -33,6 +33,42 @@ Verified by running the app locally and by rendering the real stylesheet against
 debrief markup, since the logged-in surfaces cannot be reached without credentials. 100
 assertions passing, unchanged.
 
+## 2026-08-05 (later still) — No platform key, and a missing key can no longer fabricate a debrief (TASK-108)
+
+Ivan's reason for BYOK, on 2026-08-04: owning the client's model access *"leaves us open to
+having our API abused and owing hundreds of thousands."* Right call — and the code contradicted
+it. `resolveKey()` ended with `return envKeys[kind] || null`, so an account with no key of its
+own silently used the platform's.
+
+With one tenant that was a harmless convenience. It is two separate incidents the moment there
+is a second account, and **only one of them is about money**:
+
+- **Cost.** An account with no key would have billed Ivan's Anthropic account, with no ceiling
+  and no error to notice.
+- **Cross-tenant data, which is worse and is not what the task was opened for.** An *empty*
+  `fathom` row fell back to `FATHOM_API_KEY_OSA`. A new tenant who created a Fathom integration
+  and never pasted a key would have polled **Gabriel's calls into their own account** — real
+  client transcripts delivered to a stranger, with every log line reading as success.
+
+Both are gone. `resolveKey()` returns the account's key or null. `keyForRow()` no longer takes
+`env` at all, so a future edit cannot casually reach for the platform key from there.
+
+**And the part that turned out to matter more than the fallback.** Generation began
+`if (!key) return mockOutputs(call)` — unconditionally. On a laptop that is exactly right. In
+production it means a tenant who has not pasted a key does not get an error; they get a
+fabricated debrief, a fabricated scorecard, and three fabricated client-facing drafts. The
+`[mock]` prefixes are honest, but nothing in the flow says *this is not your call*, and the
+drafts are the part someone copies into an email to a real buyer. Mock mode is now opt-in via
+`ALLOW_MOCK_GENERATION`, set only in `.dev.vars`; production fails closed with a message naming
+the screen to fix it on.
+
+**Checked before shipping, not after.** Production's one account resolves `provider=anthropic`
+and its key is in `integrations` (108 chars), so nothing about Gabriel's generation changes.
+The `openai` and `ghl` rows are empty and unused; no account resolves to them.
+
+109 assertions in `llm.test.mjs`; five proven to FAIL by restoring the fallback and the
+unconditional mock.
+
 ## 2026-08-05 (final) — The backup is live, and verified against real production data (TASK-023)
 
 R2 enabled and `closer-backups` created, so the binding and the 09:00 UTC cron came out of

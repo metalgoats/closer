@@ -18,13 +18,19 @@ npm run dev                # http://localhost:8787
 
 First visit: enter any email + password (8+ chars) — the first sign-in creates the admin account.
 
-Without LLM API keys, generation runs in clearly-labeled mock mode. To test real generation
-locally, create `.dev.vars` (gitignored):
+Keys are pasted into the app (Settings > Integrations) and stored per account — there is no
+platform key any more (TASK-108). For local dev, `.dev.vars` (gitignored) only needs the
+mock-mode opt-in:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
+ALLOW_MOCK_GENERATION=1
 ```
+
+**Mock generation is opt-in, and production never sets it.** Before TASK-108 a missing key
+returned mock output unconditionally, which is right on a laptop and wrong in production: a
+tenant who had not pasted a key would have been handed a fabricated debrief and three fabricated
+client-facing drafts rather than an error. Without the flag, a keyless account now fails with a
+message telling the user where to paste their key.
 
 ## Production deploy (after org account setup)
 
@@ -115,8 +121,12 @@ public/          the UI (ported from the design mockup)
   `created_after` so it can't pull full history. Fathom does **not** document sort order — the
   client-side newest-first sort is load-bearing, not a nicety.
 - **Keys** live in `integrations.secret_value` (D1, plaintext) and are write-only over the API —
-  `GET /api/integrations` returns a masked preview, never the raw value. `resolveKey()` prefers the
-  DB key and falls back to a Cloudflare secret.
+  `GET /api/integrations` returns a masked preview, never the raw value. **`resolveKey()` has NO
+  platform fallback (TASK-108)**: every account runs on its own key, and an account without one
+  fails visibly. Restoring `return envKeys[kind]` reintroduces two separate incidents — an
+  account with no key silently billing the platform with no ceiling, and (worse) an empty
+  `fathom` row polling *another tenant's* calls into a stranger's account. `tests/llm.test.mjs`
+  fails the build if the fallback returns.
 - **Resizable panes (`TASK-091`).** Sidebar | list | detail, plus debrief | outputs, are
   drag-resizable (double-click a divider to reset, arrow keys nudge). Sizes are CSS variables on
   `:root` (`--w-sidebar`, `--w-list`, `--h-debrief`), persisted per browser in `closer-panes`.

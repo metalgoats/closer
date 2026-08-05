@@ -15,14 +15,28 @@ const LEGACY_DIMENSIONS = ["rapport", "authority", "trust", "emotional connectio
 // Integrations UI (stored in D1); falls back to a Cloudflare secret so anything
 // previously set via `wrangler secret put` keeps working. Returns null if neither
 // exists, which puts generation into labeled mock mode rather than erroring.
+// EVERY ACCOUNT USES ITS OWN KEY. There is no platform fallback, and adding one back is a
+// product decision, not a convenience (TASK-108).
+//
+// This used to end with `return envKeys[kind] || null`, so an account with no key silently
+// borrowed the platform's. With a single tenant that was a harmless convenience. It becomes two
+// separate incidents the moment a second account exists:
+//
+//   COST — Ivan, 2026-08-04, on why clients bring their own key: owning their model access
+//   "leaves us open to having our API abused and owing hundreds of thousands." An account with
+//   no key would have billed him, with no ceiling and no error to notice.
+//
+//   CROSS-TENANT DATA — worse, and not what the task was opened for. An empty `fathom` row fell
+//   back to FATHOM_API_KEY_OSA, so a new tenant who created a Fathom integration and never
+//   pasted a key would have polled GABRIEL'S calls into their own account. Real client
+//   transcripts, delivered to a stranger, with every log line reading as success.
+//
+// A missing key must be visible. Silence is what made both of those possible.
 export async function resolveKey(env, accountId, kind) {
   const row = await env.DB.prepare(
     "SELECT secret_value FROM integrations WHERE account_id = ? AND kind = ?"
   ).bind(accountId, kind).first();
-  if (row?.secret_value) return row.secret_value;
-
-  const envKeys = { anthropic: env.ANTHROPIC_API_KEY, openai: env.OPENAI_API_KEY, fathom: env.FATHOM_API_KEY_OSA };
-  return envKeys[kind] || null;
+  return row?.secret_value || null;
 }
 
 // Resolves the key for a SPECIFIC integration row, not a re-query by (account_id, kind).
@@ -30,10 +44,11 @@ export async function resolveKey(env, accountId, kind) {
 // TASK-054): resolveKey would return whichever row it found first, so both Fathom rows would
 // use the same key — polling one workspace twice and the other never. Always use this when
 // you already hold the row.
-export function keyForRow(env, row) {
-  if (row?.secret_value) return row.secret_value;
-  const envKeys = { anthropic: env.ANTHROPIC_API_KEY, openai: env.OPENAI_API_KEY, fathom: env.FATHOM_API_KEY_OSA };
-  return envKeys[row?.kind] || null;
+//
+// No env argument, deliberately. It took one only to reach the platform fallback, and removing
+// the parameter means a future edit cannot quietly reintroduce it here (TASK-108).
+export function keyForRow(row) {
+  return row?.secret_value || null;
 }
 
 // Rough expected output sizes, used ONLY to turn streamed bytes into a percentage.
@@ -95,7 +110,24 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
   // pieces of writing, and paying max-effort rates to compose a two-line SMS buys nothing.
   const effort = account.llm_effort || DEFAULT_EFFORT;
   const key = await resolveKey(env, account.id, provider);
-  if (!key) return mockOutputs(call);
+  if (!key) {
+    // Mock mode is now OPT-IN, and production never opts in (TASK-108).
+    //
+    // This used to be `if (!key) return mockOutputs(call)` unconditionally, which is the right
+    // behaviour on a laptop and the wrong one everywhere else. A second tenant who had not
+    // pasted a key would not have seen an error — they would have received a fabricated
+    // debrief, a fabricated scorecard, and three fabricated client-facing drafts. The `[mock]`
+    // prefixes are honest, but nothing about the flow says "this is not your call", and the
+    // drafts are the part someone copies into an email to a real buyer.
+    //
+    // Failing closed is the safer default: an error costs someone a confused minute, and
+    // invented analysis of a sales call they just had costs them the deal.
+    if (env.ALLOW_MOCK_GENERATION === "1") return mockOutputs(call);
+    throw new Error(
+      "No API key is connected for this account. Open Settings > Integrations and paste your " +
+      "Anthropic key — Closer runs every generation on your own key, so nothing happens until it is there."
+    );
+  }
 
   // Resolve the type config, falling back to legacy sales behaviour if a call has no type.
   //

@@ -326,5 +326,51 @@ console.log("\n== streaming preview (TASK-101) ==");
     + `A draft pass streaming a preview would put coaching critique of Gabriel on screen built from the transcript.`);
 }
 
+// ------------------------------------------------- TASK-108: BYOK, no platform fallback
+console.log("\n== every account uses its own key (TASK-108) ==");
+{
+  const { resolveKey, keyForRow, generateOutputs } = await import("../src/llm.js");
+  const llmSrc = readFileSync(new URL("../src/llm.js", import.meta.url), "utf8");
+
+  const noKeyEnv = {
+    ANTHROPIC_API_KEY: "sk-PLATFORM-KEY-MUST-NEVER-BE-USED",
+    OPENAI_API_KEY: "sk-PLATFORM", FATHOM_API_KEY_OSA: "fathom-PLATFORM",
+    DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) },
+  };
+
+  check("an account with no key resolves to null, not the platform key",
+    (await resolveKey(noKeyEnv, 99, "anthropic")) === null,
+    "an account with no key would silently bill Ivan, with no ceiling and no error");
+  check("an empty Fathom row resolves to null, not Ivan's Fathom key",
+    keyForRow({ kind: "fathom", secret_value: null }) === null,
+    "this is the cross-tenant one: it would poll GABRIEL'S calls into a stranger's account");
+  check("keyForRow no longer takes env at all",
+    /export function keyForRow\(row\)/.test(llmSrc),
+    "keeping the parameter is an invitation to reach for the platform key again");
+  check("no platform key is read anywhere in llm.js",
+    !/env\.ANTHROPIC_API_KEY|env\.OPENAI_API_KEY|env\.FATHOM_API_KEY_OSA/.test(llmSrc),
+    "the whole point of TASK-108 is that these are unreachable from key resolution");
+
+  // The one that matters most: a keyless account must NOT receive invented analysis.
+  let threw = null, out = null;
+  try {
+    out = await generateOutputs(noKeyEnv, {
+      account: { id: 99, llm_model: "claude-opus-5" },
+      call: { id: 1, client_name: "Test", transcript: "hello" },
+      masterPrompt: "x", callType: null,
+    });
+  } catch (e) { threw = e; }
+  check("a keyless account CANNOT generate — it throws instead of returning mock output",
+    threw !== null && out === null,
+    "it returned output instead of failing: a real closer would have been handed a fabricated debrief and three fabricated client drafts");
+  check("the refusal tells them exactly what to do",
+    threw && /Settings > Integrations/.test(threw.message) && /your own key/.test(threw.message),
+    "an error nobody can act on is only marginally better than mock data");
+  check("mock mode is opt-in and production never opts in",
+    /env\.ALLOW_MOCK_GENERATION === "1"/.test(llmSrc)
+      && !/ALLOW_MOCK_GENERATION/.test(readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8")),
+    "if the flag were set in wrangler.toml it would apply in production, which is the entire bug");
+}
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

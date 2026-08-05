@@ -101,9 +101,11 @@ async function route(request, env, url, ctx) {
        FROM integrations i JOIN accounts a ON a.id = i.account_id
        ORDER BY i.account_id, i.kind`
     ).all();
-    // Surface env-var fallbacks so the UI can show "set via wrangler" without exposing them.
-    const envFallback = { anthropic: !!env.ANTHROPIC_API_KEY, openai: !!env.OPENAI_API_KEY, fathom: !!env.FATHOM_API_KEY_OSA };
-    return json({ integrations: results.map(i => ({ ...i, env_fallback: !!envFallback[i.kind] })) });
+    // env_fallback is reported as false, always, and the field is kept only so an older cached
+    // front-end does not read `undefined` and render "set via wrangler" over a key that is not
+    // there. There ARE no platform fallbacks any more (TASK-108) — every account uses its own
+    // key, and a missing one is now a visible failure rather than a silent substitution.
+    return json({ integrations: results.map(i => ({ ...i, env_fallback: false })) });
   }
 
   const intMatch = path.match(/^\/api\/integrations\/(\d+)$/);
@@ -811,7 +813,7 @@ async function importMeeting(env, integ, m) {
 async function fathomPreview(env, id, days = 3) {
   const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
   if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
-  const key = keyForRow(env, row);
+  const key = keyForRow(row);
   if (!key) return json({ ok: false, message: "No Fathom key saved yet." });
 
   const sinceIso = new Date(Date.now() - days * 86400_000).toISOString();
@@ -875,7 +877,7 @@ async function fathomPreview(env, id, days = 3) {
 async function fathomImportOne(env, id, externalId) {
   const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
   if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
-  const key = keyForRow(env, row);
+  const key = keyForRow(row);
   if (!key) return json({ ok: false, message: "No Fathom key saved yet." });
 
   const existing = await env.DB.prepare(
@@ -917,7 +919,7 @@ async function fathomImportOne(env, id, externalId) {
 async function fathomBackfillTitles(env, id, days = 30, dry = false) {
   const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
   if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
-  const key = keyForRow(env, row);
+  const key = keyForRow(row);
   if (!key) return json({ ok: false, message: "No Fathom key saved yet." });
 
   const sinceIso = new Date(Date.now() - days * 86400_000).toISOString();
@@ -1100,7 +1102,7 @@ async function pollFathom(env) {
 
   const seenKeys = new Set();                 // two rows resolving to the same key => poll once
   for (const row of integrations || []) {
-    const key = keyForRow(env, row);
+    const key = keyForRow(row);
     if (!key || seenKeys.has(key)) continue;   // not configured, or a duplicate key — skip
     seenKeys.add(key);
 
