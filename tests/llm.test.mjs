@@ -87,6 +87,23 @@ const debriefPrompt = textOf(debriefBody.messages[0].content);
 const draftPrompts = bodies.slice(1).map(b => textOf(b.messages[0].content));
 const allDrafts = draftPrompts.join("\n");
 
+// THE GUARD MUST NOT BE ABLE TO EVAPORATE (added 2026-08-12).
+//
+// Every critique-leak assertion below is of the form "SENTINEL_X does not appear in allDrafts".
+// If a refactor ever moves the drafts INTO the debrief pass — option (b) of the 2026-08-12
+// round, and a live proposal — there is no second call, `bodies.slice(1)` is empty, `allDrafts`
+// is "", and every one of those assertions passes against an empty string. The release blocker
+// would go GREEN at the exact moment it stopped existing.
+//
+// This project has had that failure once already: TASK-104 instructed the model to write to a
+// field the context never contained, the instruction was followed vacuously, and nothing
+// errored. A guard with nothing to guard has to be a failure, not a pass.
+check("the critique guard has something to inspect (it is not passing against an empty string)",
+  draftPrompts.length > 0 && allDrafts.length > 200,
+  `${draftPrompts.length} draft payload(s), ${allDrafts.length} chars — if the drafts moved into `
+  + `the debrief pass, the leak assertions below are now vacuous and MUST be rewritten to `
+  + `inspect the generated output instead of the prompt`);
+
 console.log("\n== the pipeline ran the expected calls ==");
 check("1 debrief + 1 buyer-tuned draft = 2 paid calls, down from 4 (TASK-104)",
   bodies.length === 2,

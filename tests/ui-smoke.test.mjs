@@ -79,6 +79,59 @@ globalThis.document = {
              removeProperty(k){ delete this._p[k]; } } },
   body: get("body"), head: mk("head")
 };
+
+// ---- the detail view's OWN elements, parsed from what renderProcessed actually emitted ----
+//
+// Added 2026-08-12, and it is the whole reason the dead Copy buttons shipped. querySelectorAll
+// returned [] for every detail-view selector, so wireDetail wired its handlers onto NOTHING and
+// no test could ever have fired one. The suite then "covered" Copy by counting three buttons in
+// the markup — which were present the entire week the feature was dead.
+//
+// These return real, memoized stubs carrying the real values out of the rendered HTML, so a
+// handler that reads the wrong element gets the wrong string rather than a fabricated blank.
+const CLIPBOARD = [];
+// Node 22 defines a getter-only globalThis.navigator, so plain assignment throws.
+Object.defineProperty(globalThis, "navigator", {
+  value: { clipboard: { writeText: async s => { CLIPBOARD.push(s); } } }, configurable: true });
+const unesc = s => String(s).replace(/&quot;/g, '"').replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+const detailHtml = () => (reg.get("#detailPane") || {})._html || "";
+function outField(kind, id) {
+  const e = get(`fld:${kind}:${id}`);
+  if (e._seeded) return e;
+  const html = detailHtml();
+  if (kind === "body") {
+    const m = new RegExp(`<textarea[^>]*data-out="${id}"[^>]*data-field="body"[^>]*>([\\s\\S]*?)</textarea>`).exec(html);
+    if (!m) return null;
+    e.value = unesc(m[1]);
+  } else {
+    const m = new RegExp(`<input[^>]*data-out="${id}"[^>]*data-field="subject"[^>]*value="([^"]*)"`).exec(html);
+    if (!m) return null;
+    e.value = unesc(m[1]);
+  }
+  e.dataset.out = String(id); e.dataset.field = kind; e._seeded = true;
+  return e;
+}
+const _qsa = globalThis.document.querySelectorAll;
+globalThis.document.querySelectorAll = s => {
+  if (s === ".copy-btn[data-out]") {
+    return [...detailHtml().matchAll(/<button class="copy-btn" data-out="(\d+)"/g)].map(m => {
+      const b = get(`copybtn:${m[1]}`); b.dataset.out = m[1]; return b; });
+  }
+  if (s === "[data-field]") {
+    const out = [];
+    for (const m of detailHtml().matchAll(/data-out="(\d+)" data-field="(body|subject)"/g)) {
+      const e = outField(m[2], m[1]); if (e) out.push(e);
+    }
+    return out;
+  }
+  return _qsa(s);
+};
+const _qs = globalThis.document.querySelector;
+globalThis.document.querySelector = s => {
+  const m = /^\[data-field="(body|subject)"\]\[data-out="(\d+)"\]$/.exec(s);
+  if (m) return outField(m[1], m[2]);
+  return _qs(s);
+};
 globalThis.window = { addEventListener(){}, location: { reload(){} }, innerHeight: 900, innerWidth: 1400 };
 globalThis.innerHeight = 900; globalThis.innerWidth = 1400;
 let store = {};
@@ -228,10 +281,13 @@ const processedCall = {
     statedFollowUps: [{ channel: "email", said: "I'll email you", contains: ["steps"] }],
     followUp: { nextStep: "call Thu" }, profile: ["p"] })
 };
+// Bodies are deliberately distinctive. They used to be "hi", "b" and "CLIENT" — fine for
+// "does it render", useless for "did Copy grab the RIGHT one", because "b" is a substring of
+// half the document. A copy test needs values that can only have come from one output.
 const processedOutputs = [
-  { id: 11, kind: "sms", tone: "balanced", body: "hi" },
-  { id: 12, kind: "email", tone: "balanced", subject: "s", body: "b" },
-  { id: 13, kind: "ghl_note", body: "CLIENT\n- x" }
+  { id: 11, kind: "sms",      tone: "balanced", body: "ZSMS_only_in_the_text_message" },
+  { id: 12, kind: "email",    tone: "balanced", subject: "ZSUBJ_following_up", body: "ZEMAIL_only_in_the_email" },
+  { id: 13, kind: "ghl_note", body: "ZGHL_only_in_the_crm_note\n- x" }
 ];
 T.state.callTypes = [{ id: 1, name: "Sales call" }];
 let renderErr = null;
@@ -359,8 +415,42 @@ check("no output panel prints a visible title of its own",
   !/class="panel-title"/.test(richHtml), "panel-title is back — that's the duplicate heading");
 check("the textarea keeps its aria-label (a chip is not announced as the field's label)",
   (richHtml.match(/<textarea[^>]*aria-label="(Text Message|Email|GoHighLevel Note)"/g) || []).length === 3);
-check("all three copy buttons survive the title removal",
-  (richHtml.match(/class="copy-btn" data-out=/g) || []).length === 3);
+// RETIRED 2026-08-12, not deleted — inverted into something that can fail for the real reason.
+// The old assertion counted three `class="copy-btn" data-out=` strings in the markup and passed
+// for a week while all three buttons threw a TypeError on click. A test that counts buttons is
+// not a test that they work. These fire the handler and read the clipboard.
+console.log("\n== Copy actually copies (TASK-106 broke all three; 2026-08-12) ==");
+{
+  const btns = document.querySelectorAll(".copy-btn[data-out]");
+  check("all three Copy buttons are wired to a click handler", btns.length === 3, `${btns.length} found`);
+
+  // ids come from processedOutputs: sms=1 (text), email=2, ghl=3.
+  const byId = Object.fromEntries(processedOutputs.map(o => [String(o.id), o]));
+  let threw = null;
+  for (const b of btns) {
+    CLIPBOARD.length = 0;
+    try { b.fire("click"); } catch (e) { threw = threw || `${e.name}: ${e.message}`; continue; }
+    const want = byId[b.dataset.out];
+    const got = CLIPBOARD[0];
+    check(`Copy on "${want.kind}" puts THAT output on the clipboard`,
+      typeof got === "string" && got.includes(want.body),
+      got === undefined ? "nothing reached the clipboard" : `got: ${String(got).slice(0, 60)}`);
+    // The bug copied nothing at all; the NEXT bug of this shape copies the neighbour's text.
+    for (const other of processedOutputs) {
+      if (other.id === want.id || !other.body) continue;
+      check(`  …and not the ${other.kind} body`, !String(got || "").includes(other.body));
+    }
+  }
+  check("no Copy click throws", !threw, threw || "");
+
+  // Email is the only one that carries a subject, and it has to travel with the body.
+  CLIPBOARD.length = 0;
+  const emailId = String(processedOutputs.find(o => o.kind === "email").id);
+  const emailBtn = [...btns].find(b => b.dataset.out === emailId);
+  try { emailBtn?.fire("click"); } catch {}
+  check("Copy on the email includes its Subject line",
+    /^Subject: .+\n\n/.test(CLIPBOARD[0] || ""), CLIPBOARD[0] ? String(CLIPBOARD[0]).slice(0, 40) : "empty");
+}
 check("both Mark-sent buttons survive it too",
   (richHtml.match(/class="sent-btn [^"]*" data-out=/g) || []).length === 2);
 

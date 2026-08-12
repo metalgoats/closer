@@ -82,7 +82,75 @@ async function route(request, env, url, ctx) {
   const user = await requireUser(request, env);
   if (!user) return json({ error: "unauthorized" }, 401);
 
+  // ---- what a member cannot reach (TASK-112) ----
+  //
+  // ENFORCED HERE, SERVER-SIDE, not by hiding menu items. A front-end that omits a button is a
+  // suggestion; this is the boundary. The front end hides the same pages purely so a member
+  // does not click into a 403.
+  //
+  // The four, and why each:
+  //   spend        — billing. The whole point of a permission level.
+  //   integrations — it holds the API keys. The GET already refuses to return a raw secret, but
+  //                  the POST WRITES one: a member could replace the account's Anthropic key
+  //                  with their own, or point Fathom somewhere else. Write access is the risk,
+  //                  not read access.
+  //   backup       — `/api/backup` returns a dump of every table, which means every transcript
+  //                  of every sales call. This is the strongest of the four and the least
+  //                  obvious; it was reachable by anyone with a session until today.
+  //   users        — creating logins.
+  //
+  // Activity is deliberately NOT on the list. It is the reliability surface Gabriel needed on
+  // 08-04 ("does generation actually fail?"), and its cost figures describe spend on his own
+  // key. Revisit if the roles are ever inverted.
+  const ADMIN_ONLY = [/^\/api\/spend/, /^\/api\/integrations/, /^\/api\/backup/, /^\/api\/users/];
+  if (user.role !== "admin" && ADMIN_ONLY.some(re => re.test(path))) {
+    return json({ error: "This account does not have access to that." }, 403);
+  }
+
   if (path === "/api/me") return json({ user, build: env.BUILD_ID || "dev" });
+
+  // ---- users & access (TASK-112) ----
+  if (path === "/api/users" && method === "GET") {
+    const { results } = await env.DB.prepare(
+      "SELECT id, email, COALESCE(role,'member') AS role, created_at FROM users ORDER BY id").all();
+    return json({ users: results, me: user.id });
+  }
+  // The second login. /api/setup stays first-run-gated exactly as it was — this is the route
+  // that did not exist, which is why there has only ever been one credential.
+  if (path === "/api/users" && method === "POST") {
+    const b = await request.json();
+    const email = String(b.email || "").trim().toLowerCase();
+    const role = b.role === "admin" ? "admin" : "member";
+    if (!email || !b.password || String(b.password).length < 8) {
+      return json({ error: "email + password (8+ chars) required" }, 400);
+    }
+    const clash = await env.DB.prepare("SELECT id FROM users WHERE lower(email) = ?").bind(email).first();
+    if (clash) return json({ error: "that email already has a login" }, 409);
+    const { hash, salt } = await hashPassword(b.password);
+    await env.DB.prepare("INSERT INTO users (email, pw_hash, pw_salt, role) VALUES (?, ?, ?, ?)")
+      .bind(email, hash, salt, role).run();
+    await logEvent(env, { kind: "user.created", detail: `${email} · ${role}` });
+    return json({ ok: true, email, role });
+  }
+  // Self-serve password change — for ANY role, including a member changing their own. There was
+  // no way to change a password at all before this, which is its own reason the credential was
+  // shared and stayed shared.
+  if (path === "/api/password" && method === "POST") {
+    const b = await request.json();
+    if (!b.next || String(b.next).length < 8) return json({ error: "new password must be 8+ characters" }, 400);
+    const row = await env.DB.prepare("SELECT pw_hash, pw_salt FROM users WHERE id = ?").bind(user.id).first();
+    if (!row || !(await verifyPassword(String(b.current || ""), row.pw_salt, row.pw_hash))) {
+      return json({ error: "current password is wrong" }, 403);
+    }
+    const { hash, salt } = await hashPassword(String(b.next));
+    await env.DB.prepare("UPDATE users SET pw_hash = ?, pw_salt = ? WHERE id = ?").bind(hash, salt, user.id).run();
+    // Every OTHER session for this user dies. A password change that leaves old sessions alive
+    // is not a password change — it is a new way to log in beside the old one.
+    const tok = readSessionToken(request);
+    await env.DB.prepare("DELETE FROM sessions WHERE user_id = ? AND token != ?").bind(user.id, tok).run();
+    await logEvent(env, { kind: "user.password_changed", detail: user.email });
+    return json({ ok: true });
+  }
 
   // ---- accounts ----
   if (path === "/api/accounts" && method === "GET") {
@@ -637,7 +705,13 @@ async function login(request, env) {
 }
 
 async function startSession(env, email) {
-  const user = await env.DB.prepare("SELECT id, email FROM users WHERE email = ?").bind(email).first();
+  // `role` must be in the login response, not just in /api/me (TASK-112). The front end sets
+  // state.user straight from this payload and immediately calls applyRoleVisibility(); without
+  // the role an ADMIN who has just signed in is treated as a member and loses Spend and
+  // Integrations from their own menu until they reload. Caught in the browser, not by a test —
+  // every assertion still passed.
+  const user = await env.DB.prepare(
+    "SELECT id, email, COALESCE(role, 'member') AS role FROM users WHERE email = ?").bind(email).first();
   const token = newSessionToken();
   const maxAge = 30 * 24 * 3600;
   await env.DB.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, datetime('now', '+30 days'))")
@@ -1213,11 +1287,27 @@ async function insights(env, accountId, callTypeId) {
 const POLL_LOOKBACK_MS = 12 * 3600_000;
 
 // MASTER SWITCH for the cron (TASK-058). false = import-only: new Fathom meetings land in the
-// inbox as 'new' and a human clicks Generate. This is the safe default because Fathom captures
-// EVERY meeting on the account — internal ones included — and we cannot reliably tell a sales
-// call from an internal meeting without paying for an LLM. Set true to auto-process every
-// imported meeting (spends money on non-sales calls too).
-const AUTO_PROCESS_IMPORTS = false;
+// inbox as 'new' and a human clicks Generate. Fathom captures EVERY meeting on the account —
+// internal ones included — and we cannot tell a sales call from an internal one without paying
+// for an LLM, which is what made this the safe default.
+//
+// TURNED ON 2026-08-12, decided on the 08-11 call, after confirming the defence against the
+// TASK-058 incident actually holds in production:
+//
+//   * Both Fathom tokens have `owner_email` set, so the poll is scoped to `recorded_by[]=`.
+//     OSA      -> gabriel@onscreenauthority.com   56 calls imported
+//     Hypnosis -> gabriel@domthehypnotist.com      9 calls imported
+//   * A token with NO owner_email is skipped entirely — it fails closed, not open.
+//   * Both addresses are demonstrably live: a wrong address imports zero, and neither is zero.
+//     (The vault recorded the second as `donthehypnotist.com`. Production says `dom`, and
+//     production is importing calls, so the vault had the typo. Corrected there.)
+//
+// ‼️ THIS IS A BILL, NOT A CONVENIENCE. Measured over the 14 days to 2026-08-11: 35 calls
+// imported, 16 of which Gabriel chose to generate on. Auto-processing pays for all 35 — a
+// **2.2x** increase, ~$28/mo -> ~$62/mo at the current Opus 5 default, or ~$10/mo on Sonnet 5.
+// The 19 he skipped are not waste the flag removes; they are a human filter the flag deletes.
+// Revert is this one line. See the model-default note in the 2026-08-12 CHANGELOG entry.
+const AUTO_PROCESS_IMPORTS = true;
 
 // Hard cap on paid runs launched per tick, used ONLY when AUTO_PROCESS_IMPORTS is true. The
 // cron fires every 5 minutes, so this bounds the blast radius if anything upstream goes wrong.

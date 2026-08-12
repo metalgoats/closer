@@ -279,6 +279,14 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .unified-body .opane.active{ display:flex; flex-direction:column; flex:1; min-height:0; }
 .unified-body .opane .panel, .unified-body .opane .panel-body{ display:flex; flex-direction:column; flex:1; min-height:0; }
 .unified-body .opane textarea.msg-edit{ flex:1; min-height:180px; }
+/* The transcript page (2026-08-12) stretches exactly like an output pane so it gets the full
+   height Gabriel asked for, but it is source material rather than a draft: read-only, no resize
+   handle, and no Copy/Mark-sent in the chip row (see `noCopy` in DEBRIEF_PAGES). */
+.unified-body .dpage.dpage-transcript.active{ display:flex; flex-direction:column; flex:1; min-height:0; }
+.transcript-view{ flex:1; min-height:180px; width:100%; resize:none; border:1px solid var(--line);
+  border-radius:9px; background:var(--paper-50); padding:14px; color:var(--ink-800);
+  font-family:var(--font-mono); font-size:13px; line-height:1.6; white-space:pre-wrap; }
+.transcript-view:focus{ outline:none; border-color:var(--blue-500); }
 .subnav-split{ width:1px; align-self:stretch; margin:4px 6px; background:var(--line-strong); }
 .subnav-actions{ margin-left:auto; display:flex; align-items:center; gap:6px; }
 /* Wraps rather than scrolls (2026-08-05): nine debrief pages clipped mid-word at the right
@@ -946,3 +954,11 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
                      padding:10px; font-family:var(--font-mono); font-size:12px; color:var(--ink-950); }
 .sp-import textarea:focus{ outline:none; border-color:var(--blue-500); }
 .sp-msg{ font-size:12px; color:var(--ink-600); margin-left:8px; }
+
+/* Account & Access (TASK-112) */
+.acc-form{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:18px; }
+.acc-form input{ flex:1 1 200px; min-width:160px; border:1px solid var(--line); border-radius:8px;
+  background:var(--paper-0); padding:9px 11px; font-size:15px; color:var(--ink-950); }
+.acc-form input:focus{ outline:none; border-color:var(--blue-500); }
+.acc-select{ border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:15px;
+  background:var(--select-bg, var(--paper-0)); color:var(--select-fg, var(--ink-950)); }

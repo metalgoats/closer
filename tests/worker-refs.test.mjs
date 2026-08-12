@@ -176,5 +176,56 @@ console.log("\n== nightly backup (TASK-023) ==");
       : "the cron is scheduled with no R2 binding — it would throw and log backup.failed every night");
 }
 
+// ---- roles: the boundary is the SERVER, never the menu (TASK-112) --------------------
+//
+// The whole risk of a two-role feature is that it gets implemented in the front end, where it
+// is a suggestion. These assert the server-side check exists, sits in the right place, and
+// fails toward LESS access rather than more.
+console.log("\n== roles are enforced server-side ==");
+{
+  const idx = sources["index.js"];
+  const auth = sources["auth.js"];
+  const app = readFileSync(join(SRC, "..", "public", "app.js"), "utf8");
+  const mig = readFileSync(join(SRC, "..", "migrations", "0019_user_roles.sql"), "utf8");
+
+  check("index.js declares an ADMIN_ONLY list", /const ADMIN_ONLY = \[/.test(idx));
+  for (const p of ["spend", "integrations", "backup", "users"]) {
+    check(`  ADMIN_ONLY covers /api/${p}`, new RegExp(`ADMIN_ONLY = \\[[^\\]]*\\\\/api\\\\/${p}`).test(idx.replace(/\s+/g, " ")),
+      "a page a member must not reach is missing from the server list");
+  }
+  // Order matters: the check must run AFTER the session is resolved and BEFORE any route.
+  const iReq = idx.indexOf("const user = await requireUser");
+  const iChk = idx.indexOf("ADMIN_ONLY.some");
+  const iMe  = idx.indexOf('path === "/api/me"');
+  check("the role check runs after requireUser and before the first route",
+    iReq > 0 && iChk > iReq && iMe > iChk, `requireUser@${iReq} check@${iChk} me@${iMe}`);
+  check("it returns 403, not 401 (the session is valid; the role is not)", /"This account does not have access to that\." \}, 403\)/.test(idx));
+
+  // Fail toward less access, in all three places that can decide a role.
+  check("an unknown/missing role reads as member, not admin", /COALESCE\(u\.role, 'member'\)/.test(auth));
+  check("the column defaults to 'member'", /role TEXT NOT NULL DEFAULT 'member'/.test(mig));
+  check("POST /api/users only grants admin when explicitly asked",
+    /role = b\.role === "admin" \? "admin" : "member"/.test(idx));
+
+  // A password change must not leave the old sessions alive.
+  check("changing a password kills this user's other sessions",
+    /DELETE FROM sessions WHERE user_id = \? AND token != \?/.test(idx));
+  check("setup stays first-run-gated", /already set up/.test(idx));
+  // The login payload seeds state.user, and the menu is drawn from it before /api/me is ever
+  // called. A login response without a role makes an admin look like a member until reload.
+  check("the login response carries the role, not just /api/me",
+    /SELECT id, email, COALESCE\(role, 'member'\) AS role FROM users WHERE email/.test(idx));
+
+  // The front end hides the same pages, and that is ALL it does.
+  check("app.js hides admin views but does not own the boundary",
+    /const ADMIN_VIEWS = \["spend", "integrations"\]/.test(app)
+    && /COSMETIC ONLY/.test(app));
+  for (const v of ["spend", "integrations"]) {
+    check(`  every hidden view "${v}" is also blocked server-side`,
+      new RegExp(`\\\\/api\\\\/${v}`).test(idx.match(/const ADMIN_ONLY = \[[^\]]*\]/s)?.[0] || ""),
+      "hidden in the menu but reachable by URL — that is not a permission");
+  }
+}
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

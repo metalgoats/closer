@@ -3,6 +3,98 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-08-12 — Copy was dead for a week, and the drafts decision did not land where it was aimed
+
+The short list between Gabriel and using the portal. Deliberately none of the 08-11 pivot: no
+manager dashboard, no multi-tenancy, no rename.
+
+### The three Copy buttons were all dead, not just the CRM one
+
+Gabriel reported the CRM button. All three were broken, since **2026-08-05**. `3b4c93e`
+(TASK-106) moved them out of each output's `.panel` into the shared chip row; the handler still
+walked `btn.closest(".panel")`, which has returned `null` ever since. They now look the field up
+by `data-out`, which survives either element moving — the same reasoning that kept `#copyDebrief`
+working through the identical refactor.
+
+Two things made this invisible for a week, and both are worth more than the fix:
+
+- **The handler was `async`.** Its `TypeError` became an unhandled promise rejection, not a
+  thrown error. Nothing appeared as a failure anywhere.
+- **The test asserted the buttons were PRESENT.** It counted three `class="copy-btn" data-out=`
+  strings in the markup. All three were present the entire time — the markup was never the
+  problem. A test that counts buttons is not a test that they work.
+
+That assertion is retired and replaced with ones that fire the click and read the clipboard, and
+the harness now parses the detail view's real elements — `querySelectorAll` returned `[]` for
+every detail-view selector, so `wireDetail` was wiring handlers onto nothing and no test could
+have fired one. Proven red against the shipped bug before being called done.
+
+### Transcript tab
+
+Gabriel, 2026-08-10. Ninth debrief-side chip, read-only, no Copy or Mark-sent — it is source
+material, not an output he sends. A 75k-character transcript scrolls inside its own box with the
+pane height unchanged.
+
+### Two logins, with the boundary on the server
+
+`users` had no role column, the only user-creating route refused once one user existed, and there
+was **no password-change route at all** — the shared credential was the only thing the schema
+permitted. Adds `role` (default `member`), admin-only `POST/GET /api/users`, self-serve
+`POST /api/password` that kills the user's other sessions, and an `ADMIN_ONLY` gate.
+
+**A member cannot reach spend, integrations, backup or users** — 403 from the server, verified by
+logging in as one, not by hiding menu items. Backup is the least obvious and the most important
+of the four: it returns a dump of every table, meaning every transcript of every sales call, and
+it was reachable by anyone with a session until today. Activity stays visible: it is the
+reliability surface Gabriel needed on 08-04, and the spend it shows is on his own key.
+
+Caught in the browser and not by any test: the login response did not include the role, so an
+admin who had just signed in was treated as a member until they reloaded.
+
+### Auto-processing: ON, and it is a 2.2x bill
+
+Gated on the TASK-058 defence, and the gate holds. Both Fathom tokens carry `owner_email`
+(OSA 56 calls imported, Hypnosis 9), a token without one is skipped entirely, and both of
+Gabriel's addresses are demonstrably live. **The second is `domthehypnotist.com`, not `don` —
+the vault had the typo, and production proved it by importing 9 calls.** Per-tick cap unchanged.
+
+Measured over the 14 days to 08-11: **35 calls imported, 16 that Gabriel chose to generate on.**
+Auto-processing pays for all 35 — ~$28/mo becomes ~$62/mo at the Opus 5 default, ~$10/mo on
+Sonnet 5. The 19 he skipped were not waste; they were a human filter this flag deletes. Revert is
+one line.
+
+### The drafts: NEITHER (a) nor (b) — and the reason is checkable
+
+The round asked for a decision between widening `draftContext` (a) and moving the drafts into the
+debrief pass (b). Reading the guard first changed the answer.
+
+**Option (b) silently voids the release blocker.** The critique-leak test inspects
+`bodies.slice(1)` — the payload of the *second* model call — and asserts no `SENTINEL_*` critique
+string appears in it. Move the drafts into the debrief pass and there is no second call:
+`allDrafts` becomes `""`, and every leak assertion passes against an empty string. The guard goes
+**green at the moment it stops existing**. That is the TASK-104 failure mode exactly — an
+instruction followed vacuously with nothing erroring — on the one thing this project calls a
+release blocker every round, forever.
+
+**Option (a) is the third attempt at a fix that has already failed twice** (07-29 widened
+`draftContext`; the complaint returned on 08-10).
+
+So the recommendation is **(c): give the one remaining draft pass the transcript, and keep the
+critique out of it.** The block on the transcript was written when there were *three* tone jobs
+and re-sending it cost ~57k tokens; TASK-104 collapsed that to **one**, so the stated reason is
+stale. The critique is *generated by* the debrief pass and is not in the transcript, so the guard
+stays structural and testable rather than becoming "the prompt says don't". Cost is one extra
+transcript prefill, roughly +20% per call — which is an argument for pairing it with the Sonnet
+decision, not against it.
+
+**Not implemented this round.** (c) is not on the round's menu, and choosing it unilaterally on a
+release-blocker path is not mine to do. What did ship is the part that is right under every
+option: the guard can no longer evaporate. A new assertion fails if there is nothing left to
+inspect, so whoever implements (b) is told, in red, that the leak test has become vacuous.
+
+Gabriel's other sentence — *"sit down together and do some training with the AI"* — is still the
+highest-value item here and is a calendar entry, not a commit.
+
 ## 2026-08-05 (later) — The cache breakpoint was on the smallest static thing in the request
 
 Follow-on from the Spend page, which showed 23,553 cache-write tokens and **zero** reads across

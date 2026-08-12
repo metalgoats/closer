@@ -86,6 +86,10 @@ async function boot() {
   const initials = state.user.email.slice(0, 2).toUpperCase();
   $("#userAvatar").textContent = initials;
   if ($("#userAvatarMini")) $("#userAvatarMini").textContent = initials;
+  // Hide what this role cannot reach (TASK-112). This is COSMETIC ONLY — the boundary is the
+  // ADMIN_ONLY check in index.js. Hiding a menu item stops a member clicking into a 403; it is
+  // not what stops them reading the data, and must never be mistaken for it.
+  applyRoleVisibility();
   state.accounts = (await api.get("/accounts")).accounts;
   try { state.callTypes = (await api.get("/call-types")).call_types; } catch { state.callTypes = []; }
   renderAccountNav();
@@ -357,7 +361,17 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
   });
 });
 
-const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend };
+const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess };
+
+// Mirrors ADMIN_ONLY in src/index.js. Kept as a named constant next to the thing it hides so a
+// future page added to one list is visibly missing from the other.
+const ADMIN_VIEWS = ["spend", "integrations"];
+function isAdmin() { return state.user?.role === "admin"; }
+function applyRoleVisibility() {
+  document.querySelectorAll(".settings-item[data-view]").forEach(el => {
+    if (ADMIN_VIEWS.includes(el.dataset.view)) el.classList.toggle("hidden", !isAdmin());
+  });
+}
 document.querySelectorAll(".nav-item[data-view]").forEach(el => {
   el.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
@@ -1122,7 +1136,7 @@ function renderProcessed(call, outputs) {
       </div>
       <div class="unified-body" id="debriefBody">
         ${DEBRIEF_PAGES.map((p, i) =>
-          `<div class="dpage" data-page="${i}">${p.render(d) || `<div class="dpage-empty">Nothing recorded for this section.</div>`}</div>`).join("")}
+          `<div class="dpage${p.key === "transcript" ? " dpage-transcript" : ""}" data-page="${i}">${p.render(d, call) || `<div class="dpage-empty">Nothing recorded for this section.</div>`}</div>`).join("")}
         <div class="opane ${defTab === "text"  ? "active" : ""}" data-otab="text">${outputPanel("Text Message", sms, { sent: true })}</div>
         <div class="opane ${defTab === "email" ? "active" : ""}" data-otab="email">${outputPanel("Email", email, { sent: true, subject: true })}</div>
         <div class="opane ${defTab === "ghl"   ? "active" : ""}" data-otab="ghl">${outputPanel("GoHighLevel Note", ghl, {})}</div>
@@ -1243,7 +1257,19 @@ const DEBRIEF_PAGES = [
   { label: "Client Profile", key: "profile", render: d => profileBlock(d.profile) },
   { label: "Buying Signals", key: "buyingSignals", render: d => signalsBlock(d.buyingSignals) },
   { label: "Missed Openings", key: "missedOpenings", render: d => openingsBlock(d.missedOpenings) },
-  { label: "Lessons", key: "lessons", render: d => bullets(d.lessons) }
+  { label: "Lessons", key: "lessons", render: d => bullets(d.lessons) },
+  // The transcript, on a PROCESSED call (Gabriel, 2026-08-10: "If possible could we ad a tab
+  // with the actual transcript?"). It was already rendered in the unprocessed view and simply
+  // vanished the moment a call was processed — which is the moment he wants to check the
+  // debrief against what was actually said.
+  //
+  // It sits on the DEBRIEF side of subnav-split, and `noCopy` keeps Copy-all and Mark-sent off
+  // the row: this is source material, not an output he sends anyone. Renders from `call`, which
+  // is why every page's render() takes it as a second argument — the other eight ignore it.
+  { label: "Transcript", key: "transcript", noCopy: true,
+    render: (d, call) => call?.transcript
+      ? `<textarea class="transcript-view" readonly aria-label="Call transcript">${esc(call.transcript)}</textarea>`
+      : "" }
 ];
 
 // A "did well" / "hurt sale" item is a string (legacy) or an object (TASK-089). The rewrite
@@ -1405,8 +1431,10 @@ function wireDetail(call, outs) {
   // the row's end follow the active panel: Copy-all belongs to the debrief, Mark-sent/Copy to
   // the output they act on — a button for a panel that is not on screen is clutter at best
   // and a mis-click at worst.
-  const showDebriefActions = on => {
-    $("#copyDebrief")?.classList.toggle("hidden", !on);
+  // `allowCopy` exists for the transcript page: it is a debrief-side page, so it must still
+  // clear the output actions, but Copy-all belongs to the debrief and not to a raw transcript.
+  const showDebriefActions = (on, allowCopy = true) => {
+    $("#copyDebrief")?.classList.toggle("hidden", !(on && allowCopy));
     if (!on) return;
     document.querySelectorAll(".oacts").forEach(a => a.classList.remove("active"));
   };
@@ -1422,7 +1450,7 @@ function wireDetail(call, outs) {
     });
     document.querySelectorAll(".dpage").forEach(p => p.classList.toggle("active", p.dataset.page === n));
     document.querySelectorAll(".opane").forEach(p => p.classList.remove("active"));
-    showDebriefActions(true);
+    showDebriefActions(true, !DEBRIEF_PAGES[+n]?.noCopy);
     $("#debriefBody").scrollTop = 0;
   }));
 
@@ -1468,12 +1496,29 @@ function wireDetail(call, outs) {
   $("#copyDebrief").addEventListener("click", e => copyText(debriefToText(call, outs.debrief || {}), e.currentTarget));
 
   // copy outputs
-  document.querySelectorAll(".copy-btn[data-out]").forEach(btn => btn.addEventListener("click", async () => {
-    const panel = btn.closest(".panel");
-    const subject = panel.querySelector('[data-field="subject"]');
-    const body = panel.querySelector('[data-field="body"]').value;
-    copyText(subject ? `Subject: ${subject.value}\n\n${body}` : body, btn);
-    api.post(`/outputs/${btn.dataset.out}/copied`).catch(() => {});
+  //
+  // FIND THE FIELD BY IDENTITY, NEVER BY TREE POSITION. This handler used to walk
+  // `btn.closest(".panel")`. TASK-106 moved these buttons OUT of each output's panel and into
+  // the shared chip row, so from 2026-08-05 `closest` returned null and every click threw a
+  // TypeError before anything reached the clipboard — all three buttons, not just the CRM one
+  // Gabriel reported. Silent to him, loud in the console, dead for a week.
+  //
+  // It stayed invisible because the test asserted the three buttons were PRESENT IN THE MARKUP,
+  // which they always were. The markup was never the problem. `data-out` ties the button to its
+  // field by id, which survives either of them moving anywhere in the tree — the same reasoning
+  // as #copyDebrief above, which is why that one never broke.
+  //
+  // Reads the LIVE textarea rather than `outs` on purpose: an edit typed but not yet blurred is
+  // what is on screen, so it is what Copy must put on the clipboard.
+  document.querySelectorAll(".copy-btn[data-out]").forEach(btn => btn.addEventListener("click", () => {
+    const id = btn.dataset.out;
+    const body = document.querySelector(`[data-field="body"][data-out="${id}"]`);
+    // Fail LOUDLY. The whole cost of this bug was that a broken copy looked exactly like a
+    // working one; if the field ever goes missing again the user finds out, not the console.
+    if (!body) { toast("Couldn't find that output to copy"); return; }
+    const subject = document.querySelector(`[data-field="subject"][data-out="${id}"]`);
+    copyText(subject ? `Subject: ${subject.value}\n\n${body.value}` : body.value, btn);
+    api.post(`/outputs/${id}/copied`).catch(() => {});
   }));
 
   // sent toggles
@@ -2178,6 +2223,72 @@ async function renderSpend() {
     } catch (err) {
       msg.textContent = String(err?.message || err);
     }
+  });
+}
+
+// ---------------------------------------------------------------- Account & Access (TASK-112)
+//
+// Until today there was no route that could create a second login and no route that could
+// change a password — so "Ivan and Gabriel share an account" was not a habit, it was the only
+// thing the API permitted. This page is what makes two named people possible.
+//
+// Everything admin-only here is ALSO enforced in src/index.js. If you are reading this because
+// you are adding a page, add it to ADMIN_ONLY there first and to ADMIN_VIEWS here second — in
+// that order, because only the first one is a boundary.
+async function renderAccess() {
+  const admin = isAdmin();
+  let users = [];
+  if (admin) { try { users = (await api.get("/users")).users; } catch { users = []; } }
+
+  const rows = users.map(u => `<tr>
+      <td>${esc(u.email)}${u.id === state.user.id ? ` <span class="sp-id">you</span>` : ""}</td>
+      <td><span class="status-chip ${u.role === "admin" ? "" : "status-off"}">${esc(u.role)}</span></td>
+      <td class="sp-num">${esc((u.created_at || "").slice(0, 10))}</td>
+    </tr>`).join("");
+
+  viewShell("Account &amp; Access",
+    `Signed in as ${esc(state.user.email)} — ${esc(state.user.role || "member")}`,
+    `<h4>Change your password</h4>
+     <div class="insight-note">Changing it signs out every other device you are signed in on.</div>
+     <div class="acc-form">
+       <input type="password" id="pwCur"  placeholder="Current password" autocomplete="current-password">
+       <input type="password" id="pwNew"  placeholder="New password (8+ characters)" autocomplete="new-password">
+       <button class="chip" id="pwSave">Change password</button>
+       <span class="sp-msg" id="pwMsg"></span>
+     </div>
+
+     ${admin ? `<h4>People with a login</h4>
+     <div style="overflow-x:auto;"><table class="ev-table sp-table"><thead><tr>
+        <th>Email</th><th>Role</th><th class="sp-num">Added</th>
+     </tr></thead><tbody>${rows || `<tr><td colspan="3" style="color:var(--ink-400); padding:14px;">Just you.</td></tr>`}</tbody></table></div>
+
+     <h4>Add a login</h4>
+     <div class="insight-note">A <b>member</b> can read calls, debriefs, outputs and Activity. They cannot open Spend or Integrations, and cannot download a backup — that last one matters most, because a backup is every transcript of every call.</div>
+     <div class="acc-form">
+       <input type="email" id="nuEmail" placeholder="Email" autocomplete="off">
+       <input type="password" id="nuPass" placeholder="Password (8+ characters)" autocomplete="new-password">
+       <select id="nuRole" class="acc-select"><option value="member">Member</option><option value="admin">Admin</option></select>
+       <button class="chip" id="nuSave">Create login</button>
+       <span class="sp-msg" id="nuMsg"></span>
+     </div>`
+     : `<div class="insight-note">Spend, Integrations and backups are admin-only on this account.</div>`}`);
+
+  $("#pwSave").addEventListener("click", async () => {
+    const msg = $("#pwMsg"); msg.textContent = "Saving…";
+    try {
+      await api.post("/password", { current: $("#pwCur").value, next: $("#pwNew").value });
+      $("#pwCur").value = ""; $("#pwNew").value = "";
+      msg.textContent = "Password changed.";
+    } catch (e) { msg.textContent = String(e?.message || e); }
+  });
+
+  if (admin) $("#nuSave").addEventListener("click", async () => {
+    const msg = $("#nuMsg"); msg.textContent = "Creating…";
+    try {
+      const r = await api.post("/users", { email: $("#nuEmail").value, password: $("#nuPass").value, role: $("#nuRole").value });
+      msg.textContent = `${r.email} can now sign in as ${r.role}.`;
+      setTimeout(renderAccess, 700);
+    } catch (e) { msg.textContent = String(e?.message || e); }
   });
 }
 
