@@ -1351,13 +1351,19 @@ async function pollFathom(env) {
       if (!r.imported) continue;              // already have it, or no transcript yet
       imported++;
 
-      // AUTO_PROCESS_IMPORTS is OFF (TASK-058). Fathom sends every meeting on the account,
-      // including internal ones that are NOT sales calls (the three "Nathan Macias" meetings).
-      // Auto-generating them spends API money and would feed non-sales data into the learning
-      // cycle. We cannot tell sales from internal without an LLM reliably enough to gate spend
-      // — an internal meeting here was even tagged with an external-looking name. So imports
-      // land as 'new' in the inbox and a human clicks Generate. Flip this to true only if you
-      // accept paying for every meeting Fathom captures.
+      // AUTO_PROCESS_IMPORTS is ON as of 2026-08-12 (TASK-114) — this comment said OFF until
+      // then, and the flag above carries the evidence the gate was checked before flipping.
+      //
+      // The original TASK-058 reasoning still stands and is why the scope matters: Fathom sends
+      // every meeting on the account, internal ones included (the three "Nathan Macias"
+      // meetings), and one internal meeting was even tagged with an external-looking name. What
+      // makes auto-processing safe now is `integrations.owner_email` scoping the poll to
+      // `recorded_by[]=`, which fails closed — not any ability to tell a sales call from an
+      // internal one.
+      //
+      // NOTE THE SCOPE: this only auto-processes what THIS tick imported. Calls already sitting
+      // in the inbox as 'new' are never swept — as of 2026-08-12 that is 19 calls Gabriel chose
+      // not to generate, and flipping the flag deliberately does not go back and bill for them.
       if (!AUTO_PROCESS_IMPORTS) continue;
 
       if (launched >= MAX_AUTO_PROCESS_PER_TICK) { deferred++; continue; }
