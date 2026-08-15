@@ -11,7 +11,7 @@
 //   2. THE SMS IS NEVER SUPPRESSED, even on an email-only call.
 //   3. The enriched debrief (TASK-089) and adaptive-draft plumbing (recipientProfile.detailPreference,
 //      bounded-certainty) are wired, and the new fields survive into what workflow.js persists.
-import { generateOutputs, hasContent, debriefLine } from "../src/llm.js";
+import { generateOutputs, hasContent, debriefLine, isRetryableForbidden } from "../src/llm.js";
 import { SPECIMEN_APPROX_TOKENS as SPECIMEN_TOKENS } from "../src/specimen.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -545,6 +545,65 @@ console.log("\n== weekly edit analysis is real now (TASK-022) ==");
   check("a failed analysis does not take the Sunday cron down",
     /catch \(err\) \{[\s\S]{0,300}?edits\.analysis_failed/.test(idxSrc),
     "one group throwing would deny every other group its suggestion");
+}
+
+console.log("\n== the ONE 403 that gets retried (2026-08-15) ==");
+//
+// Eight production runs died 08-12..08-14 on a 403 that is not Anthropic's. It rejects before
+// any tokens are billed and it is provably transient — two calls failed on it and later
+// succeeded with identical content and the same key. 403 was (correctly) absent from
+// TRANSIENT_STATUS, so every blip became a permanent FAILED row in Gabriel's inbox.
+//
+// The retry has to stay NARROW. If a genuinely revoked key starts being retried, every run
+// costs four requests and ~10s to learn what the first one already said.
+const EDGE_403   = '{ "error": { "type": "forbidden", "message": "Request not allowed" } }';
+const REAL_403   = '{"type":"error","error":{"type":"permission_error","message":"Your API key does not have permission to use the specified resource."}}';
+const AUTH_401   = '{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}';
+
+check("the edge-layer 403 we actually saw IS retried", isRetryableForbidden(403, EDGE_403) === true);
+check("Anthropic's own permission_error 403 is NOT retried (a dead key must fail fast)",
+  isRetryableForbidden(403, REAL_403) === false);
+check("an authentication_error is NOT retried", isRetryableForbidden(403, AUTH_401) === false);
+check("an unparseable 403 body is NOT retried (fail fast is the cheap side to be wrong on)",
+  isRetryableForbidden(403, "<html>403 Forbidden</html>") === false);
+check("an empty 403 body is NOT retried", isRetryableForbidden(403, "") === false);
+check("the rule is scoped to 403 alone", isRetryableForbidden(401, EDGE_403) === false
+  && isRetryableForbidden(400, EDGE_403) === false && isRetryableForbidden(500, EDGE_403) === false);
+
+// Behavioural: the classifier is only worth anything if completeWithRetry actually acts on it.
+{
+  const realFetch = globalThis.fetch;
+  let calls = 0, refused = 0;
+  globalThis.fetch = async (url, opts) => {
+    calls++;
+    // Refuse the FIRST request the way production did, then behave normally.
+    if (refused === 0) { refused++; return { ok: false, status: 403, text: async () => EDGE_403 }; }
+    const body = JSON.parse(opts.body);
+    const isDebrief = textOf(body.messages[0].content).includes("Return ONLY valid JSON with keys");
+    return { ok: true, body: sseStream(JSON.stringify(isDebrief ? DEBRIEF : DRAFT)) };
+  };
+  let recovered = null, recoverErr = null;
+  try { recovered = await generateOutputs(env, { account, call, masterPrompt: "M", callType: CALLTYPE }); }
+  catch (e) { recoverErr = `${e.name}: ${e.message}`.slice(0, 120); }
+  globalThis.fetch = realFetch;
+
+  check("a run that hits the edge 403 now RECOVERS instead of dying",
+    !recoverErr && !!recovered?.debrief, recoverErr || "no debrief came back");
+  check("it recovered by retrying, not by skipping the call", calls > 2, `${calls} fetches`);
+  check("the retried run still produces its drafts", (recovered?.messages || []).length === 1);
+}
+
+// And the inverse: a real permission_error must still fail on the FIRST attempt.
+{
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return { ok: false, status: 403, text: async () => REAL_403 }; };
+  let err = null;
+  try { await generateOutputs(env, { account, call, masterPrompt: "M", callType: CALLTYPE }); }
+  catch (e) { err = e; }
+  globalThis.fetch = realFetch;
+  check("a genuine permission_error still fails", !!err);
+  check("...and burns exactly ONE request, not four", calls === 1, `${calls} fetches`);
 }
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);

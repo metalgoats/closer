@@ -493,6 +493,40 @@ const TRANSIENT_STATUS = new Set([408, 409, 429, 500, 502, 503, 504, 529]);
 const TRANSIENT_STREAM_ERRORS = new Set(["overloaded_error", "api_error", "rate_limit_error", "timeout_error"]);
 const MAX_ATTEMPTS = 4;
 
+// THE ONE 403 THAT IS NOT PERMANENT (2026-08-15).
+//
+// 403 is deliberately absent from TRANSIENT_STATUS above, and that is still right for
+// Anthropic's own 403: a revoked key or a model the org cannot use fails identically forever,
+// so retrying burns four requests to learn what the first one already said.
+//
+// But between 2026-08-12 and 08-14, eight production runs died on a 403 that was NOT
+// Anthropic's:
+//
+//     { "error": { "type": "forbidden", "message": "Request not allowed" } }
+//
+// Anthropic's shape is {"type":"error","error":{"type":"permission_error",...}}. This one has
+// no top-level "type", and "forbidden" is not an Anthropic error type — it comes from an edge
+// layer in front of the model, and it rejected the request BEFORE any tokens were billed (zero
+// logged usage on both days). It is provably transient: calls 10072 and 10075 failed on it and
+// later succeeded with byte-identical content and the same key.
+//
+// So this is narrow ON PURPOSE. Matching Anthropic's own `permission_error` here would mean a
+// genuinely dead key costs four requests and ~10s on every single run, which is the exact
+// mistake the comment above warns about. Anything we cannot parse stays permanent too: failing
+// fast and letting a human hit Regenerate is the cheaper side to be wrong on.
+//
+// LIMIT, and it is real: MAX_ATTEMPTS backs off ~1.5s + 3s + 6s. That rescues a momentary
+// rejection. It will NOT rescue a multi-hour block like 2026-08-13, where the same calls only
+// succeeded a day later. This turns a blip into a non-event; it does not turn an outage into one.
+export function isRetryableForbidden(status, body) {
+  if (status !== 403) return false;
+  let type;
+  try { type = JSON.parse(body)?.error?.type; } catch { return false; }
+  // Anthropic's own verdicts are final. Only the edge-layer shape gets a retry.
+  if (type === "permission_error" || type === "authentication_error") return false;
+  return type === "forbidden";
+}
+
 class TransientError extends Error {
   constructor(msg) { super(msg); this.transient = true; }
 }
@@ -585,8 +619,11 @@ async function complete(env, provider, key, messages, opts = {}) {
   }
   if (!res.ok) {
     const body = await res.text();
-    // 429/529/5xx are load, not a bug in our request — retry them. 400/401/403 never change.
-    if (TRANSIENT_STATUS.has(res.status)) throw new TransientError(`Anthropic ${res.status}: ${body}`);
+    // 429/529/5xx are load, not a bug in our request — retry them. 400/401 never change, and
+    // neither does Anthropic's own 403; see isRetryableForbidden for the single exception.
+    if (TRANSIENT_STATUS.has(res.status) || isRetryableForbidden(res.status, body)) {
+      throw new TransientError(`Anthropic ${res.status}: ${body}`);
+    }
     throw new Error(`Anthropic ${res.status}: ${body}`);
   }
   if (!res.body) throw new TransientError("Anthropic returned no response body to stream.");

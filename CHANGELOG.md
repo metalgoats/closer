@@ -3,6 +3,57 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-08-15 — The one 403 that is not permanent
+
+Gabriel's inbox filled with FAILED rows. Eight production runs died between 08-12 and 08-14 on:
+
+```
+{ "error": { "type": "forbidden", "message": "Request not allowed" } }
+```
+
+**That is not Anthropic's error shape.** Theirs is
+`{"type":"error","error":{"type":"permission_error",…}}` — this one has no top-level `type`,
+and `forbidden` is not an Anthropic error type. It comes from an edge layer in front of the
+model, and it rejected each request **before any tokens were billed**: zero logged usage on
+either day, so the failures cost nothing.
+
+### What the data ruled out
+
+- **Not the key.** The same key succeeded before, during and after.
+- **Not the content or the size.** Calls 10072 and 10075 failed on it and later succeeded with
+  byte-identical transcripts. 12k-character and 140k-character calls both failed.
+- **Not our networking.** Fathom polled and imported successfully on the same cron ticks where
+  Anthropic 403'd — six imports on 08-13 while all six generations failed.
+
+So it is transient. `TRANSIENT_STATUS` correctly excluded 403, which meant every blip became a
+**permanent** FAILED row with no retry.
+
+### The fix, and why it is narrow
+
+`isRetryableForbidden(status, body)` retries a 403 **only** when the body carries the
+edge-layer `forbidden` shape. Anthropic's own `permission_error` and `authentication_error`
+still fail on the first attempt, and an unparseable body stays permanent — failing fast and
+letting a human hit Regenerate is the cheaper side to be wrong on. Widening this to all 403s
+would mean a genuinely revoked key costs four requests and ~10s on every single run, which is
+the exact mistake the comment above `TRANSIENT_STATUS` was written to prevent. Both directions
+are asserted, and both were proven to fail before this shipped.
+
+**The limit, stated plainly:** backoff is ~1.5s + 3s + 6s. That rescues a momentary rejection.
+It would **not** have saved 2026-08-13, where the same calls only succeeded a day later. This
+turns a blip into a non-event; it does not turn an outage into one.
+
+### On cause
+
+Auto-processing went live 08-12 and the failures start 08-12, so it has to be said: **the flag
+did not cause the 403s** — the code path to Anthropic is unchanged, and a code bug does not
+produce a failure rate that recovers on its own (08-14/15 ran 4 of 5 green). But it is why there
+were eight instead of one, unattended and overnight, and why the inbox looked like a wall of
+red. Auto-processing stays on, deliberately.
+
+Still worth checking in Gabriel's Anthropic console: any workspace restriction, spend cap or
+org-level block dated around 08-12 would explain this outright, and that is a 30-second look
+that nothing in this repo can do.
+
 ## 2026-08-12 — Copy was dead for a week, and the drafts decision did not land where it was aimed
 
 The short list between Gabriel and using the portal. Deliberately none of the 08-11 pivot: no

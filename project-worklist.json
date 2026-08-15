@@ -1,6 +1,6 @@
 {
   "project": "Closer \u2014 post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
-  "last_updated": "2026-08-12",
+  "last_updated": "2026-08-15",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) \u2014 now the sole template, so it affects 100% of calls.",
   "completion_percentage": 88,
   "tasks": [
@@ -2982,6 +2982,21 @@
         "Both Fathom tokens verified to have owner_email in production",
         "Per-tick cap left in place",
         "The cost multiplier is written down where the flag is"
+      ]
+    },
+    {
+      "id": "TASK-115",
+      "title": "Retry the edge-layer 403; keep Anthropic's own 403 permanent",
+      "description": "Eight runs died 08-12..08-14 on a non-Anthropic 403 ({\"error\":{\"type\":\"forbidden\"}}) that rejects before any tokens are billed and is provably transient (two calls failed then succeeded with identical content). 403 was absent from TRANSIENT_STATUS, so each blip became a permanent FAILED row. isRetryableForbidden matches only the edge shape; permission_error, authentication_error and unparseable bodies still fail fast.",
+      "dependencies": [],
+      "priority": "high",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "acceptance_criteria": [
+        "The edge-layer 403 is retried and the run recovers",
+        "A genuine permission_error burns exactly one request, not four",
+        "Both directions proven to fail when reverted",
+        "The ~10s backoff limit is documented \u2014 this fixes blips, not outages"
       ]
     }
   ],
