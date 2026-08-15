@@ -227,5 +227,51 @@ console.log("\n== roles are enforced server-side ==");
   }
 }
 
+// ---- auto-processing skips call types that produce nothing (TASK-116) ----------------
+//
+// "Internal / team" produces no follow-up and no CRM note. It still yields a debrief, so it is
+// worth running when a human asks and not worth running unattended. The risks are both about
+// being WRONG in the quiet direction, so they are asserted rather than trusted:
+//   * skipping a type that DOES produce something (Vendor/partner makes a CRM note)
+//   * skipping a call whose type is unknown, which is the default sales path
+console.log("\n== auto-processing skips no-output call types ==");
+{
+  const idx = sources["index.js"];
+  const flat = idx.replace(/\s+/g, " ");
+
+  check("the cron fetches the call's type alongside the call",
+    /LEFT JOIN call_types ct ON ct\.id = c\.call_type_id WHERE c\.id = \?/.test(flat));
+  check("a type producing neither messages nor a CRM note is skipped",
+    /if \(call\.call_type_id && !call\.ct_messages && !call\.ct_crm\)/.test(flat));
+
+  // BOTH must be falsy. Vendor/partner is produces_messages=0, produces_crm_note=1 — using OR
+  // here would stop generating its CRM notes, silently.
+  check("it requires BOTH to be empty, so Vendor/partner still generates",
+    !/!call\.ct_messages \|\| !call\.ct_crm/.test(flat),
+    "an OR here would skip Vendor/partner, which does produce a CRM note");
+  // A call with no type at all takes the default path, which DOES produce messages.
+  check("a call with no call_type_id is NOT skipped",
+    /if \(call\.call_type_id &&/.test(flat),
+    "dropping the call_type_id guard would skip every untyped call — the default sales path");
+
+  // Ordering: a skipped call costs nothing, so it must not consume a cap slot or be reported
+  // as "deferred", which would blame the cap for a decision the cap did not make.
+  const iSkip = idx.indexOf("skippedNoOutputs++");
+  const iCap  = idx.indexOf("if (launched >= MAX_AUTO_PROCESS_PER_TICK)");
+  const iLaunch = idx.indexOf("const g = await launchGeneration(env, call);");
+  check("the skip is evaluated BEFORE the per-tick cap", iSkip > 0 && iCap > iSkip, `skip@${iSkip} cap@${iCap}`);
+  check("...and before anything is launched", iLaunch > iCap, `launch@${iLaunch}`);
+
+  // Law 3: a silent success and a dead run look identical. A skip nobody can see is how a
+  // mislabelled sales call disappears.
+  check("every skip writes an event", /kind: "auto_process\.skipped"/.test(idx));
+  check("the skip event names the call and the type",
+    /auto_process\.skipped[\s\S]{0,220}\$\{call\.ct_name\}/.test(idx));
+  check("the skip tells the reader what to do about it", /Click Generate to run it/.test(idx));
+  check("the poll summary reports skips, not just starts",
+    /skipped \$\{skippedNoOutputs\} \(call type produces no outputs\)/.test(idx));
+  check("the counter is carried in the event meta", /meta: \{ imported, launched, deferred, skippedNoOutputs \}/.test(idx));
+}
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

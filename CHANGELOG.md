@@ -3,6 +3,39 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-08-15 (later) — Auto-processing stops paying for calls with nothing to send
+
+Surfaced by the re-run batch: call 10071 was an **Internal / team** meeting that the cron had
+auto-processed. `owner_email` scopes the poll to *who recorded* a call, not to *sales vs
+internal* — and Gabriel records internal meetings too. So auto-processing was paying for them.
+
+A type with `produces_messages = 0` **and** `produces_crm_note = 0` still yields a debrief
+(10071's ran to 38,372 characters). It just yields nothing to send. Worth paying for when a
+human asks; not worth paying for at 3am on a meeting nobody chose. The cron now skips those and
+leaves the call in the inbox as `new` with its Generate button.
+
+In production this is exactly one type — **Internal / team**, already 13 calls. **Vendor /
+partner is deliberately NOT skipped**: it produces no messages but it does produce a CRM note,
+so the check requires *both* to be empty. An `||` there would have silently stopped generating
+vendor CRM notes, and that is asserted.
+
+### The risk this carries, and why it is acceptable
+
+`suggestCallType` is a **keyword heuristic**, not a model — "no external invitee", or four
+internal-sounding words outscoring the sales words. It will mislabel a real sales call
+eventually. When it does:
+
+- the call still imports, and still sits in the inbox as `new` with a Generate button. The worst
+  case is **exactly the world before 2026-08-12**: one click.
+- the skip writes an `auto_process.skipped` event naming the call and the type, and the poll
+  summary counts it. A wrong label is findable in Activity rather than invisible.
+
+Never silently dropped. That was the condition for doing this at all.
+
+Ordering matters and is asserted: the skip is evaluated **before** the per-tick cap, because a
+skipped call costs nothing and must not consume a slot or be reported as `deferred` — that would
+blame the cap for a decision the cap did not make.
+
 ## 2026-08-15 — The one 403 that is not permanent
 
 Gabriel's inbox filled with FAILED rows. Eight production runs died between 08-12 and 08-14 on:

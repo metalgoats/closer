@@ -1343,7 +1343,7 @@ async function pollFathom(env) {
     }
     if (!fetched.items.length) continue;      // nothing new — stay quiet, this runs every 5 min
 
-    let imported = 0, launched = 0, deferred = 0;
+    let imported = 0, launched = 0, deferred = 0, skippedNoOutputs = 0;
     // Oldest first, so if auto-processing is on and the cap bites, the EARLIEST calls generate
     // first — Gabriel reads them in the order he made them.
     for (const m of newestFirst(fetched.items).reverse()) {
@@ -1366,8 +1366,37 @@ async function pollFathom(env) {
       // not to generate, and flipping the flag deliberately does not go back and bill for them.
       if (!AUTO_PROCESS_IMPORTS) continue;
 
+      // Fetched WITH its call type, because the next decision needs it. One indexed read.
+      const call = await env.DB.prepare(
+        `SELECT c.*, ct.name AS ct_name, ct.produces_messages AS ct_messages, ct.produces_crm_note AS ct_crm
+           FROM calls c LEFT JOIN call_types ct ON ct.id = c.call_type_id WHERE c.id = ?`
+      ).bind(r.callId).first();
+
+      // DON'T PAY, UNATTENDED, FOR A CALL TYPE THAT PRODUCES NOTHING TO SEND (TASK-116).
+      //
+      // A type with produces_messages = 0 AND produces_crm_note = 0 still yields a debrief —
+      // call 10071 on 2026-08-13 got 38,372 characters of one — it just yields no follow-up and
+      // no CRM note. That is worth paying for when a human asks for it. It is not worth paying
+      // for at 3am on a meeting nobody chose. In production this is exactly one type,
+      // "Internal / team", and it already carries 13 calls.
+      //
+      // Checked BEFORE the per-tick cap on purpose: a skipped call costs nothing, so it must not
+      // consume a slot or be counted as "deferred", which would misreport the cap as the reason.
+      //
+      // ‼️ THE SAFETY PROPERTY THAT MAKES THIS OK. `suggestCallType` is a keyword heuristic, not
+      // a model — "no external invitee" or four internal-sounding words beat the sales score. It
+      // WILL mislabel a real sales call eventually. When it does, the call still imports and
+      // still sits in the inbox as 'new' with a Generate button: the worst case is exactly the
+      // world before auto-processing existed, one click. It is never silently dropped, and the
+      // skip is logged so a wrong label is findable in Activity rather than invisible.
+      if (call.call_type_id && !call.ct_messages && !call.ct_crm) {
+        skippedNoOutputs++;
+        await logEvent(env, { kind: "auto_process.skipped", call_id: call.id, account_id: call.account_id,
+          detail: `${call.client_name} · "${call.ct_name}" produces no outputs — imported only. Click Generate to run it.` });
+        continue;
+      }
+
       if (launched >= MAX_AUTO_PROCESS_PER_TICK) { deferred++; continue; }
-      const call = await env.DB.prepare("SELECT * FROM calls WHERE id = ?").bind(r.callId).first();
       const g = await launchGeneration(env, call);
       if (g.ok && !g.already) launched++;
     }
@@ -1375,9 +1404,11 @@ async function pollFathom(env) {
     if (imported) {
       await logEvent(env, { kind: "fathom.poll", account_id: row.account_id,
         detail: AUTO_PROCESS_IMPORTS
-          ? `Imported ${imported}, started ${launched}${deferred ? `, deferred ${deferred} (cap ${MAX_AUTO_PROCESS_PER_TICK})` : ""}`
+          ? `Imported ${imported}, started ${launched}`
+            + `${skippedNoOutputs ? `, skipped ${skippedNoOutputs} (call type produces no outputs)` : ""}`
+            + `${deferred ? `, deferred ${deferred} (cap ${MAX_AUTO_PROCESS_PER_TICK})` : ""}`
           : `Imported ${imported} — waiting in the inbox for manual Generate (auto-process off)`,
-        meta: { imported, launched, deferred } });
+        meta: { imported, launched, deferred, skippedNoOutputs } });
     }
   }
 }

@@ -2998,6 +2998,24 @@
         "Both directions proven to fail when reverted",
         "The ~10s backoff limit is documented \u2014 this fixes blips, not outages"
       ]
+    },
+    {
+      "id": "TASK-116",
+      "title": "Auto-processing skips call types that produce no outputs",
+      "description": "owner_email scopes the Fathom poll by who recorded a call, not by sales vs internal, so auto-processing was paying for internal meetings (call 10071, an Internal/team call, got a 38k-char debrief and no outputs). The cron now skips a type with produces_messages=0 AND produces_crm_note=0, leaving the call in the inbox as 'new'. Vendor/partner still runs because it produces a CRM note. suggestCallType is a keyword heuristic and will mislabel eventually; the skip is logged and the call keeps its Generate button, so the worst case is one click.",
+      "dependencies": [
+        "TASK-114"
+      ],
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "status": "completed",
+      "acceptance_criteria": [
+        "A no-output call type is imported but not auto-generated",
+        "Vendor/partner (crm note, no messages) still auto-generates",
+        "A call with no call_type_id is never skipped",
+        "The skip is evaluated before the per-tick cap so it is not misreported as deferred",
+        "Every skip writes an auto_process.skipped event naming the call and type"
+      ]
     }
   ],
   "progress_percentage": 88,

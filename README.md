@@ -82,6 +82,13 @@ CLOUDFLARE_ACCOUNT_ID=... npx wrangler d1 execute closer --remote \
   --command "SELECT id, kind, label, owner_email FROM integrations WHERE kind='fathom';"
 ```
 
+**Call types that produce nothing are skipped.** If a call type has both `produces_messages = 0`
+and `produces_crm_note = 0` (in production: *Internal / team*), the cron imports the call but does
+not generate it — a debrief with no follow-up and no CRM note is worth paying for on request, not
+unattended. The call lands in the inbox as `new` and Generate still works. Every skip writes an
+`auto_process.skipped` event, because `suggestCallType` is a keyword heuristic and will mislabel a
+sales call eventually; when it does, the cost is one click, not a lost call.
+
 **When Anthropic rejects a run.** A 403 carrying `{"error":{"type":"forbidden"}}` comes from an
 edge layer, not Anthropic's own API, and is transient — it is retried (see `isRetryableForbidden`
 in `src/llm.js`). Anthropic's own `permission_error` 403 is permanent and still fails on the
