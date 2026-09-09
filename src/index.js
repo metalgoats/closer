@@ -276,7 +276,7 @@ async function route(request, env, url, ctx) {
   if (callMatch && method === "GET") return getCall(env, +callMatch[1]);
   if (callMatch && method === "PATCH") return patchCall(request, env, +callMatch[1]);
 
-  if (path === "/api/calls" && method === "POST") return createCall(request, env, ctx);
+  if (path === "/api/calls" && method === "POST") return createCall(request, env, ctx, user);
 
   const processMatch = path.match(/^\/api\/calls\/(\d+)\/process$/);
   if (processMatch && method === "POST") return startProcessing(env, +processMatch[1], ctx);
@@ -791,7 +791,7 @@ async function deleteCall(env, id) {
   return json({ ok: true, deleted: id });
 }
 
-async function createCall(request, env, ctx) {
+async function createCall(request, env, ctx, user) {
   const { account_id, client_name, transcript, occurred_at } = await request.json();
   if (!account_id || !client_name || !transcript) return json({ error: "account_id, client_name, transcript required" }, 400);
   // Capture the real call date when given (TASK-034); fall back to now for a same-day paste.
@@ -800,8 +800,16 @@ async function createCall(request, env, ctx) {
   if (occurred_at && /^\d{4}-\d{2}-\d{2}/.test(occurred_at)) {
     when = "?"; bindWhen = occurred_at.length === 10 ? occurred_at + "T12:00:00Z" : occurred_at;
   }
-  const stmt = `INSERT INTO calls (account_id, client_name, occurred_at, transcript, source) VALUES (?, ?, ${when}, ?, 'manual') RETURNING id`;
-  const binds = bindWhen ? [account_id, client_name, bindWhen, transcript] : [account_id, client_name, transcript];
+  // A manual paste is attributed to whoever pasted it (TASK-117). This is the only record of
+  // who ran that call -- nothing in a pasted transcript says so -- and guessing from the account
+  // owner would fabricate attribution the same way `events.model` fabricated a model name.
+  // `user` is passed in from the router, which already resolved it. Reading it off `request`
+  // would have been silently undefined forever -- every paste attributed to nobody, no error.
+  const repEmail = user?.email || null;
+  const stmt = `INSERT INTO calls (account_id, client_name, occurred_at, transcript, source, rep_email) VALUES (?, ?, ${when}, ?, 'manual', ?) RETURNING id`;
+  const binds = bindWhen
+    ? [account_id, client_name, bindWhen, transcript, repEmail]
+    : [account_id, client_name, transcript, repEmail];
   const res = await env.DB.prepare(stmt).bind(...binds).first();
   return startProcessing(env, res.id, ctx);
 }
@@ -991,10 +999,17 @@ async function importMeeting(env, integ, m) {
 
   const suggestedType = await suggestCallType(env, accountId, m, transcript);
 
+  // Who ran the call (TASK-117). `recorded_by` has always been in this payload -- the preview
+  // endpoint reads it and the manual-import log prints it -- and we threw it away at INSERT.
+  // Falling back to the integration's owner_email is safe rather than a guess: the poll is
+  // scoped by `recorded_by[]=owner_email`, so a recording that reached here was recorded by
+  // that owner. Both can be null; null is honest and a later join can fill it.
+  const repEmail = m.recorded_by?.email || integ.owner_email || null;
+
   const ins = await env.DB.prepare(
-    `INSERT INTO calls (account_id, client_name, attendee_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id, duplicate_of, call_type_id)
-     VALUES (?, ?, ?, ?, ?, ?, 'fathom', ?, ?, ?, ?) RETURNING id`
-  ).bind(accountId, name, deriveAttendeeName(m), start, durationMin, transcript, externalId, integ.id, dup?.id ?? null, suggestedType).first();
+    `INSERT INTO calls (account_id, client_name, attendee_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id, duplicate_of, call_type_id, rep_email)
+     VALUES (?, ?, ?, ?, ?, ?, 'fathom', ?, ?, ?, ?, ?) RETURNING id`
+  ).bind(accountId, name, deriveAttendeeName(m), start, durationMin, transcript, externalId, integ.id, dup?.id ?? null, suggestedType, repEmail).first();
   if (dup) {
     await logEvent(env, { level: "warn", kind: "call.possible_duplicate", call_id: ins.id, account_id: accountId,
       detail: `${name} overlaps call #${dup.id} (within 20 min) — flagged, not discarded` });

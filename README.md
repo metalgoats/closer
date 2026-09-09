@@ -7,6 +7,13 @@ Stack: Cloudflare Workers (UI + API in one Worker) · Cloudflare D1 (SQLite) · 
 · GitHub Actions deploy. Project context lives one directory up (`../README.md`, `../SAAS-PLAN.md`,
 `../ROADMAP.md`).
 
+> [!note] Every call records who ran it, and nothing is scoped by it yet (TASK-117, 2026-09-09)
+> `calls.rep_email` is set at import from Fathom's `recorded_by`, and from the session user on a
+> manual paste. **No query filters on it.** With one account and two logins there is nothing to
+> separate, and scoping now could blank a member's inbox for no gain. The column accumulates
+> until there is a second rep, at which point the rep view, the per-person drill-down, the
+> aggregate-by-role numbers and the weekly ranking all become queries rather than projects.
+
 ## Local development (no Cloudflare account needed)
 
 ```bash

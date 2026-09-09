@@ -273,5 +273,64 @@ console.log("\n== auto-processing skips no-output call types ==");
   check("the counter is carried in the event meta", /meta: \{ imported, launched, deferred, skippedNoOutputs \}/.test(idx));
 }
 
+// ---------------------------------------------------------------------------
+// TASK-117 — rep attribution. The keystone for the manager tier: `calls` carried
+// account_id and NO owner, so nothing in the app could say whose call a call was.
+// ---------------------------------------------------------------------------
+{
+  const idx = sources["index.js"];
+  const mig = readFileSync(join(SRC, "..", "migrations", "0020_call_rep.sql"), "utf8");
+
+  check("the column exists", /ALTER TABLE calls ADD COLUMN rep_email TEXT/.test(mig));
+
+  // The Fathom payload has always carried recorded_by; we discarded it at INSERT. Prefer the
+  // ACTUAL recorder over the token owner, because fathomImportOne is deliberately UNSCOPED —
+  // that path reaches a colleague's recording, where owner_email is the wrong answer.
+  check("import reads recorded_by, not just the token owner",
+    /const repEmail = m\.recorded_by\?\.email \|\| integ\.owner_email \|\| null;/.test(idx),
+    "owner_email first would mis-attribute every hand-imported colleague call to the token owner");
+
+  const iRecordedBy = idx.indexOf("m.recorded_by?.email || integ.owner_email");
+  const iOwnerFirst = idx.indexOf("integ.owner_email || m.recorded_by?.email");
+  check("the fallback order is recorder-then-owner", iRecordedBy > 0 && iOwnerFirst === -1);
+
+  check("the Fathom INSERT actually writes the column",
+    /INSERT INTO calls \([^)]*rep_email\)[\s\S]{0,400}'fathom'/.test(idx));
+  check("...and binds it", /suggestedType, repEmail\)\.first\(\)/.test(idx));
+
+  // A manual paste has no recorded_by. The only truthful source is the session user.
+  check("a manual paste is attributed to the session user",
+    /const repEmail = user\?\.email \|\| null;/.test(idx));
+  // This is the bug that shipped for ten minutes: `request.user` is never set anywhere, so the
+  // value would have been undefined on every paste, forever, with no error.
+  check("it does NOT read a `user` off the request object",
+    !/request\.user/.test(idx),
+    "request.user is never populated — it would silently attribute every paste to nobody");
+  check("the router passes the resolved user in",
+    /createCall\(request, env, ctx, user\)/.test(idx),
+    "createCall cannot see the user unless the router hands it over");
+  check("createCall's signature accepts it",
+    /async function createCall\(request, env, ctx, user\)/.test(idx));
+  check("the manual INSERT writes the column",
+    /INSERT INTO calls \(account_id, client_name, occurred_at, transcript, source, rep_email\)/.test(idx));
+
+  // The backfill is exact ONLY because the poller has been scoped by recorded_by[] since 0011
+  // and fails closed without an owner email. It must not touch manual pastes, where nothing
+  // records who pasted them — inventing that is the events.model mistake again.
+  check("the backfill is restricted to Fathom rows",
+    /UPDATE calls[\s\S]{0,400}AND source = 'fathom'/.test(mig),
+    "backfilling manual pastes from the integration owner would fabricate attribution");
+  check("...and to rows that have a source integration",
+    /AND source_integration_id IS NOT NULL/.test(mig));
+  check("...and never overwrites an existing value",
+    /WHERE rep_email IS NULL/.test(mig));
+  check("the backfill states why it is exact rather than a guess",
+    /recorded_by\[\]=<owner_email>/.test(mig) && /fails closed/.test(mig));
+
+  check("there is an index to aggregate per rep on",
+    /CREATE INDEX idx_calls_rep ON calls\(account_id, rep_email, occurred_at\)/.test(mig));
+}
+
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

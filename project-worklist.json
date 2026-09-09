@@ -1,8 +1,8 @@
 {
   "project": "Closer \u2014 post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
-  "last_updated": "2026-08-15",
+  "last_updated": "2026-09-09",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) \u2014 now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 88,
+  "completion_percentage": 89,
   "tasks": [
     {
       "id": "TASK-001",
@@ -3016,9 +3016,40 @@
         "The skip is evaluated before the per-tick cap so it is not misreported as deferred",
         "Every skip writes an auto_process.skipped event naming the call and type"
       ]
+    },
+    {
+      "id": "TASK-117",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "title": "Calls must record who ran them \u2014 the keystone under the whole manager tier",
+      "source": "2026-09-09 Nathan call",
+      "dependencies": [],
+      "description": "`calls` had account_id and no owner; nothing in the API was scoped to a user. The rep's private view, the admin per-person drill-down, aggregate-by-role, the weekly ranking and the per-lead record all sit on this one column. DONE 2026-09-09: migration 0020 adds calls.rep_email plus an index; importMeeting captures m.recorded_by.email (already in every payload, previously discarded) falling back to integ.owner_email; createCall attributes a manual paste to the session user passed in from the router. Backfill is exact because the poller has been recorded_by[]-scoped since 0011 and fails closed without an owner email: verified against production as 115 OSA + 10 hypnotherapy + 1 manual left NULL. Query scoping deliberately NOT done \u2014 with two logins it changes nothing and could blank a member's inbox; it belongs with the second rep.",
+      "acceptance_criteria": [
+        "calls.rep_email exists and is indexed for per-rep aggregation",
+        "Fathom imports capture the actual recorder, preferring recorded_by over the token owner",
+        "Manual pastes are attributed to the session user, never inferred",
+        "Backfill touches only Fathom rows with a source integration"
+      ],
+      "testing_criteria": [
+        "Inverting the fallback order fails",
+        "Reading request.user fails",
+        "Dropping the source='fathom' guard from the backfill fails"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0020_call_rep.sql",
+        "closer-app/src/index.js",
+        "closer-app/tests/worker-refs.test.mjs"
+      ],
+      "notes": "recorded_by was already being read by fathomPreview and the manual-import log and discarded at INSERT. This was capture, not integration.",
+      "test_results": [
+        "worker-refs 75/75",
+        "full suite 488/488"
+      ]
     }
   ],
-  "progress_percentage": 88,
+  "progress_percentage": 89,
   "project_principles": [
     "DECISION AUTHORITY (Ivan, 2026-07-19): Ivan is the ultimate authority on what gets built and deployed. Gabriel's input from calls is SUGGESTION and raw material, not specification \u2014 capture it on the potential-features list, but do not treat it as approved work. Ivan's words: 'I trust my instincts and design skills more than his... take it with a grain of salt, though I do expect that he will have great ideas.' PRACTICALLY: never move a Gabriel idea into a build round without Ivan asking for it; when Gabriel's suggestion conflicts with Ivan's design judgement, Ivan wins; surface Gabriel's ideas as options with tradeoffs rather than as requirements."
   ]

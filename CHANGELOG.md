@@ -3,6 +3,48 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-09 — Calls learn who ran them (TASK-117)
+
+`calls` has carried `account_id` since v1 and **no owner at all**. Nothing in the API was ever
+scoped to a user; the roles added on 08-12 gate the Spend and Integrations *pages* and nothing
+else. So every authenticated session saw every call, and there was no data from which a
+per-person number could be computed even if a screen existed to show it.
+
+That is the keystone under everything Nathan asked for on the 09-09 call: a rep's private view,
+the admin's per-person drill-down, aggregate-by-role, the weekly ranking and the per-lead
+record are **all one column plus a scoped query**. Five features on top of a missing field.
+
+**The data was already arriving and we were throwing it away.** `recorded_by` has been in every
+Fathom payload we fetch since the beginning — `fathomPreview` reads it to show "who recorded
+this", and the manual-import log prints it — and `importMeeting` dropped it on the floor at
+INSERT. So this is capture, not integration.
+
+**The backfill is exact, not a guess**, and that is worth stating because backfills usually are
+guesses. The poller has been scoped by `recorded_by[]=<owner_email>` since migration 0011 and
+**skips any token with no owner email** rather than hoovering the workspace. So every
+Fathom-sourced row was, by construction, recorded by the owner of its `source_integration_id`.
+Verified against production before shipping: 115 rows resolve to `gabriel@onscreenauthority.com`,
+10 to `gabriel@domthehypnotist.com`, and the single manual paste correctly resolves to nothing.
+
+Manual pastes are left **NULL** on purpose. Nothing in a pasted transcript says who ran that
+call, and attributing it to the integration owner would fabricate the field — precisely the
+`events.model` mistake, where every row looked populated and every row was wrong. New pastes are
+attributed to the session user from here on.
+
+**Two ordering details are asserted, because both were wrong first.** The Fathom fallback is
+`recorded_by.email` *then* `owner_email`, never the reverse: `fathomImportOne` is deliberately
+unscoped, so that path reaches a colleague's recording where the token owner is the wrong
+answer. And `createCall` now takes `user` from the router — the first version read
+`request.user`, which is never populated anywhere, so every paste would have been attributed to
+nobody, forever, without an error. That one is now a test.
+
+**Not yet done, deliberately:** no query is scoped by `rep_email` yet. With one account and two
+logins, scoping changes nothing and risks a member seeing an empty inbox. Capture the data now
+so it accumulates; scope it when there is more than one rep to separate.
+
+488 assertions pass. Three inversions proven red first: owner-before-recorder, `request.user`,
+and a backfill without the `source = 'fathom'` guard.
+
 ## 2026-08-15 (later) — Auto-processing stops paying for calls with nothing to send
 
 Surfaced by the re-run batch: call 10071 was an **Internal / team** meeting that the cron had
