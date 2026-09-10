@@ -3,6 +3,42 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-09 (last) — The scorecard the model returns is not always the one it was asked for
+
+Found by the People dashboard on its first run against real data, which is the argument for
+building the dashboard: an aggregate is a detector.
+
+The debrief prompt says *"one for EACH of exactly these dimensions in this order"*. Across 70
+scored production calls it complied 68 times. Twice it did not:
+
+- **calls 10041 and 10043 returned eleven entries instead of ten**
+- one of them was a dimension nobody configured, **`objection buildup`**, which then appeared on
+  the People page averaging **1.0 over a single call**
+- `trust` and `pain amplification` each show 71 occurrences against 70 scored calls (a duplicate),
+  and `objection handling` shows 69 (a drop)
+
+Sorted by score with no sample size beside it, a 1.0 reads as a catastrophic weakness in a rep.
+It is a typo with an n of 1.
+
+**`scorecardIssues()` reports, and deliberately does not repair.** The tempting fix is to drop
+unexpected rows or pad missing ones. Both fabricate — dropping discards a score the model really
+produced, padding invents one it did not — and both are the `events.model` mistake again, where a
+field looked populated on every row and was wrong on every row. An aggregate built on quietly
+adjusted data is worse than one built on data known to be imperfect, because nobody can tell.
+
+So the scores are stored exactly as returned and a mismatch writes
+`generation.scorecard_mismatch` at warn level, naming the call, what was invented, what was
+missing, what was duplicated, and the sentence that makes it actionable: *"averages that include
+this call are affected."* A run that did not match must not look identical to one that did.
+
+Case and surrounding whitespace are normalised before comparing: the seed uses Title Case and the
+live prompt uses lower case, and firing a warning on that difference would make the signal
+worthless within a week. A type with no configured dimensions is never a mismatch, for the same
+reason — a warning on every internal call is noise, and noise is not read.
+
+557 assertions. Four inversions proven red: repairing instead of reporting, firing on every run,
+flagging no-scorecard types, and a case-sensitive comparison.
+
 ## 2026-09-09 (later still) — The weekly report, and the number it refuses to call a close rate
 
 Nathan's fourth condition: *"a weekly report that gets sent out via email. That shows, hey, these

@@ -363,6 +363,8 @@ Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
     modelId: model,
     usage: total,
     debrief: parsed,
+    // Surfaced, never silently corrected -- see scorecardIssues above.
+    scorecardIssues: scorecardIssues(parsed.scorecard, dims),
     ghlNote: wantCrmNote ? parsed.ghlNote : null,
     messages,
     // suggested_tone now records WHICH voice was used (always VOICE_TONE) and tone_reason
@@ -518,6 +520,44 @@ const MAX_ATTEMPTS = 4;
 // LIMIT, and it is real: MAX_ATTEMPTS backs off ~1.5s + 3s + 6s. That rescues a momentary
 // rejection. It will NOT rescue a multi-hour block like 2026-08-13, where the same calls only
 // succeeded a day later. This turns a blip into a non-event; it does not turn an outage into one.
+// Does the model's scorecard match the dimensions it was asked for? (TASK-121)
+//
+// The prompt says "one for EACH of exactly these dimensions in this order". It usually complies.
+// Over 70 scored production calls it did NOT comply twice: two calls came back with ELEVEN
+// entries, one of them a dimension nobody configured called "objection buildup", which then
+// appeared in the People dashboard averaging 1.0 over a single call.
+//
+// > [!important] This REPORTS, it does not repair.
+// > The tempting fix is to drop unexpected rows or pad missing ones. Both fabricate: dropping
+// > silently discards a score the model actually produced, and padding invents one it did not.
+// > The same instinct that wrote "anthropic" into `events.model` for 27 runs -- a field that
+// > looked populated and was wrong on every row. An aggregate built on quietly-adjusted data is
+// > worse than one built on data known to be imperfect, because nobody can tell.
+//
+// Returns [] when the scorecard matches, or a list of plain-language problems.
+export function scorecardIssues(scorecard, dims) {
+  if (!Array.isArray(dims) || dims.length === 0) return [];      // this type has no scorecard
+  if (!Array.isArray(scorecard)) return ["no scorecard was returned"];
+
+  const got = scorecard.map(r => (Array.isArray(r) ? String(r[0] ?? "") : "")).filter(Boolean);
+  const want = dims.map(String);
+  const norm = v => v.trim().toLowerCase();
+  const gotN = got.map(norm), wantN = want.map(norm);
+
+  const issues = [];
+  const unexpected = got.filter((g, i) => !wantN.includes(gotN[i]));
+  const missing = want.filter((w, i) => !gotN.includes(wantN[i]));
+  const dupes = [...new Set(gotN.filter((g, i) => gotN.indexOf(g) !== i))];
+
+  if (unexpected.length) issues.push(`invented ${unexpected.length}: ${unexpected.join(", ")}`);
+  if (missing.length) issues.push(`missing ${missing.length}: ${missing.join(", ")}`);
+  if (dupes.length) issues.push(`duplicated: ${dupes.join(", ")}`);
+  if (!issues.length && got.length !== want.length) {
+    issues.push(`returned ${got.length} rows for ${want.length} dimensions`);
+  }
+  return issues;
+}
+
 export function isRetryableForbidden(status, body) {
   if (status !== 403) return false;
   let type;

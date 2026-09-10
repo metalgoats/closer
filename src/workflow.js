@@ -123,6 +123,18 @@ export class GenerateWorkflow extends WorkflowEntrypoint {
         await env.DB.batch(stmts);
       });
 
+      // The model was asked for exactly the configured dimensions and occasionally returns
+      // something else (TASK-121). Two production calls came back with ELEVEN entries, one of
+      // them a dimension nobody configured, which then showed up on the People dashboard as a
+      // 1.0 average over a single call. The scores are kept as returned -- adjusting them would
+      // fabricate -- but a run that did not match must not look identical to one that did.
+      if (gen.scorecardIssues?.length) {
+        await logEvent(env, { level: "warn", kind: "generation.scorecard_mismatch", call_id: callId,
+          account_id: gen.account_id, model: gen.modelId,
+          detail: `${gen.client_name} · scorecard does not match the configured dimensions — ${gen.scorecardIssues.join("; ")}. Scores kept as returned; averages that include this call are affected.`,
+          meta: { issues: gen.scorecardIssues } });
+      }
+
       await logEvent(env, { kind: "generation.succeeded", call_id: callId, account_id: gen.account_id,
         duration_ms: Date.now() - t0, usage: gen.usage, model: gen.modelId,
         detail: `${gen.client_name} · ${gen.modelId || gen.model} · outcome=${gen.outcome}`,

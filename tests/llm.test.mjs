@@ -11,7 +11,7 @@
 //   2. THE SMS IS NEVER SUPPRESSED, even on an email-only call.
 //   3. The enriched debrief (TASK-089) and adaptive-draft plumbing (recipientProfile.detailPreference,
 //      bounded-certainty) are wired, and the new fields survive into what workflow.js persists.
-import { generateOutputs, hasContent, debriefLine, isRetryableForbidden } from "../src/llm.js";
+import { generateOutputs, hasContent, debriefLine, isRetryableForbidden, scorecardIssues } from "../src/llm.js";
 import { SPECIMEN_APPROX_TOKENS as SPECIMEN_TOKENS } from "../src/specimen.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -605,6 +605,57 @@ check("the rule is scoped to 403 alone", isRetryableForbidden(401, EDGE_403) ===
   check("a genuine permission_error still fails", !!err);
   check("...and burns exactly ONE request, not four", calls === 1, `${calls} fetches`);
 }
+
+// ---- the scorecard the model returns is not always the one it was asked for (TASK-121) ------
+//
+// The prompt says "one for EACH of exactly these dimensions in this order". Over 70 scored
+// production calls it complied 68 times. Twice it returned ELEVEN entries, one of them a
+// dimension nobody configured ("objection buildup"), which surfaced on the People dashboard as
+// an average of 1.0 over a single call.
+console.log("\n== scorecard integrity ==");
+{
+  const D = ["rapport", "trust", "authority"];
+  const ok = [["rapport", 8], ["trust", 7], ["authority", 6]];
+
+  check("a matching scorecard reports nothing", scorecardIssues(ok, D).length === 0);
+  check("an invented dimension is named",
+    /invented 1: objection buildup/.test(scorecardIssues([...ok, ["objection buildup", 1]], D).join("|")),
+    "this is the exact production case");
+  check("a missing dimension is named",
+    /missing 1: authority/.test(scorecardIssues([["rapport", 8], ["trust", 7]], D).join("|")));
+  check("a duplicate is caught",
+    /duplicated: rapport/.test(scorecardIssues([["rapport", 8], ["rapport", 3], ["trust", 7], ["authority", 6]], D).join("|")),
+    "one production call duplicated 'trust' and another dropped 'objection handling'");
+  check("case and whitespace do not count as a mismatch",
+    scorecardIssues([["Rapport ", 8], ["TRUST", 7], ["authority", 6]], D).length === 0,
+    "the seed uses Title Case and the live prompt uses lower case; both are the same dimension");
+
+  // A type with dimensions_json '[]' deliberately has no scorecard. Reporting that as "missing"
+  // would fire a warning on every internal call forever, and a warning that always fires is
+  // read as noise and then not read at all.
+  check("a type with no dimensions is not a mismatch", scorecardIssues(null, []).length === 0);
+  check("...even when a scorecard arrives anyway", scorecardIssues(ok, []).length === 0);
+
+  // REPORTS, never repairs. Dropping unexpected rows discards a real score; padding missing ones
+  // invents one. Both are the events.model mistake: a field that looks populated and is wrong.
+  const llm = readFileSync(new URL("../src/llm.js", import.meta.url), "utf8");
+  check("the validator does not mutate the scorecard",
+    !/scorecard\.(splice|push|filter\()[\s\S]{0,80}return scorecard/.test(llm)
+      && /This REPORTS, it does not repair/.test(llm),
+    "silently adjusting the data is worse than known-imperfect data, because nobody can tell");
+  check("the result travels with the generation",
+    /scorecardIssues: scorecardIssues\(parsed\.scorecard, dims\)/.test(llm));
+
+  const wf = readFileSync(new URL("../src/workflow.js", import.meta.url), "utf8");
+  check("a mismatch is logged as a warning, with evidence",
+    /kind: "generation\.scorecard_mismatch"/.test(wf) && /level: "warn"/.test(wf));
+  check("...and the log says the averages are affected",
+    /averages that include this call are affected/.test(wf),
+    "a warning nobody can act on is a warning nobody reads");
+  check("a clean run logs no mismatch", /if \(gen\.scorecardIssues\?\.length\)/.test(wf),
+    "firing on every run makes the signal worthless");
+}
+
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

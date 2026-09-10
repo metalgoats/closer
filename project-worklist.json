@@ -3141,6 +3141,35 @@
         "closer-app/package.json"
       ],
       "notes": "Blocked for delivery on an email provider signup. Everything up to the send is done and previewable."
+    },
+    {
+      "id": "TASK-121",
+      "status": "completed",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "title": "The model sometimes returns a scorecard it was not asked for, and nothing said so",
+      "source": "2026-09-09, found by the People dashboard's first aggregate over real data",
+      "dependencies": [
+        "TASK-118"
+      ],
+      "description": "Over 70 scored production calls the debrief returned the configured dimensions 68 times. Calls 10041 and 10043 came back with ELEVEN entries, one being an invented dimension 'objection buildup' that surfaced on the People page averaging 1.0 over one call; 'trust' and 'pain amplification' are duplicated once each and 'objection handling' dropped once. DONE 2026-09-09: scorecardIssues() in llm.js compares the returned labels against the call type's configured dimensions and travels with the generation; workflow.js logs generation.scorecard_mismatch at warn level naming what was invented/missing/duplicated and stating that affected averages include this call. REPORTS, never repairs \u2014 adjusting the data fabricates, which is the events.model mistake. Case and whitespace normalised so Title Case vs lower case is not a false positive; a type with no dimensions is never a mismatch.",
+      "acceptance_criteria": [
+        "A mismatch is logged with specifics",
+        "Scores are stored exactly as returned",
+        "No warning fires on a clean run or on a type with no scorecard"
+      ],
+      "testing_criteria": [
+        "Repairing instead of reporting fails",
+        "Firing on every run fails",
+        "Flagging no-scorecard types fails",
+        "A case-sensitive comparison fails"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js",
+        "closer-app/src/workflow.js",
+        "closer-app/tests/llm.test.mjs"
+      ],
+      "notes": "The two historical calls are NOT retro-fixed. Going forward only; the existing rows stay as the model wrote them."
     }
   ],
   "progress_percentage": 89,
