@@ -168,6 +168,11 @@ const ROUTES = [
                                         "claude-fable-5": { label: "Fable 5", tier: "Most capable", inPerM: 10, outPerM: 50, note: "n", thinking: "always-on" } } })],
   [/^\/suggestions/, () => ({ suggestions: [] })],
   [/^\/insights/,    () => ({ scored: 1, calls: 1, averages: [["rapport", 8, 3]], hurt: ["x"], lessons: ["y"], types: [] })],
+  [/^\/billing/, () => ({
+    billing: { account_id: 1, stripe_customer_id: "cus_1", stripe_subscription_id: "sub_1",
+               status: "active", seats: 6, current_period_end: "2026-10-09T00:00:00Z",
+               billing_email: "nathan@example.com" },
+    configured: { secretKey: true, webhookSecret: true, seatPrice: true, activationPrice: true } })],
   // People (TASK-118). Branches on `rep=` the same way the real route does: absent means the
   // roster, present means one person — including `rep=` EMPTY, which is the unattributed group
   // and not "no filter". A stub that ignored the parameter would let a view that never reads it
@@ -767,6 +772,36 @@ check("the event table cannot squeeze details into towers",
   check("seed bodies carry real newlines, not backslash-n literals",
     !/\\n/.test(seed.replace(/char\(10\)/g, "")),
     "the dev email rendered 'Dear Jeffrey,\\n\\nThank you' as literal text");
+}
+
+// ---- Billing (TASK-122) --------------------------------------------------------------------
+console.log("\n== Billing renders, and has no card field ==");
+{
+  await T.VIEWS.billing();
+  const html = document.querySelector("#detailPane").innerHTML;
+
+  check("it renders the subscription status", /active/.test(html) && /nathan@example\.com/.test(html));
+  check("it shows seats and the paid-through date", /2026-10-09/.test(html));
+
+  // The entire point of the design. If an input for card details ever appears on this page,
+  // this app has taken on PCI scope and a liability nobody signed up for.
+  // Scanned out of the rendered HTML STRING, not via querySelectorAll. This harness's DOM is a
+  // shim whose innerHTML setter only registers ids with a regex -- it never creates elements --
+  // so a query for "input" returns nothing and any assertion built on it passes on an empty
+  // list. The first version of this check did exactly that: it stayed green with a card field
+  // added. Found by insisting it go red. Same shape as the drafts leak test that passed
+  // vacuously on an empty string.
+  const inputTags = [...html.matchAll(/<input\b[^>]*>/gi)].map(m => m[0].toLowerCase());
+  check("the page renders at least one input, so this check is not vacuous",
+    inputTags.length > 0, "no inputs found at all — the assertion below would prove nothing");
+  check("there is no card input anywhere on the page",
+    !inputTags.some(t => /card|cvc|cvv|expiry|exp_|pan\b/.test(t)),
+    `inputs: ${inputTags.join(" | ").slice(0, 200)}`);
+  check("the page says so in words, so nobody adds one later",
+    /No card details ever reach this app|never see or type a card/.test(html));
+
+  check("checkout is a link to Stripe, not a form we submit", /Create link/.test(html));
+  check("the billing portal is offered for self-service", /billing portal/i.test(html));
 }
 
 // ---- People (TASK-118) --------------------------------------------------------------------

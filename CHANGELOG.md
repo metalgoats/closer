@@ -3,6 +3,57 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-09 (billing) — Taking money, without ever touching a card
+
+Ivan: *"add a way for people to sign up and pay us without us having to take their card."*
+
+**The shape.** Not self-serve signup — at $2,500 to install and roughly $2,000/month nobody buys
+unattended, and an open signup form at that price collects fraud rather than customers. Instead:
+generate a Checkout link for a named buyer, they pay on Stripe's own domain, a webhook provisions
+them, and they self-manage afterwards in Stripe's Customer Portal. The portal is the part that
+stops us being the billing department.
+
+**No card ever reaches this app.** There is no code path that accepts one, and `ui-smoke` now
+fails the build if a card-shaped input ever appears on the Billing page.
+
+**Built with `fetch`, not the Stripe SDK**, matching the zero-runtime-dependency house style —
+and sidestepping the SDK's Workers problems (it needs a non-default HTTP client and async webhook
+parsing to run there at all). Signature verification is implemented against Stripe's documented
+manual steps.
+
+> [!danger] `/api/stripe/webhook` is the only unauthenticated write path in the application
+> Stripe carries no session cookie, so it sits above `requireUser` and anyone can POST to it. The
+> signature is its sole authentication. Four details, each a real vulnerability if skipped:
+> every scheme except `v1` is discarded (Stripe sends a fake `v0`; accepting it is a downgrade
+> attack); **all** `v1` signatures are checked, because a secret roll produces two for 24 hours;
+> the comparison is constant-time, because `===` leaks the expected signature a byte at a time;
+> and a 5-minute timestamp tolerance stops replay, with `0` explicitly not disabling the check.
+
+**Idempotency before effect.** Stripe does not guarantee ordering and *will* redeliver — three
+days of retries on any non-2xx, plus manual resends. The event ID is a primary key and the insert
+happens before the write that grants access, so a duplicate is a fast 200 rather than a second
+provisioning.
+
+**Two states that are easy to collapse and shouldn't be.** A `checkout.session.completed` with
+`payment_status` other than `paid` is **pending**, not active — bank debits complete the session
+before the money lands. And a failed payment is **past_due**, not cancelled: Stripe dunns for
+days, and cutting off a paying customer on the first failed charge is the angry-phone-call bug.
+`status` is deliberately a string, not a boolean, for exactly this reason.
+
+**Prices are Stripe Price IDs, never amounts in code.** The price is still undecided (three
+options are open), so changing what we charge has to be a dashboard edit, not a deploy.
+
+**Two testing notes worth keeping.** An assertion that the page has no card input passed while a
+card field was present — the smoke harness's DOM shim only registers ids by regex and never
+creates elements, so `querySelectorAll("input")` returned nothing and the check ran on an empty
+list. Same vacuous-pass shape as the drafts leak test. It now scans the rendered HTML and asserts
+non-vacuity first. Separately, the idempotency guard was anchored on `accessFromEvent` — a *pure
+function* — so it stayed green when the ledger write was moved; it now anchors on the write that
+actually grants access. Both found by insisting each guard go red before trusting it.
+
+607 assertions across seven files. Ten webhook cases driven end to end against a running Worker:
+valid, duplicate, tampered, forged, replayed, unsigned, unhandled, renewal, failed card, cancelled.
+
 ## 2026-09-09 (last) — The scorecard the model returns is not always the one it was asked for
 
 Found by the People dashboard on its first run against real data, which is the argument for

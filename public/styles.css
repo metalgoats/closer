@@ -1021,3 +1021,16 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
            background:linear-gradient(180deg, var(--violet-500), var(--blue-500)); }
 .pp-tlabel { font-size:10px; color:var(--ink-400); text-align:center; padding-top:4px;
              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ---- Billing (TASK-122) -------------------------------------------------------------------
+   Three unlabelled inputs sat in a row and the third truncated to "Days before the licen".
+   A placeholder is not a label: once you type in the field the only explanation of what it
+   means disappears. Caught by looking at the page. */
+.bl-fields { display:flex; flex-wrap:wrap; gap:10px; margin:10px 0; }
+.bl-f { display:flex; flex-direction:column; gap:4px; flex:1 1 220px; }
+.bl-f.bl-narrow { flex:0 0 140px; }
+.bl-f > span { font-size:11px; text-transform:uppercase; letter-spacing:.02em; color:var(--ink-400); font-weight:600; }
+.bl-f > input { width:100%; }
+/* A disabled action that looks identical to an enabled one reads as a broken button. */
+.chip[disabled] { opacity:.45; cursor:not-allowed; }
+.chip[disabled]:hover { background:var(--paper-100); }

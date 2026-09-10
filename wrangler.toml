@@ -46,3 +46,9 @@ crons = ["*/5 * * * *", "0 17 * * SUN", "0 9 * * *"]
 #   ANTHROPIC_API_KEY, OPENAI_API_KEY
 #   FATHOM_API_KEY_OSA
 #   GHL_CLIENT_ID, GHL_CLIENT_SECRET  (OAuth — see TASK-018/019)
+#   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET   (billing — TASK-122)
+#   STRIPE_PRICE_SEAT, STRIPE_PRICE_ACTIVATION (Stripe Price IDs, NOT amounts — the price is
+#                                               still undecided, so it must not live in code)
+#   EMAIL_API_KEY, REPORT_TO                   (weekly report — TASK-120, not yet configured)
+#
+# Setup guide: "../2026-09-09 Nathan round/Stripe setup — what to click.md" 

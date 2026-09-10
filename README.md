@@ -23,6 +23,21 @@ Stack: Cloudflare Workers (UI + API in one Worker) · Cloudflare D1 (SQLite) · 
 > because the model occasionally invents a scorecard dimension and a one-call average with no
 > count beside it reads as a finding.
 
+> [!important] Billing runs through Stripe and this app never sees a card (TASK-122)
+> `Settings → Billing`, admin only. Generate a Checkout link for a named buyer; they pay on a page
+> Stripe hosts; a signature-verified webhook at `POST /api/stripe/webhook` provisions them; they
+> self-manage afterwards in Stripe's Customer Portal.
+>
+> **`/api/stripe/webhook` is the only unauthenticated write path in this application.** Stripe
+> carries no session cookie, so it sits above `requireUser` and anyone on the internet can POST to
+> it. The signature is its sole authentication: without verification it is a free-subscription
+> dispenser. Do not move it under `/api/billing` (the admin gate would 401 Stripe), do not parse
+> the body before verifying, and do not record the event after acting on it.
+>
+> **Prices are Stripe Price IDs in config, never amounts in code** — the price is still undecided,
+> so changing it must be a dashboard edit rather than a deploy.
+> Setup: `../2026-09-09 Nathan round/Stripe setup — what to click.md`
+
 ## Local development (no Cloudflare account needed)
 
 ```bash

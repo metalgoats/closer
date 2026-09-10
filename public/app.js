@@ -361,11 +361,11 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
   });
 });
 
-const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess, people: renderPeople };
+const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess, people: renderPeople, billing: renderBilling };
 
 // Mirrors ADMIN_ONLY in src/index.js. Kept as a named constant next to the thing it hides so a
 // future page added to one list is visibly missing from the other.
-const ADMIN_VIEWS = ["spend", "integrations", "people"];
+const ADMIN_VIEWS = ["spend", "integrations", "people", "billing"];
 function isAdmin() { return state.user?.role === "admin"; }
 function applyRoleVisibility() {
   document.querySelectorAll(".settings-item[data-view]").forEach(el => {
@@ -2223,6 +2223,101 @@ async function renderSpend() {
     } catch (err) {
       msg.textContent = String(err?.message || err);
     }
+  });
+}
+
+// ---------------------------------------------------------------- Billing (TASK-122)
+//
+// What this page is for: generating a checkout link to send a buyer, and opening Stripe's own
+// portal to manage an existing subscription. That is deliberately ALL it does.
+//
+// > There is no card field on this page and there must never be one. Every card detail is
+// > entered on Stripe's domain, on a page Stripe hosts. Nothing sensitive touches this app, this
+// > database, or a support conversation — which is also why nobody here has to think about PCI.
+//
+// It is not a self-serve signup flow. At this price the product is sold on a call; the link is
+// generated for a named buyer after they say yes.
+async function renderBilling() {
+  const d = await api.get("/billing");
+  const b = d.billing;
+  const c = d.configured || {};
+
+  // Name what is missing. A billing page that just looks empty is indistinguishable from a
+  // broken one, and this is the page somebody opens when a payment did not arrive.
+  const missing = [
+    !c.secretKey && ["STRIPE_SECRET_KEY", "the API key, from Stripe → Developers → API keys"],
+    !c.webhookSecret && ["STRIPE_WEBHOOK_SECRET", "the signing secret for the webhook endpoint"],
+    !c.seatPrice && ["STRIPE_PRICE_SEAT", "the Price ID of the per-seat monthly price"],
+  ].filter(Boolean);
+
+  const setupNote = missing.length
+    ? `<div class="insight-note" style="border-left:3px solid var(--pink-500);padding-left:10px;">
+         <strong>Not connected yet.</strong> ${missing.length} secret${missing.length === 1 ? "" : "s"} still to set with
+         <code>npx wrangler secret put NAME</code>:
+         <ul style="margin:6px 0 0 16px;">${missing.map(([k, why]) => `<li><code>${k}</code> — ${esc(why)}</li>`).join("")}</ul>
+         ${c.activationPrice ? "" : `<div style="margin-top:6px;">Optional: <code>STRIPE_PRICE_ACTIVATION</code> — the one-time activation fee. Without it, checkout charges the subscription only.</div>`}
+       </div>`
+    : `<div class="insight-note">Connected to Stripe. ${c.activationPrice ? "Checkout charges the activation fee and starts the subscription in one payment." : "No activation price is set, so checkout charges the subscription only."}</div>`;
+
+  const statusChip = b?.status
+    ? `<span class="status-chip ${b.status === "active" ? "" : "status-off"}">${esc(b.status)}</span>`
+    : `<span class="status-chip status-off">no subscription</span>`;
+
+  viewShell("Billing",
+    "Send a buyer a payment link, and let them manage their own card afterwards. No card details ever reach this app.",
+    `${setupNote}
+     <div class="spend-row">
+       <div class="spend-card"><div class="spend-k">Status</div>
+         <div class="spend-v" style="font-size:18px;">${statusChip}</div>
+         <div class="spend-sub">${b?.billing_email ? esc(b.billing_email) : "nobody has been through checkout yet"}</div></div>
+       <div class="spend-card"><div class="spend-k">Seats</div>
+         <div class="spend-v">${b?.seats ?? "—"}</div>
+         <div class="spend-sub">billed monthly, per seat</div></div>
+       <div class="spend-card"><div class="spend-k">Paid through</div>
+         <div class="spend-v" style="font-size:18px;">${b?.current_period_end ? esc(b.current_period_end.slice(0, 10)) : "—"}</div>
+         <div class="spend-sub">${b?.status === "past_due" ? "payment failed — Stripe is retrying the card" : "renews automatically"}</div></div>
+     </div>
+
+     <h4 class="pp-h">Send a payment link</h4>
+     <div class="sp-import" style="display:block;">
+       <div class="insight-note">Creates a Checkout link on Stripe's own domain. Send it to the buyer; they pay there. You never see or type a card.</div>
+       <div class="bl-fields">
+         <label class="bl-f"><span>Buyer's email</span>
+           <input type="email" id="blEmail" placeholder="buyer@company.com"></label>
+         <label class="bl-f bl-narrow"><span>Seats</span>
+           <input type="number" id="blSeats" min="1" step="1" value="1"></label>
+         <label class="bl-f bl-narrow"><span>Delay licence (days)</span>
+           <input type="number" id="blTrial" min="0" step="1" placeholder="0"></label>
+       </div>
+       <div class="insight-note">The activation fee bills today either way. Use the delay when onboarding takes a week or two, so they are not paying for software a technician has not finished connecting.</div>
+       <div><button class="chip" id="blCreate" ${missing.length ? "disabled" : ""}>Create link</button>
+            <span id="blMsg" class="sp-msg"></span></div>
+       <div id="blOut" hidden><textarea id="blUrl" readonly rows="2"></textarea>
+         <div class="insight-note">Copy this into your email or text to them. It expires after 24 hours.</div></div>
+     </div>
+
+     <h4 class="pp-h">Manage an existing subscription</h4>
+     <div class="insight-note">Opens Stripe's billing portal, where the customer updates their card, downloads invoices, changes seats and cancels — without going through us.</div>
+     <button class="chip" id="blPortal" ${b?.stripe_customer_id ? "" : "disabled"}>Open billing portal</button>`);
+
+  $("#blCreate")?.addEventListener("click", async () => {
+    const msg = $("#blMsg");
+    const email = $("#blEmail").value.trim();
+    const seats = +$("#blSeats").value || 1;
+    const trial = +$("#blTrial").value || 0;
+    if (!email) { msg.textContent = "Enter the buyer's email."; return; }
+    msg.textContent = "Creating…";
+    try {
+      const r = await api.post("/billing/checkout", { email, seats, trial_days: trial || undefined });
+      $("#blUrl").value = r.url; $("#blOut").hidden = false;
+      msg.textContent = `Link ready for ${seats} seat${seats === 1 ? "" : "s"}.`;
+      $("#blUrl").select();
+    } catch (e) { msg.textContent = e.message || "Could not create the link."; }
+  });
+
+  $("#blPortal")?.addEventListener("click", async () => {
+    try { const r = await api.post("/billing/portal"); window.open(r.url, "_blank", "noopener"); }
+    catch (e) { toast(e.message || "Could not open the portal."); }
   });
 }
 

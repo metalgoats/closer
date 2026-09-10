@@ -3170,6 +3170,42 @@
         "closer-app/tests/llm.test.mjs"
       ],
       "notes": "The two historical calls are NOT retro-fixed. Going forward only; the existing rows stay as the model wrote them."
+    },
+    {
+      "id": "TASK-122",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "title": "Take money \u2014 Stripe Checkout, webhooks and the customer portal",
+      "source": "2026-09-09, Ivan: 'a way for people to sign up and pay us without us having to take their card'",
+      "dependencies": [],
+      "description": "Quote-driven, not self-serve: admin generates a Checkout link for a named buyer, they pay on Stripe's domain, a signature-verified webhook provisions them, and they self-manage in the Stripe Customer Portal. No card data touches the app and no code path accepts one. Built with fetch rather than the Stripe SDK, matching the zero-dependency house style and avoiding the SDK's Workers issues. Webhook security: v1-only schemes (v0 is a downgrade attack), all v1 signatures checked (secret rolls produce two), constant-time compare, 5-minute replay tolerance. Idempotency by event id, inserted BEFORE the write that grants access. payment_status != paid is 'pending' not active; invoice.payment_failed is 'past_due' not cancelled. Prices are Stripe Price IDs in config because the price is still undecided.",
+      "acceptance_criteria": [
+        "No card field anywhere in the app",
+        "Webhook verifies signatures and rejects forgeries",
+        "Duplicate deliveries do not double-provision",
+        "Failed payments do not cancel access",
+        "Checkout charges activation + per-seat subscription in one payment",
+        "Customer can self-manage via the portal"
+      ],
+      "testing_criteria": [
+        "v0 acceptance fails",
+        "non-constant-time compare fails",
+        "dropping the tolerance fails",
+        "moving the webhook below auth fails",
+        "recording the event after acting fails",
+        "treating a failed payment as cancelled fails",
+        "provisioning an unpaid session fails",
+        "adding a card input fails"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/billing.js",
+        "closer-app/src/index.js",
+        "closer-app/migrations/0021_billing.sql",
+        "closer-app/public/app.js",
+        "closer-app/tests/billing.test.mjs"
+      ],
+      "notes": "BLOCKED for go-live on Ivan: create the Stripe products/prices, enable Stripe Tax and the Customer Portal, add the webhook endpoint, and set four secrets. Guide: '2026-09-09 Nathan round/Stripe setup \u2014 what to click.md'. Also blocked on two decisions: the price, and which legal entity is the counterparty."
     }
   ],
   "progress_percentage": 89,

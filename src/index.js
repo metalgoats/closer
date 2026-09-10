@@ -1,6 +1,7 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
 import { roster, person, WINDOWS } from "./people.js";
 import { weeklyReport, renderWeeklyEmail, weekBounds } from "./report.js";
+import { verifyStripeSignature, createCheckoutSession, createPortalSession, accessFromEvent, HANDLED_EVENTS } from "./billing.js";
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
 import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
@@ -81,6 +82,31 @@ async function route(request, env, url, ctx) {
   if (path === "/api/login" && method === "POST") return login(request, env);
   if (path === "/api/logout" && method === "POST") return logout(request, env);
 
+  // ---- Stripe webhook (TASK-122) ----
+  //
+  // UNAUTHENTICATED BY NECESSITY and that is the whole risk. Stripe has no session cookie, so
+  // this sits above requireUser and anyone on the internet can POST to it. The SIGNATURE is the
+  // only authentication it has: without verification this endpoint is a free-account dispenser,
+  // because "this customer paid" would be a claim anyone could make with curl.
+  //
+  // Two things must happen in this exact order, and both are easy to get wrong:
+  //   1. Read the RAW body text before anything parses it. Stripe signs the exact bytes; any
+  //      reserialisation (even key reordering) breaks verification for reasons that look random.
+  //   2. Verify BEFORE looking at the contents. Reading the event first and verifying after is
+  //      how a handler ends up acting on an unverified payload during a refactor.
+  if (path === "/api/stripe/webhook" && method === "POST") {
+    const raw = await request.text();
+    const sig = request.headers.get("stripe-signature");
+    const check = await verifyStripeSignature(raw, sig, env.STRIPE_WEBHOOK_SECRET);
+    if (!check.ok) {
+      // Logged at warn because a burst of these is either a misconfigured secret or somebody
+      // probing, and both are worth seeing. The reason never contains the payload or the secret.
+      await logEvent(env, { level: "warn", kind: "stripe.webhook_rejected", detail: check.reason });
+      return json({ error: "signature verification failed" }, 400);
+    }
+    return handleStripeEvent(env, raw);
+  }
+
   const user = await requireUser(request, env);
   if (!user) return json({ error: "unauthorized" }, 401);
 
@@ -104,7 +130,7 @@ async function route(request, env, url, ctx) {
   // Activity is deliberately NOT on the list. It is the reliability surface Gabriel needed on
   // 08-04 ("does generation actually fail?"), and its cost figures describe spend on his own
   // key. Revisit if the roles are ever inverted.
-  const ADMIN_ONLY = [/^\/api\/spend/, /^\/api\/integrations/, /^\/api\/backup/, /^\/api\/users/, /^\/api\/people/, /^\/api\/report/];
+  const ADMIN_ONLY = [/^\/api\/spend/, /^\/api\/integrations/, /^\/api\/backup/, /^\/api\/users/, /^\/api\/people/, /^\/api\/report/, /^\/api\/billing/];
   if (user.role !== "admin" && ADMIN_ONLY.some(re => re.test(path))) {
     return json({ error: "This account does not have access to that." }, 403);
   }
@@ -506,6 +532,58 @@ async function route(request, env, url, ctx) {
   // Dollars, by day/week/month/year, split by model. Separate from /api/events on purpose:
   // Activity answers "is it working", Spend answers "what did it cost", and the last time
   // those two questions shared one surface the page grew three stat strips that disagreed.
+  // ---- billing (TASK-122) ----
+  //
+  // ADMIN ONLY. Note that /api/stripe/webhook is NOT under this prefix and is handled above the
+  // auth gate on purpose; if you move it under /api/billing it starts 401-ing Stripe.
+  if (path === "/api/billing" && method === "GET") {
+    const row = await env.DB.prepare("SELECT * FROM billing ORDER BY account_id LIMIT 1").first();
+    return json({
+      billing: row || null,
+      // What is missing, named. A blank billing page with no explanation is indistinguishable
+      // from a broken one, and this is the page someone opens when a payment did not arrive.
+      configured: {
+        secretKey: Boolean(env.STRIPE_SECRET_KEY),
+        webhookSecret: Boolean(env.STRIPE_WEBHOOK_SECRET),
+        seatPrice: Boolean(env.STRIPE_PRICE_SEAT),
+        activationPrice: Boolean(env.STRIPE_PRICE_ACTIVATION),
+      },
+    });
+  }
+
+  // Creates the link we send a buyer. Nothing is charged here and no card is touched: this
+  // returns a URL on Stripe's domain and the buyer does the rest there.
+  if (path === "/api/billing/checkout" && method === "POST") {
+    const { email, seats, account_id, trial_days } = await request.json().catch(() => ({}));
+    if (!email) return json({ error: "email required" }, 400);
+    const n = Number(seats || 1);
+    if (!Number.isInteger(n) || n < 1) return json({ error: "seats must be a whole number, 1 or more" }, 400);
+    try {
+      const sess = await createCheckoutSession(env, {
+        email, seats: n, accountId: account_id ?? null,
+        trialDays: trial_days ? Number(trial_days) : null, origin: url.origin,
+      });
+      await logEvent(env, { kind: "billing.checkout_created", account_id: account_id ?? null,
+        detail: `${email} · ${n} seat${n === 1 ? "" : "s"}${trial_days ? ` · ${trial_days}d before the licence starts` : ""}` });
+      return json({ ok: true, url: sess.url, id: sess.id });
+    } catch (err) {
+      return json({ error: String(err?.message || err) }, 400);
+    }
+  }
+
+  // The Billing Portal is why we are not the billing department: the customer changes their own
+  // card, downloads their own invoices and cancels themselves, on Stripe's pages.
+  if (path === "/api/billing/portal" && method === "POST") {
+    const row = await env.DB.prepare("SELECT * FROM billing WHERE stripe_customer_id IS NOT NULL ORDER BY account_id LIMIT 1").first();
+    if (!row?.stripe_customer_id) return json({ error: "No Stripe customer yet — this account has not been through checkout." }, 400);
+    try {
+      const sess = await createPortalSession(env, { customerId: row.stripe_customer_id, returnUrl: url.origin });
+      return json({ ok: true, url: sess.url });
+    } catch (err) {
+      return json({ error: String(err?.message || err) }, 400);
+    }
+  }
+
   // ---- the weekly report (TASK-120) ----
   //
   // ADMIN ONLY. `?format=html` returns the rendered email itself rather than JSON, because the
@@ -741,6 +819,81 @@ const CALL_LIST_SQL = `
   ) o ON o.call_id = c.id`;
 
 // ---------- auth handlers ----------
+
+
+// Applies a verified Stripe event. Split out from the route so the signature check and the
+// business logic cannot accidentally be reordered, and so this is readable on its own.
+//
+// Returns 200 for anything it does not act on. A non-2xx makes Stripe retry for three days, so
+// answering "I do not handle customer.discount.created" with an error creates three days of
+// pointless traffic and an alarming failure count in their dashboard.
+async function handleStripeEvent(env, raw) {
+  let event; try { event = JSON.parse(raw); } catch { return json({ error: "bad json" }, 400); }
+  const type = event?.type;
+  const obj = event?.data?.object || {};
+
+  // Idempotency FIRST, before any effect. Stripe does not guarantee ordering and will redeliver:
+  // it retries for three days on a non-2xx and the dashboard can resend by hand. Provisioning
+  // twice on a duplicate checkout.session.completed is the failure this prevents.
+  // A duplicate is a 200, not an error — the delivery genuinely succeeded, we just did it already.
+  try {
+    await env.DB.prepare("INSERT INTO billing_events (stripe_event_id, type) VALUES (?, ?)")
+      .bind(event.id, type || "unknown").run();
+  } catch {
+    return json({ ok: true, duplicate: true });
+  }
+
+  if (!HANDLED_EVENTS.includes(type)) return json({ ok: true, ignored: type });
+
+  const access = accessFromEvent(type, obj);
+  if (!access) return json({ ok: true, ignored: type });
+
+  // Which account? `client_reference_id` and metadata are set when we create the checkout, so a
+  // payment made on Stripe's domain can be matched to a row here. Falling back to the customer id
+  // covers renewals, where the invoice carries no metadata of ours.
+  const accountId = Number(obj.client_reference_id || obj.metadata?.account_id || event?.data?.object?.subscription_details?.metadata?.account_id) || null;
+  const customerId = typeof obj.customer === "string" ? obj.customer : obj.customer?.id || null;
+  const subscriptionId = typeof obj.subscription === "string" ? obj.subscription
+    : (type.startsWith("customer.subscription") ? obj.id : null);
+  const seats = Number(obj.metadata?.seats) || obj.items?.data?.[0]?.quantity || null;
+  const periodEnd = obj.current_period_end ? new Date(obj.current_period_end * 1000).toISOString() : null;
+
+  const target = accountId
+    ?? (await env.DB.prepare("SELECT account_id FROM billing WHERE stripe_customer_id = ?").bind(customerId).first())?.account_id
+    ?? (await env.DB.prepare("SELECT id FROM accounts ORDER BY id LIMIT 1").first())?.id
+    ?? null;
+
+  if (!target) {
+    // Never silently drop a paid event. Somebody paid us and we could not say who.
+    await logEvent(env, { level: "error", kind: "stripe.unmatched_event",
+      detail: `${type} for customer ${customerId || "?"} could not be matched to an account — money may have moved with nothing provisioned.` });
+    return json({ ok: true, unmatched: true });
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO billing (account_id, stripe_customer_id, stripe_subscription_id, status, seats, current_period_end, billing_email, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(account_id) DO UPDATE SET
+       stripe_customer_id     = COALESCE(excluded.stripe_customer_id, billing.stripe_customer_id),
+       stripe_subscription_id = COALESCE(excluded.stripe_subscription_id, billing.stripe_subscription_id),
+       status                 = excluded.status,
+       seats                  = COALESCE(excluded.seats, billing.seats),
+       current_period_end     = COALESCE(excluded.current_period_end, billing.current_period_end),
+       billing_email          = COALESCE(excluded.billing_email, billing.billing_email),
+       updated_at             = datetime('now')`
+  ).bind(target, customerId, subscriptionId, access.status, seats, periodEnd,
+         obj.customer_email || obj.customer_details?.email || null).run();
+
+  await env.DB.prepare("UPDATE billing_events SET account_id = ? WHERE stripe_event_id = ?")
+    .bind(target, event.id).run();
+
+  await logEvent(env, {
+    level: access.status === "past_due" ? "warn" : "info",
+    kind: `billing.${type.replace(/[.]/g, "_")}`, account_id: target,
+    detail: `${type} → ${access.status}${seats ? ` · ${seats} seats` : ""}${periodEnd ? ` · paid through ${periodEnd.slice(0, 10)}` : ""}` });
+
+  return json({ ok: true, status: access.status });
+}
 
 async function setup(request, env) {
   const existing = await env.DB.prepare("SELECT COUNT(*) AS n FROM users").first();
