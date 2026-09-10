@@ -3108,6 +3108,39 @@
         "closer-app/src/index.js"
       ],
       "notes": "Both would have surfaced for the first time during Nathan's onboarding."
+    },
+    {
+      "id": "TASK-120",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "title": "Weekly ranked report \u2014 Nathan's fourth condition",
+      "source": "2026-09-09 Nathan call",
+      "dependencies": [
+        "TASK-117",
+        "TASK-118"
+      ],
+      "description": "Per-person ranked table for the completed week: avg score, scored, calls, closed-on-call. HTML preview at /api/report/weekly?format=html, admin-only. DONE 2026-09-09 except the send. KEY FINDING: there is no close rate in this system. calls.outcome is model-written with a schema of only closed|followup \u2014 no 'lost' \u2014 so any ratio on it cannot record a loss and is optimistic by construction. Shipped as 'Closed on call' with an explicit caveat that it is the model's read and not the CRM; it becomes a real close rate with TASK-019. Unscored people sort last rather than as 0.0. Sending is NOT implemented: Workers cannot do SMTP, so it needs an HTTP email provider and a verified domain (Ivan). The route returns 501 naming EMAIL_API_KEY and REPORT_TO and logs report.send_skipped rather than returning ok.",
+      "acceptance_criteria": [
+        "Ranked per-person table for the completed Mon-Mon week",
+        "No figure is presented as a close rate",
+        "Unscored people are not ranked as zero",
+        "HTML preview exists",
+        "Send fails closed and names what is missing"
+      ],
+      "testing_criteria": [
+        "Treating a missing score as 0 fails",
+        "Labelling it a close rate fails",
+        "A send returning ok fails",
+        "An unescaped rep name fails"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/report.js",
+        "closer-app/src/index.js",
+        "closer-app/tests/report.test.mjs",
+        "closer-app/package.json"
+      ],
+      "notes": "Blocked for delivery on an email provider signup. Everything up to the send is done and previewable."
     }
   ],
   "progress_percentage": 89,

@@ -3,6 +3,49 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-09 (later still) — The weekly report, and the number it refuses to call a close rate
+
+Nathan's fourth condition: *"a weekly report that gets sent out via email. That shows, hey, these
+employees had the highest score and then this was the closing rate for those calls."* A ranked
+table, per person, once a week. Deliberately dumb — no commentary, no coaching paragraph. A
+generated analysis in a weekly email is the part people unsubscribe from.
+
+**The close rate does not exist, and shipping one would have been the worst kind of wrong.**
+`calls.outcome` is written by the *model* from the transcript, and the schema it is generated
+against offers exactly two values: `"closed"` or `"followup"`. **There is no `"lost"`.** The field
+is structurally incapable of recording a loss, so any ratio built on it is optimistic by
+construction, not by a margin.
+
+A sales manager checks a number labelled "close rate" against his CRM within a day. When it does
+not match he stops trusting every other number on the page, and he is right to. So the column is
+**"Closed on call"**, labelled as the model's read of the conversation, with a caveat block saying
+plainly that it cannot see anything that closed afterwards, has no way to record a loss, and is
+not a close rate. It becomes one when GoHighLevel is connected (TASK-019) and not before.
+
+**An unscored person sorts last, never as zero.** A rep whose week was all internal calls has no
+score. Rendering them as 0.0 at the bottom of a league table mailed to their manager is a false
+accusation, and it is one line of `?? 0` away at all times.
+
+**This ranks people and the People page deliberately does not.** That is not an inconsistency to
+tidy up: Nathan asked for a ranking in those words, it is his floor and his email, and a dashboard
+is a reference where an email is a statement. Recorded in `report.js` so the divergence stays
+deliberate. It is also the artifact that makes the employee-consent question concrete — punch
+list H8.
+
+**Sending is not implemented and says so.** Workers cannot open SMTP; a weekly email needs an HTTP
+provider and a verified sending domain, both of which are accounts a human creates. The route
+returns **501 with the missing variables named** and writes `report.send_skipped` to the event log,
+rather than returning ok while doing nothing — the same rule BYOK established on 08-05. There is
+an HTML preview at `?format=html`, because the only way to know an email looks right is to look at
+it.
+
+**`npm test` did not run the new test file.** It was written, it passed locally, and CI would have
+been green while never executing it. Now guarded: an assertion fails if any `tests/*.test.mjs` is
+missing from the script.
+
+545 assertions across six files. Five inversions proven red: missing score as zero, calling it a
+close rate, a send that returns ok, an unescaped rep name, and a test file left out of CI.
+
 ## 2026-09-09 (later) — People: the manager tier, and three bugs a fresh database found
 
 **The page.** Nathan's third and fourth conditions: scores across the team in one place, and the

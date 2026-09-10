@@ -1,5 +1,6 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
 import { roster, person, WINDOWS } from "./people.js";
+import { weeklyReport, renderWeeklyEmail, weekBounds } from "./report.js";
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
 import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
@@ -103,7 +104,7 @@ async function route(request, env, url, ctx) {
   // Activity is deliberately NOT on the list. It is the reliability surface Gabriel needed on
   // 08-04 ("does generation actually fail?"), and its cost figures describe spend on his own
   // key. Revisit if the roles are ever inverted.
-  const ADMIN_ONLY = [/^\/api\/spend/, /^\/api\/integrations/, /^\/api\/backup/, /^\/api\/users/, /^\/api\/people/];
+  const ADMIN_ONLY = [/^\/api\/spend/, /^\/api\/integrations/, /^\/api\/backup/, /^\/api\/users/, /^\/api\/people/, /^\/api\/report/];
   if (user.role !== "admin" && ADMIN_ONLY.some(re => re.test(path))) {
     return json({ error: "This account does not have access to that." }, 403);
   }
@@ -505,6 +506,39 @@ async function route(request, env, url, ctx) {
   // Dollars, by day/week/month/year, split by model. Separate from /api/events on purpose:
   // Activity answers "is it working", Spend answers "what did it cost", and the last time
   // those two questions shared one surface the page grew three stat strips that disagreed.
+  // ---- the weekly report (TASK-120) ----
+  //
+  // ADMIN ONLY. `?format=html` returns the rendered email itself rather than JSON, because the
+  // only way to know an email looks right is to look at it, and a JSON blob of numbers does not
+  // answer that question. Reading code is not verification.
+  if (path === "/api/report/weekly" && method === "GET") {
+    const r = await weeklyReport(env);
+    if (url.searchParams.get("format") === "html") {
+      return new Response(renderWeeklyEmail(r, { appUrl: url.origin }),
+        { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+    return json({ ...r, canSend: Boolean(env.EMAIL_API_KEY && env.REPORT_TO) });
+  }
+
+  // Sending is NOT implemented and this says so out loud rather than returning ok.
+  //
+  // Cloudflare Workers cannot open SMTP connections, so a weekly email needs an HTTP email
+  // provider (Resend, Postmark) plus a verified sending domain. Both are accounts a human has to
+  // create; see `2026-09-09 Nathan round/Third-party connections.md` §5.
+  //
+  // Failing closed with the reason is the same rule BYOK established on 2026-08-05: a feature
+  // that quietly does nothing is indistinguishable from one that works, right up until someone
+  // asks why the report never arrived.
+  if (path === "/api/report/weekly/send" && method === "POST") {
+    if (!env.EMAIL_API_KEY || !env.REPORT_TO) {
+      await logEvent(env, { level: "warn", kind: "report.send_skipped",
+        detail: "No email provider configured — set EMAIL_API_KEY and REPORT_TO. The report was generated but not sent." });
+      return json({ ok: false, generated: true, sent: false,
+        error: "No email provider is connected yet. The report generates and can be previewed, but sending needs an email service (Resend or Postmark) and a verified sending domain." }, 501);
+    }
+    return json({ ok: false, error: "Provider configured but the send adapter is not written yet." }, 501);
+  }
+
   // ---- people: the manager tier (TASK-118) ----
   //
   // ADMIN ONLY, and the gate above is the boundary — this is every rep's scores in one place,

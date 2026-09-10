@@ -397,5 +397,18 @@ console.log("\n== auto-processing skips no-output call types ==");
 }
 
 
+// ---- a test file that npm test does not run is a test file that does not exist -------------
+{
+  const pkg = JSON.parse(readFileSync(join(SRC, "..", "package.json"), "utf8"));
+  const script = pkg.scripts?.test || "";
+  const files = readdirSync(join(SRC, "..", "tests")).filter(f => f.endsWith(".test.mjs"));
+  const missing = files.filter(f => !script.includes(f));
+  // report.test.mjs was written, passed locally, and was not in `npm test` -- so CI would have
+  // been green while never running it. Found the same day it was written.
+  check("every tests/*.test.mjs is in the npm test script", missing.length === 0,
+    missing.length ? `not run by CI: ${missing.join(", ")}` : "");
+}
+
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
