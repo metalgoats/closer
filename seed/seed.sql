@@ -50,3 +50,36 @@ INSERT INTO outputs (call_id, kind, tone, subject, body, model, sent_at) VALUES
 (3,'email','balanced','The details you''ll want on hand, Priya','Hi Priya,' || char(10) || '' || char(10) || 'Thanks again for today. A quick summary to make the conversation with your husband easier:' || char(10) || '' || char(10) || '• The program and timeline we walked through' || char(10) || '• Investment and payment options' || char(10) || '• Our guarantee' || char(10) || '' || char(10) || 'Can we set a time to reconnect this week?' || char(10) || '' || char(10) || '— Gabriel','mock',NULL),
 (3,'email','formal','Program Summary for Your Review','Dear Priya,' || char(10) || '' || char(10) || 'Thank you for your time today. To assist your discussion, please find a brief summary below:' || char(10) || '' || char(10) || '• Program scope and timeline as discussed' || char(10) || '• Investment and available payment options' || char(10) || '• Guarantee terms' || char(10) || '' || char(10) || 'Might we schedule a brief follow-up call this week?' || char(10) || '' || char(10) || 'Best regards,' || char(10) || 'Gabriel','mock',NULL),
 (3,'ghl_note',NULL,NULL,'FOLLOW-UP NEEDED — no close. Objection: ''talk to my husband first'' (shared-decision cover). Real interest: asked pricing twice unprompted. Risk: ''let me think about it'' trending toward soft no. Next step: set a specific callback time; prep her with answers for the husband''s likely questions. Treat as a two-person sale.','mock',NULL);
+
+-- Rep attribution for local development (TASK-118).
+--
+-- Production has exactly ONE person, so the People page cannot be developed or looked at against
+-- real data: the multi-person layout, the sort, the type mix and the unattributed row are all
+-- invisible with a single rep. These are fake people for a fake database. Two named reps plus
+-- one deliberately unattributed call, which is the same shape production actually has.
+UPDATE calls SET rep_email = 'gabriel@example.com' WHERE id IN (1, 3);
+-- Call 4 is left with NO rep on purpose. Production has exactly one call like this (a manual
+-- paste from before attribution existed) and the People page has to show it as unowned rather
+-- than fold it into somebody's numbers or drop it from the totals. If every seeded call has an
+-- owner, that path is never seen in development and the first time anyone looks at it is prod.
+
+-- A second rep with a handful of calls, so the roster has something to sort and the trend chart
+-- has more than one bucket. Scorecards are copies of call 1's with the numbers shifted, which is
+-- enough to render and obviously not enough to mean anything.
+INSERT INTO calls (id, account_id, client_name, occurred_at, duration_min, source, outcome, processed_at, rep_email, call_type_id, debrief_json, transcript) VALUES
+(5, 1, 'Renata O.', datetime('now', '-9 days'),  41, 'fathom', 'closed',   datetime('now','-9 days'),  'dani@example.com', NULL,
+ '{"scorecard":[["Rapport",6],["Authority",5],["Trust",7],["Emotional Connection",4],["Pain Amplification",3],["Vision Building",5],["Objection Handling",4],["Certainty Transfer",6],["Close Attempt",7],["Follow-up Positioning",5]]}',
+ '0:01 — Dani: Renata, thanks for making time...'),
+(6, 1, 'Ollie B.',  datetime('now', '-16 days'), 52, 'fathom', 'followup', datetime('now','-16 days'), 'dani@example.com', NULL,
+ '{"scorecard":[["Rapport",8],["Authority",7],["Trust",7],["Emotional Connection",6],["Pain Amplification",5],["Vision Building",7],["Objection Handling",6],["Certainty Transfer",7],["Close Attempt",5],["Follow-up Positioning",6]]}',
+ '0:01 — Dani: Ollie, good to see you...'),
+(7, 1, 'Sam W.',    datetime('now', '-24 days'), 27, 'fathom', 'lost',     datetime('now','-24 days'), 'gabriel@example.com', NULL,
+ '{"scorecard":[["Rapport",5],["Authority",6],["Trust",5],["Emotional Connection",3],["Pain Amplification",2],["Vision Building",4],["Objection Handling",3],["Certainty Transfer",4],["Close Attempt",2],["Follow-up Positioning",3]]}',
+ '0:01 — Gabriel: Sam, appreciate the time...');
+
+-- One call with a scorecard dimension the model invented, because production has exactly this
+-- (an "objection buildup" row with an n of 1) and the page is supposed to make it legible rather
+-- than let it read as a catastrophic weakness. If this line is ever deleted, the low-n case stops
+-- being visible in development.
+UPDATE calls SET debrief_json = json_set(debrief_json, '$.scorecard[10]', json('["objection buildup",1]'))
+ WHERE id = 5;

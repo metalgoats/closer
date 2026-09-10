@@ -962,3 +962,62 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
 .acc-form input:focus{ outline:none; border-color:var(--blue-500); }
 .acc-select{ border:1px solid var(--line); border-radius:8px; padding:9px 11px; font-size:15px;
   background:var(--select-bg, var(--paper-0)); color:var(--select-fg, var(--ink-950)); }
+
+/* ---- People (TASK-118) --------------------------------------------------------------------
+   Every class below is used by renderPeople/renderPerson in app.js. The Spend page once shipped
+   `.spend-v.warn` for weeks with no rule behind it, so: if you delete a rule here, grep app.js
+   first, and if you add a class there, add it here in the same commit.
+
+   Deliberately monochrome. Scores are NOT colour-coded — no green for high, no red for low —
+   because the page reports numbers and does not render verdicts. See the note in app.js. */
+.pp-row, .pp-callrow { cursor:pointer; }
+.pp-row:hover, .pp-callrow:hover { background:var(--paper-100); }
+.pp-name { font-weight:600; }
+
+/* Column widths. `.ev-table` is table-layout:fixed and `.sp-table` sets every column after the
+   first to 88px. Seven columns of that leaves the name ~430px short in a normal window, and
+   because .ev-table also sets overflow-wrap:break-word the result was "gabriel@exa / mple.com"
+   split mid-word. Caught by looking at the page; no assertion would have found it.
+   Numbers here are 1-3 digits, so they do not need 88px. */
+/* min-width, so the table OVERFLOWS its `overflow-x:auto` wrapper instead of collapsing.
+   `.ev-table` is table-layout:fixed at width:100%, which means a container narrower than the
+   sum of the fixed columns steals the space from column 1 rather than scrolling. At tablet
+   width the Person column shrank to a single character and the "PERSON" and "CALLS" headers
+   printed on top of each other. Found by resizing the window, not by any assertion. */
+.pp-table { min-width:640px; }
+.pp-calls { min-width:520px; }
+.pp-dims  { min-width:470px; }
+.pp-table td:nth-child(n+2), .pp-table th:nth-child(n+2) { width:62px; }
+.pp-table td:nth-child(1), .pp-table th:nth-child(1) { width:190px; }
+.pp-table td:nth-child(6), .pp-table th:nth-child(6) { width:92px; }
+.pp-table td:nth-child(7), .pp-table th:nth-child(7) { width:120px; text-align:left; }
+/* An email is one token. Truncate it rather than hyphenating it into nonsense; the full value
+   stays available on hover via the title attribute. */
+.pp-table td:nth-child(1) { overflow-wrap:normal; white-space:nowrap;
+                            overflow:hidden; text-overflow:ellipsis; }
+.pp-calls td:nth-child(2), .pp-calls th:nth-child(2) { width:120px; }
+.pp-calls td:nth-child(3), .pp-calls th:nth-child(3) { width:92px; }
+.pp-calls td:nth-child(1) { overflow-wrap:normal; white-space:nowrap;
+                            overflow:hidden; text-overflow:ellipsis; }
+/* The unowned marker sits beside the name on one line, not stacked under it. */
+.pp-noowner { color:var(--ink-400); font-size:11px; margin-left:6px; white-space:nowrap; }
+.pp-mix { color:var(--ink-400); font-size:12px; }
+.pp-h { font-size:12px; text-transform:uppercase; letter-spacing:.02em; color:var(--ink-400);
+        margin:22px 0 8px; font-weight:600; }
+
+/* The dimension bar. One neutral fill: length carries the number, colour carries nothing. */
+.pp-dims td:nth-child(2), .pp-dims th:nth-child(2) { width:120px; }
+.pp-barcell { vertical-align:middle; }
+.pp-bar { display:block; height:6px; border-radius:3px; background:var(--line); overflow:hidden; }
+.pp-bar-fill { display:block; height:100%; border-radius:3px;
+               background:linear-gradient(90deg, var(--blue-500), var(--violet-500)); }
+
+/* Trend columns, reusing .sp-chart/.sp-col/.sp-bar-wrap from Spend so the two pages agree. */
+/* Cap the column width. `.sp-col` is flex:1, which is right for thirty days of spend and wrong
+   for two weeks of calls: two bars grew to 350px each and read as blocks of colour rather than
+   as a chart. Caught by looking at it. */
+.pp-chart .sp-col { flex:0 1 90px; }
+.pp-tbar { width:100%; border-radius:3px 3px 0 0; min-height:2px;
+           background:linear-gradient(180deg, var(--violet-500), var(--blue-500)); }
+.pp-tlabel { font-size:10px; color:var(--ink-400); text-align:center; padding-top:4px;
+             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

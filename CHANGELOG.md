@@ -3,6 +3,65 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-09 (later) — People: the manager tier, and three bugs a fresh database found
+
+**The page.** Nathan's third and fourth conditions: scores across the team in one place, and the
+ability to click into any individual. A roster of everyone who ran a call, then per-person
+dimension averages with their range, a trend under them, and their calls. Windows: week, month,
+six months, year, all time. Admin-only, enforced in `ADMIN_ONLY` before the front end hides
+anything.
+
+**Two product decisions are asserted, because both are the kind that get "improved" back in.**
+Raw numbers only — no targets, no benchmarks, no colour-coded scores. Gabriel stopped Ivan
+mid-sentence on the call: *"What a healthy number is, is something that Nathan's going to be able
+to figure out. That's on him."* And the roster sorts by **volume, never by score**, because
+ranking people by score on the landing view is a league table, which is a verdict. Tests fail if
+either is undone.
+
+**Every average ships its sample size, in calls not scorecard rows.** The first aggregate over
+real data immediately found a dimension called `objection buildup` averaging **1.0 over a single
+call** — invented by the model. Sorted by score with no `n` beside it, that reads as a
+catastrophic weakness; it is a typo. Two production calls (10041, 10043) have **eleven**
+scorecard entries instead of ten. Logged, not silently repaired.
+
+**Three bugs, all found because a fresh database could not be brought up.**
+
+1. **`npm run db:migrate:local` has been broken on a clean checkout since 0012 shipped.** That
+   migration hardcodes `account_id = 1` in three literal `VALUES` rows, and **no migration ever
+   creates an account** — only the seed does. On an empty database the foreign key failed, the
+   run aborted, and every migration from 0012 to 0020 silently never applied. It worked in
+   production purely because production was seeded months before 0012 was written. Now guarded
+   with `WHERE EXISTS (SELECT 1 FROM accounts WHERE id = 1)`, which inserts zero rows instead of
+   aborting. Editing an applied migration is safe here specifically: D1 records them by name.
+
+2. **`/api/setup` created the deployment's owner as a `member`.** The role was left to the column
+   default. Migration 0019 promoted `MIN(id)` at migration time, which covered production's
+   pre-existing user — but on a fresh deployment setup runs *after* migrations, so the owner
+   would have been locked out of Integrations, which is where a new tenant pastes the Anthropic
+   key. **The first customer to onboard could not have finished onboarding.** Now created as
+   `admin` explicitly.
+
+3. **The People table collapsed at tablet width.** `.ev-table` is `table-layout:fixed` at
+   `width:100%`, so a container narrower than the sum of the fixed columns steals the space from
+   column 1 rather than scrolling: the name column became one character wide and the PERSON and
+   CALLS headers printed on top of each other. Emails also hyphenated mid-word into
+   `gabriel@exa / mple.com`. Both fixed with `min-width` plus truncation, both now asserted.
+
+None of the three were caught by 500 passing assertions. All three were caught by running the
+thing and looking at it, at three widths.
+
+**The seed now has two named reps and one deliberately unattributed call**, because production
+has exactly one person and the multi-person layout — the sort, the type mix, the unowned row —
+is invisible with a single rep. It also carries a copy of the invented-dimension case so the
+low-`n` path stays visible in development.
+
+**Not built:** the setter-vs-closer split. That needs a job role nobody has recorded, and
+inventing one with a single value is the `events.model` mistake again. Call type is the axis that
+exists today, so the roster shows that instead.
+
+519 assertions. Nine inversions proven red, including ranking by score, adding a threshold,
+dropping the sample size, dropping the unattributed group, and removing the min-widths.
+
 ## 2026-09-09 — Calls learn who ran them (TASK-117)
 
 `calls` has carried `account_id` since v1 and **no owner at all**. Nothing in the API was ever

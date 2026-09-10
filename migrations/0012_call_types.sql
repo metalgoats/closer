@@ -39,7 +39,20 @@ FROM prompt_templates WHERE active = 1 AND tone IS NULL LIMIT 1;
 
 -- Non-sales types. Deliberately NO scorecard: a client or internal call should not be graded on
 -- "pain amplification". Starting prompts are a reasonable default — edit them in the UI.
-INSERT INTO call_types (account_id, name, description, prompt_body, dimensions_json, produces_messages, produces_crm_note, is_default, sort_order) VALUES
+--
+-- > [!warning] The `WHERE EXISTS` guard is load-bearing, not defensive decoration.
+-- > These rows hardcode account_id = 1 and NO migration ever creates an account -- only the
+-- > seed does. So on a FRESH database (a clean checkout running the documented
+-- > `npm run db:migrate:local`) this statement failed its foreign key, the run aborted, and
+-- > EVERY migration from 0012 to 0020 silently never applied. It worked in production only
+-- > because production was seeded months before this migration was written, so account 1 was
+-- > already there. Found 2026-09-09, when a fresh local database could not be brought up far
+-- > enough to look at a new page.
+-- > Editing an already-applied migration is safe HERE specifically: D1 records applied
+-- > migrations by name, so production will not re-run this, and on any seeded database the
+-- > result is byte-identical. Do not take this as licence to edit applied migrations generally.
+INSERT INTO call_types (account_id, name, description, prompt_body, dimensions_json, produces_messages, produces_crm_note, is_default, sort_order)
+SELECT * FROM (VALUES
 (1, 'Client call',
  'For calls with an existing client. Recap, commitments and a follow-up email — no sales scorecard.',
  'You are summarising a call between a coach and an EXISTING CLIENT (not a sales prospect). Do not evaluate selling technique.
@@ -62,7 +75,8 @@ Use coaching language and focus on:
 (1, 'Vendor / partner',
  'For vendor, partner and supplier calls. Terms, obligations and follow-ups.',
  'You are summarising a VENDOR or PARTNER call. Focus on what each side committed to, pricing or terms discussed, obligations and deadlines, open questions, and the next step. Do not evaluate selling technique.',
- '[]', 0, 1, 0, 3);
+ '[]', 0, 1, 0, 3)
+) WHERE EXISTS (SELECT 1 FROM accounts WHERE id = 1);
 
 -- Existing calls keep behaving as sales calls.
 UPDATE calls SET call_type_id = (SELECT id FROM call_types WHERE is_default = 1 LIMIT 1)

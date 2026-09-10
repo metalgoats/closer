@@ -361,11 +361,11 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
   });
 });
 
-const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess };
+const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess, people: renderPeople };
 
 // Mirrors ADMIN_ONLY in src/index.js. Kept as a named constant next to the thing it hides so a
 // future page added to one list is visibly missing from the other.
-const ADMIN_VIEWS = ["spend", "integrations"];
+const ADMIN_VIEWS = ["spend", "integrations", "people"];
 function isAdmin() { return state.user?.role === "admin"; }
 function applyRoleVisibility() {
   document.querySelectorAll(".settings-item[data-view]").forEach(el => {
@@ -2224,6 +2224,142 @@ async function renderSpend() {
       msg.textContent = String(err?.message || err);
     }
   });
+}
+
+// ---------------------------------------------------------------- People (TASK-118)
+//
+// The manager tier. Nathan's third and fourth conditions: scores across the team in one place,
+// and the ability to click into any individual.
+//
+// > RAW NUMBERS ONLY. There are no targets, no benchmarks and no red/green here, and that is a
+// > product decision, not an oversight. Gabriel stopped Ivan mid-sentence on the 09-09 call:
+// > "What a healthy number is, is something that Nathan's going to be able to figure out. That's
+// > on him. I'm just presenting him the raw data." If you are about to colour a score, don't.
+//
+// Every average is rendered WITH the number of calls under it. The first run of this page found
+// a dimension called "objection buildup" averaging 1.0 — invented by the model on a single call.
+// Sorted by score with no sample size it reads as a catastrophic weakness. It is a typo with an
+// n of 1. That is why the count is not optional decoration.
+const PEOPLE_WINDOWS = [["week", "Week"], ["month", "Month"], ["half", "6 months"], ["year", "Year"], ["all", "All time"]];
+
+const scoreBar = (avg, max = 10) =>
+  `<span class="pp-bar"><span class="pp-bar-fill" style="width:${Math.max(0, Math.min(100, (avg / max) * 100))}%"></span></span>`;
+
+const nCalls = n => `${n} call${n === 1 ? "" : "s"}`;
+
+async function renderPeople() {
+  const view = state.peopleView || "month";
+  if (state.peopleRep !== undefined) return renderPerson();
+
+  const d = await api.get(`/people?view=${encodeURIComponent(view)}`);
+  const t = d.totals || {};
+
+  const rows = d.people.length ? d.people.map(p => {
+    const mix = (p.byType || []).map(x => `${esc(x.type)} ${x.n}`).join(" · ");
+    return `<tr class="pp-row" data-rep="${esc(p.email || "")}">
+      <td title="${esc(p.email || "no owner recorded on these calls")}"><span class="pp-name">${esc(p.name)}</span>${p.email ? "" : `<span class="pp-noowner">no owner recorded</span>`}</td>
+      <td class="sp-num">${p.calls}</td>
+      <td class="sp-num">${p.scored}</td>
+      <td class="sp-num">${p.avgScore === null ? "—" : p.avgScore.toFixed(1)}</td>
+      <td class="sp-num">${Math.round(p.minutes / 60)}h</td>
+      <td class="sp-num">${esc(p.lastCall || "—")}</td>
+      <td class="pp-mix">${mix || "—"}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="7" class="sp-empty">No calls in this window.</td></tr>`;
+
+  viewShell("People",
+    "Every person who ran a call, and what their calls scored. Raw numbers — what a good number is, is your call.",
+    `<div class="ct-picker" style="margin-bottom:12px;">
+       ${PEOPLE_WINDOWS.map(([v, label]) => `<button class="ct-chip ${view === v ? "active" : ""}" data-peopleview="${v}">${label}</button>`).join("")}
+     </div>
+     <div class="spend-row">
+       <div class="spend-card"><div class="spend-k">People</div>
+         <div class="spend-v">${t.people || 0}</div>
+         <div class="spend-sub">ran a call in the ${esc((d.window || "").toLowerCase())}</div></div>
+       <div class="spend-card"><div class="spend-k">Calls</div>
+         <div class="spend-v">${t.calls || 0}</div>
+         <div class="spend-sub">${Math.round((t.minutes || 0) / 60)} hours on the phone</div></div>
+       <div class="spend-card"><div class="spend-k">Scored</div>
+         <div class="spend-v">${t.scored || 0}</div>
+         <div class="spend-sub">${t.calls ? Math.round((t.scored / t.calls) * 100) : 0}% of calls have a scorecard</div></div>
+     </div>
+     <div style="overflow-x:auto;"><table class="ev-table sp-table pp-table"><thead><tr>
+        <th>Person</th><th class="sp-num">Calls</th><th class="sp-num">Scored</th>
+        <th class="sp-num">Avg</th><th class="sp-num">Hours</th><th class="sp-num">Last call</th><th>Call types</th>
+     </tr></thead><tbody>${rows}</tbody></table></div>
+     <div class="insight-note">Click a person to see their dimensions and how they have moved. "Avg" is the mean of every scorecard dimension across their scored calls in this window — a blend, not a grade. Calls without a scorecard (internal, vendor, or not yet generated) are counted in Calls and excluded from Avg.</div>`);
+
+  document.querySelectorAll("[data-peopleview]").forEach(b => b.addEventListener("click", () => {
+    state.peopleView = b.dataset.peopleview;
+    renderPeople();
+  }));
+  // dataset.rep is "" for the unattributed group, which is a real group. Storing "" rather than
+  // undefined is what lets renderPerson tell "the no-owner bucket" from "no person selected".
+  document.querySelectorAll(".pp-row").forEach(r => r.addEventListener("click", () => {
+    state.peopleRep = r.dataset.rep;
+    renderPeople();
+  }));
+}
+
+async function renderPerson() {
+  const view = state.peopleView || "month";
+  const rep = state.peopleRep;
+  const d = await api.get(`/people?view=${encodeURIComponent(view)}&rep=${encodeURIComponent(rep)}`);
+
+  const dims = d.dimensions.length ? d.dimensions.map(x => `<tr>
+      <td>${esc(x.dim)}</td>
+      <td class="pp-barcell">${scoreBar(x.avg)}</td>
+      <td class="sp-num">${x.avg === null ? "—" : x.avg.toFixed(1)}</td>
+      <td class="sp-num">${x.low}–${x.high}</td>
+      <td class="sp-num">${x.n}</td>
+    </tr>`).join("") : `<tr><td colspan="5" class="sp-empty">No scored calls in this window.</td></tr>`;
+
+  // The trend is Ivan's "health bar": one column per bucket, so a dimension moving is visible as
+  // movement rather than as a single blended number that hides which part changed.
+  const maxN = Math.max(1, ...d.trend.map(t => t.n));
+  const trend = d.trend.length ? d.trend.map(t => `<div class="sp-col" title="${esc(t.label)} · ${t.avg} avg over ${nCalls(Math.round(t.n / Math.max(1, d.dimensions.length)))}">
+      <div class="sp-bar-wrap"><div class="pp-tbar" style="height:${(t.avg / 10) * 100}%"></div></div>
+      <div class="pp-tlabel">${esc(t.label)}</div>
+    </div>`).join("") : `<div class="sp-empty">Nothing to plot yet.</div>`;
+
+  const calls = d.calls.length ? d.calls.map(c => `<tr class="pp-callrow" data-call="${c.id}">
+      <td>${esc(c.client_name || "—")}</td>
+      <td>${esc(c.call_type)}</td>
+      <td class="sp-num">${esc(c.occurred_at || "")}</td>
+      <td class="sp-num">${c.duration_min ? c.duration_min + "m" : "—"}</td>
+      <td class="sp-num">${c.avg_score === null ? "—" : c.avg_score.toFixed(1)}</td>
+    </tr>`).join("") : `<tr><td colspan="5" class="sp-empty">No calls in this window.</td></tr>`;
+
+  viewShell(esc(d.name),
+    `${esc(d.window)} · ${d.calls.length} call${d.calls.length === 1 ? "" : "s"} · scored on ${d.dimensions.length} dimension${d.dimensions.length === 1 ? "" : "s"}`,
+    `<div class="ct-picker" style="margin-bottom:12px;">
+       <button class="chip" id="ppBack">← All people</button>
+       ${PEOPLE_WINDOWS.map(([v, label]) => `<button class="ct-chip ${view === v ? "active" : ""}" data-peopleview="${v}">${label}</button>`).join("")}
+     </div>
+     <h4 class="pp-h">Dimensions</h4>
+     <div style="overflow-x:auto;"><table class="ev-table sp-table pp-dims"><thead><tr>
+        <th>Dimension</th><th></th><th class="sp-num">Avg</th><th class="sp-num">Range</th><th class="sp-num">Calls</th>
+     </tr></thead><tbody>${dims}</tbody></table></div>
+     <div class="insight-note">Ordered by how many calls each rests on, not by score. A dimension with a handful of calls behind it is a handful of calls, not a trend — and the model occasionally invents one, so a row with an n of 1 is usually an artifact rather than a finding.</div>
+     <h4 class="pp-h">Over time</h4>
+     <div class="sp-chart pp-chart">${trend}</div>
+     <div class="insight-note">Mean of every dimension, per ${esc(d.bucket)}. <strong>Periods with no calls are not drawn</strong>, so two adjacent bars are not necessarily consecutive ${esc(d.bucket)}s — read the labels, not the spacing.</div>
+     <h4 class="pp-h">Calls</h4>
+     <div style="overflow-x:auto;"><table class="ev-table sp-table pp-calls"><thead><tr>
+        <th>Client</th><th>Type</th><th class="sp-num">Date</th><th class="sp-num">Length</th><th class="sp-num">Avg</th>
+     </tr></thead><tbody>${calls}</tbody></table></div>`);
+
+  $("#ppBack").addEventListener("click", () => { state.peopleRep = undefined; renderPeople(); });
+  document.querySelectorAll("[data-peopleview]").forEach(b => b.addEventListener("click", () => {
+    state.peopleView = b.dataset.peopleview;
+    renderPeople();
+  }));
+  // Straight into the call the manager is asking about. This is the "click into Bob and see what
+  // he sees" half of what Ivan described, reusing the detail pane rather than rebuilding it.
+  document.querySelectorAll(".pp-callrow").forEach(r => r.addEventListener("click", () => {
+    state.peopleRep = undefined;
+    openCall(+r.dataset.call);
+  }));
 }
 
 // ---------------------------------------------------------------- Account & Access (TASK-112)

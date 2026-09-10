@@ -211,18 +211,31 @@ console.log("\n== roles are enforced server-side ==");
   check("changing a password kills this user's other sessions",
     /DELETE FROM sessions WHERE user_id = \? AND token != \?/.test(idx));
   check("setup stays first-run-gated", /already set up/.test(idx));
+  // The first-run user owns the deployment. Leaving this to the column default made them a
+  // MEMBER on any fresh database -- locked out of Integrations, which is where the Anthropic key
+  // gets pasted, so a new tenant could not finish onboarding. Production was unaffected only
+  // because migration 0019 promoted its pre-existing user.
+  check("the first-run user is created as an admin, not left to the column default",
+    /INSERT INTO users \(email, pw_hash, pw_salt, role\) VALUES \(\?, \?, \?, 'admin'\)/.test(idx),
+    "a fresh deployment's owner would be a member and could not reach Integrations");
   // The login payload seeds state.user, and the menu is drawn from it before /api/me is ever
   // called. A login response without a role makes an admin look like a member until reload.
   check("the login response carries the role, not just /api/me",
     /SELECT id, email, COALESCE\(role, 'member'\) AS role FROM users WHERE email/.test(idx));
 
   // The front end hides the same pages, and that is ALL it does.
-  check("app.js hides admin views but does not own the boundary",
-    /const ADMIN_VIEWS = \["spend", "integrations"\]/.test(app)
-    && /COSMETIC ONLY/.test(app));
-  for (const v of ["spend", "integrations"]) {
+  check("app.js hides admin views but does not own the boundary", /COSMETIC ONLY/.test(app));
+
+  // Derived, not hardcoded. The previous version of this listed ["spend","integrations"] as a
+  // literal, so adding a page to ADMIN_VIEWS and forgetting ADMIN_ONLY would have failed with
+  // "the list changed" rather than "your new page is reachable by URL" — and the fix for that
+  // failure is to edit the literal, which is exactly the wrong fix.
+  const adminViews = [...(app.match(/const ADMIN_VIEWS = \[([^\]]*)\]/)?.[1] || "").matchAll(/"([^"]+)"/g)].map(m => m[1]);
+  const adminOnly = idx.match(/const ADMIN_ONLY = \[[^\]]*\]/s)?.[0] || "";
+  check("ADMIN_VIEWS is non-empty and parseable", adminViews.length > 0, adminViews.join(","));
+  for (const v of adminViews) {
     check(`  every hidden view "${v}" is also blocked server-side`,
-      new RegExp(`\\\\/api\\\\/${v}`).test(idx.match(/const ADMIN_ONLY = \[[^\]]*\]/s)?.[0] || ""),
+      new RegExp(`\\\\/api\\\\/${v}`).test(adminOnly),
       "hidden in the menu but reachable by URL — that is not a permission");
   }
 }
@@ -329,6 +342,58 @@ console.log("\n== auto-processing skips no-output call types ==");
 
   check("there is an index to aggregate per rep on",
     /CREATE INDEX idx_calls_rep ON calls\(account_id, rep_email, occurred_at\)/.test(mig));
+}
+
+
+// ---- People, the manager tier (TASK-118) ----------------------------------------------
+//
+// The UI test renders this view against a STUBBED api, so it proves the view draws what it is
+// given and proves nothing about the query. Everything below is the query side, which is where
+// a person can be dropped from a dashboard without anything erroring.
+{
+  const idx = sources["index.js"];
+  const people = readFileSync(join(SRC, "people.js"), "utf8");
+
+  // A whole team's scores. The menu hiding it is cosmetic; this is the boundary.
+  check("/api/people is admin-only server-side",
+    /const ADMIN_ONLY = \[[^\]]*\/\^\\\/api\\\/people\/[^\]]*\]/.test(idx),
+    "a member could read every colleague's scores by typing the URL");
+
+  // The unattributed group is real: one production call has no owner and nothing can supply one.
+  // Filtering it out makes the totals disagree with the inbox and nothing says why.
+  check("the roster does not filter out people with no email",
+    !/counts\.filter\([^)]*rep_email\)/.test(people) && !/WHERE[^`]*rep_email IS NOT NULL/.test(people),
+    "dropping the unowned bucket makes the dashboard quietly disagree with the call list");
+  check("a null rep is queried with IS NULL, not = ?",
+    /else\s*\{\s*where\.push\("c\.rep_email IS NULL"\)/.test(people),
+    "`= NULL` matches nothing, so the unattributed page would render as a person with no calls");
+
+  // json_each multiplies rows by the number of dimensions. Counting calls in the same statement
+  // gives a call count times ten, and nothing errors.
+  // Precise: `COUNT(*) AS n` over json_each is CORRECT — that counts scorecard rows per
+  // dimension, which is what n means there. The hazard is counting CALLS in the same statement.
+  check("call counts and score averages are separate queries",
+    /Two passes rather than one clever query/.test(people)
+      && !/COUNT\(\*\) AS calls[\s\S]{0,300}json_each/.test(people),
+    "counting calls in a json_each query multiplies the count by the dimension cardinality");
+
+  // Averages must carry their n, in CALLS not scorecard rows.
+  check("the roster reports the sample size in calls, not dimensions",
+    /avgScoreCalls: r\.scored \|\| 0/.test(people));
+  check("the per-dimension query returns n", /COUNT\(\*\) AS n/.test(people));
+  check("and the range, so a flat average shows its spread",
+    /MIN\(json_extract\(j\.value,'\$\[1\]'\)\) AS low/.test(people));
+
+  // The decision, restated where the code is.
+  check("people.js records WHY there are no benchmarks",
+    /RAW NUMBERS ONLY/.test(people) && /That's on him/.test(people),
+    "a rule with no reason attached is a rule that gets removed by the next person");
+
+  check("archived calls are excluded everywhere",
+    (people.match(/c\.archived_at IS NULL/g) || []).length >= 2);
+  check("an unknown window is refused rather than silently defaulted",
+    /if \(!WINDOWS\[view\]\) return json\(\{ error: `Unknown window/.test(idx),
+    "defaulting a typo'd window shows a month of data under a year's heading");
 }
 
 

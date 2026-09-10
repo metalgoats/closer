@@ -168,6 +168,24 @@ const ROUTES = [
                                         "claude-fable-5": { label: "Fable 5", tier: "Most capable", inPerM: 10, outPerM: 50, note: "n", thinking: "always-on" } } })],
   [/^\/suggestions/, () => ({ suggestions: [] })],
   [/^\/insights/,    () => ({ scored: 1, calls: 1, averages: [["rapport", 8, 3]], hurt: ["x"], lessons: ["y"], types: [] })],
+  // People (TASK-118). Branches on `rep=` the same way the real route does: absent means the
+  // roster, present means one person — including `rep=` EMPTY, which is the unattributed group
+  // and not "no filter". A stub that ignored the parameter would let a view that never reads it
+  // pass, which is the bug this file exists to catch.
+  [/^\/people/, path => /[?&]rep=/.test(path)
+    ? { email: "rep@x.com", name: "rep@x.com", view: "month", window: "Month", bucket: "week",
+        dimensions: [{ dim: "rapport", avg: 6.9, low: 3, high: 10, n: 66 },
+                     { dim: "objection buildup", avg: 1, low: 1, high: 1, n: 1 }],
+        trend: [{ key: "2026-09-01", label: "Sep 1", n: 20, avg: 6.2, dims: { rapport: 7 } }],
+        calls: [{ id: 1, client_name: "Someone", occurred_at: "2026-09-08", duration_min: 48,
+                  call_type: "Sales call", processing_status: "processed", avg_score: 6.1 }] }
+    : { view: "month", window: "Month", since: "2026-08-10",
+        people: [{ email: "rep@x.com", name: "rep@x.com", calls: 112, scored: 66, minutes: 5400,
+                   lastCall: "2026-09-09", avgScore: 5.4, avgScoreCalls: 66,
+                   byType: [{ type: "Sales call", n: 90 }, { type: "Internal / team", n: 22 }] },
+                  { email: null, name: "(unattributed)", calls: 1, scored: 1, minutes: 30,
+                    lastCall: "2026-07-29", avgScore: 7.0, avgScoreCalls: 1, byType: [] }],
+        totals: { people: 2, calls: 113, scored: 67, minutes: 5430 } }],
   [/^\/events/,      () => ({ events: [], totals: { runs: 2, failures: 0, input_tokens: 100, output_tokens: 50, avg_ms: 1000 },
                               today: { runs: 1, input_tokens: 10, output_tokens: 5 },
                               week:  { runs: 2, input_tokens: 100, output_tokens: 50 },
@@ -176,7 +194,7 @@ const ROUTES = [
 globalThis.fetch = async (url) => {
   const path = String(url).replace(/^.*\/api/, "");
   const hit = ROUTES.find(([re]) => re.test(path));
-  return { ok: true, status: 200, json: async () => (hit ? hit[1]() : {}) };
+  return { ok: true, status: 200, json: async () => (hit ? hit[1](path) : {}) };
 };
 
 let bootErr = null;
@@ -727,6 +745,21 @@ check("the 641-900px band has a working door to navigation",
 check("the icon rail is gone",
   !/grid-template-columns:56px 220px/.test(css),
   "a 56px rail with no icons showed a logo above a blank strip");
+// Both of these were found by RESIZING THE WINDOW, not by any assertion, and both are the same
+// disease: `.ev-table` is table-layout:fixed at width:100%, so a container narrower than the sum
+// of the fixed columns steals the space from column 1 instead of scrolling. On People that made
+// the name column one character wide with "PERSON" and "CALLS" printed on top of each other.
+check("People tables have a min-width so they scroll instead of collapsing",
+  /\.pp-table \{ min-width:\d+px; \}/.test(css) && /\.pp-calls \{ min-width:\d+px; \}/.test(css)
+    && /\.pp-dims  \{ min-width:\d+px; \}/.test(css),
+  "a fixed-layout table in a narrow container collapses column 1 rather than overflowing");
+check("...and the wrapper can actually scroll them",
+  (src.match(/<div style="overflow-x:auto;"><table class="ev-table sp-table pp-/g) || []).length >= 3,
+  "min-width with no scrollable wrapper just clips");
+// An email is one token; break-word hyphenated it into "gabriel@exa / mple.com".
+check("emails truncate rather than hyphenate mid-word",
+  /\.pp-table td:nth-child\(1\) \{ overflow-wrap:normal; white-space:nowrap;/.test(css));
+
 check("the event table cannot squeeze details into towers",
   /\.ev-table\{[^}]*table-layout:fixed/.test(css));
 {
@@ -735,6 +768,62 @@ check("the event table cannot squeeze details into towers",
     !/\\n/.test(seed.replace(/char\(10\)/g, "")),
     "the dev email rendered 'Dear Jeffrey,\\n\\nThank you' as literal text");
 }
+
+// ---- People (TASK-118) --------------------------------------------------------------------
+console.log("\n== People renders, and keeps the two decisions that could quietly erode ==");
+{
+  // Render it for real and read the DOM, rather than grepping the source for strings. The two
+  // things asserted below are product decisions taken on a call, and both are the kind that get
+  // "improved" back in by someone who thinks a dashboard should grade people.
+  T.state.peopleRep = undefined;
+  T.state.peopleView = "month";
+  await T.VIEWS.people();
+  const roster = document.querySelector("#detailPane").innerHTML;
+
+  check("the roster lists people", /rep@x\.com/.test(roster));
+  check("the unattributed group is shown, not silently dropped",
+    /\(unattributed\)/.test(roster) && /no owner recorded/.test(roster),
+    "a call with no owner must be visible as unowned, not folded into someone's numbers");
+  check("calls without a scorecard are counted but excluded from the average",
+    /excluded from Avg/.test(roster));
+  check("the window chips are all five", ["Week", "Month", "6 months", "Year", "All time"]
+    .every(l => roster.includes(l)));
+
+  // DECISION, 2026-09-09: raw numbers, no benchmarks. Gabriel: "what a healthy number is, is
+  // something Nathan's going to figure out. That's on him."
+  check("no score is colour-coded as good or bad",
+    !/spend-v (warn|bad)/.test(roster) && !/class="[^"]*\bgood\b/.test(roster),
+    "colouring a score is rendering a verdict, which is the thing this page does not do");
+  {
+    const people = readFileSync(join(PUB, "..", "src", "people.js"), "utf8");
+    check("the roster is sorted by volume, never by score",
+      /people\.sort\(\(a, b\) => b\.calls - a\.calls\)/.test(people)
+        && !/sort[\s\S]{0,60}avgScore/.test(people),
+      "ranking people by score on the landing view is a league table, which is a verdict");
+    check("no threshold, grade or verdict is computed anywhere in people.js",
+      !/\b(good|bad|poor|excellent|needsImprovement|threshold|target|benchmark|grade)\b\s*[:=]/.test(people),
+      "a threshold here is the benchmark Gabriel explicitly declined");
+  }
+
+  T.state.peopleRep = "rep@x.com";
+  await T.VIEWS.people();
+  const person = document.querySelector("#detailPane").innerHTML;
+
+  check("the person view renders dimensions", /rapport/.test(person));
+  // Every average ships its n. The live data had a model-invented dimension averaging 1.0 over
+  // a single call; without the count beside it that reads as a catastrophic weakness.
+  check("every dimension shows how many calls it rests on",
+    /objection buildup/.test(person) && /Calls<\/th>/.test(person),
+    "an average with no sample size is how one call becomes a trend");
+  check("the low-n caveat is stated in words, not just implied",
+    /n of 1 is usually an artifact/.test(person));
+  check("the trend chart renders", /pp-tbar/.test(person));
+  check("their calls are listed and clickable", /pp-callrow/.test(person));
+  check("there is a way back to the roster", /ppBack/.test(person));
+
+  T.state.peopleRep = undefined;
+}
+
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

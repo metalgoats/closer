@@ -14,6 +14,15 @@ Stack: Cloudflare Workers (UI + API in one Worker) · Cloudflare D1 (SQLite) · 
 > until there is a second rep, at which point the rep view, the per-person drill-down, the
 > aggregate-by-role numbers and the weekly ranking all become queries rather than projects.
 
+> [!note] People — the manager tier (TASK-118, 2026-09-09)
+> `Settings → People`, admin only. A roster of everyone who ran a call, then per-person dimension
+> averages with their range and sample size, a trend, and their calls.
+> **Raw numbers only: no targets, no benchmarks, no colour-coded scores, and the roster sorts by
+> volume rather than score.** That is a decision Gabriel took on the 09-09 call, not an oversight,
+> and `tests/ui-smoke.test.mjs` fails if it is undone. Every average carries its `n` in calls,
+> because the model occasionally invents a scorecard dimension and a one-call average with no
+> count beside it reads as a finding.
+
 ## Local development (no Cloudflare account needed)
 
 ```bash

@@ -3047,6 +3047,67 @@
         "worker-refs 75/75",
         "full suite 488/488"
       ]
+    },
+    {
+      "id": "TASK-118",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "title": "People \u2014 the manager dashboard Nathan asked to buy",
+      "source": "2026-09-09 Nathan call",
+      "dependencies": [
+        "TASK-117"
+      ],
+      "description": "Roster of everyone who ran a call plus a per-person drill-down: dimension averages with range and sample size, a trend, and their calls. Five windows. Admin-only in ADMIN_ONLY. DONE 2026-09-09. Two product decisions are test-enforced: raw numbers with no benchmarks (Gabriel's explicit decision on the call) and sorting by volume rather than score. Every average carries its n in CALLS, after the first real aggregate surfaced a model-invented dimension averaging 1.0 over one call. Setter-vs-closer grouping deliberately NOT built: it needs a job role nobody records, so call type is used as the axis that actually exists.",
+      "acceptance_criteria": [
+        "Roster lists every rep including the unattributed group",
+        "Per-person dimensions carry avg, range and sample size",
+        "Trend buckets by window",
+        "Admin-only server-side, not just hidden in the menu",
+        "No score is colour-coded or ranked"
+      ],
+      "testing_criteria": [
+        "Ranking by score fails",
+        "Adding a threshold to people.js fails",
+        "Dropping the sample size fails",
+        "Dropping the unattributed group fails",
+        "Removing the table min-widths fails"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/people.js",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css",
+        "closer-app/public/index.html",
+        "closer-app/seed/seed.sql"
+      ],
+      "test_results": [
+        "ui-smoke 183/183",
+        "worker-refs 88/88",
+        "full suite 519/519"
+      ]
+    },
+    {
+      "id": "TASK-119",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "title": "A fresh database could not be migrated, and its first user was not an admin",
+      "source": "2026-09-09, found while bringing up a local DB to look at the People page",
+      "dependencies": [],
+      "description": "Two ordering bugs invisible in production and fatal on a clean install. (1) Migration 0012 hardcodes account_id=1 in literal VALUES rows and no migration creates an account, so `npm run db:migrate:local` on a clean checkout FK-failed and migrations 0012-0020 never applied. Guarded with WHERE EXISTS; safe to edit because D1 records applied migrations by name. (2) /api/setup left the first user's role to the column default 'member'; migration 0019 promoted MIN(id) which covered production's existing user, but on a fresh deployment setup runs after migrations, so a new tenant's owner would have been locked out of Integrations \u2014 where the Anthropic key is pasted. Both now asserted.",
+      "acceptance_criteria": [
+        "A clean checkout can run db:migrate:local through 0020",
+        "The first-run user is an admin"
+      ],
+      "testing_criteria": [
+        "Reverting either fix fails a named assertion"
+      ],
+      "files_expected_to_change": [
+        "closer-app/migrations/0012_call_types.sql",
+        "closer-app/src/index.js"
+      ],
+      "notes": "Both would have surfaced for the first time during Nathan's onboarding."
     }
   ],
   "progress_percentage": 89,

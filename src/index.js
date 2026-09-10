@@ -1,4 +1,5 @@
 import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessionToken, requireUser } from "./auth.js";
+import { roster, person, WINDOWS } from "./people.js";
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
 import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
@@ -102,7 +103,7 @@ async function route(request, env, url, ctx) {
   // Activity is deliberately NOT on the list. It is the reliability surface Gabriel needed on
   // 08-04 ("does generation actually fail?"), and its cost figures describe spend on his own
   // key. Revisit if the roles are ever inverted.
-  const ADMIN_ONLY = [/^\/api\/spend/, /^\/api\/integrations/, /^\/api\/backup/, /^\/api\/users/];
+  const ADMIN_ONLY = [/^\/api\/spend/, /^\/api\/integrations/, /^\/api\/backup/, /^\/api\/users/, /^\/api\/people/];
   if (user.role !== "admin" && ADMIN_ONLY.some(re => re.test(path))) {
     return json({ error: "This account does not have access to that." }, 403);
   }
@@ -504,6 +505,28 @@ async function route(request, env, url, ctx) {
   // Dollars, by day/week/month/year, split by model. Separate from /api/events on purpose:
   // Activity answers "is it working", Spend answers "what did it cost", and the last time
   // those two questions shared one surface the page grew three stat strips that disagreed.
+  // ---- people: the manager tier (TASK-118) ----
+  //
+  // ADMIN ONLY, and the gate above is the boundary — this is every rep's scores in one place,
+  // which is precisely the thing a member must not be able to open about their colleagues.
+  //
+  // `rep` is a query parameter rather than a path segment because the identifier is an email
+  // address: `/api/people/gabriel@x.com` puts an @ and a dot in a path and gets mangled by
+  // something eventually. Absent `rep` means the roster; `rep=` (empty) means the unattributed
+  // group, which is a real group and not the same as "no filter".
+  if (path === "/api/people" && method === "GET") {
+    const view = url.searchParams.get("view") || "month";
+    if (!WINDOWS[view]) return json({ error: `Unknown window "${view}".` }, 400);
+    const acct = url.searchParams.get("account_id");
+    const accountId = acct ? +acct : null;
+
+    if (url.searchParams.has("rep")) {
+      const rep = url.searchParams.get("rep") || null;   // "" -> null -> the unattributed group
+      return json(await person(env, rep, { view, accountId }));
+    }
+    return json(await roster(env, { view, accountId }));
+  }
+
   if (path === "/api/spend" && method === "GET") {
     const view = url.searchParams.get("view") || "day";
     const limit = +(url.searchParams.get("limit") || (view === "day" ? 30 : view === "week" ? 12 : view === "month" ? 12 : 5));
@@ -691,7 +714,17 @@ async function setup(request, env) {
   const { email, password } = await request.json();
   if (!email || !password || password.length < 8) return json({ error: "email + password (8+ chars) required" }, 400);
   const { hash, salt } = await hashPassword(password);
-  await env.DB.prepare("INSERT INTO users (email, pw_hash, pw_salt) VALUES (?, ?, ?)").bind(email, hash, salt).run();
+  // The first-run user OWNS the deployment, so they are the admin. This was previously left to
+  // the column default -- 'member' -- and it worked in production only by accident of ordering:
+  // migration 0019 promoted MIN(id) at migration time, and production's user already existed.
+  //
+  // On a FRESH deployment setup runs AFTER migrations, so the owner was created as a member and
+  // locked out of Integrations, Spend, Users and People. That is not a dev annoyance: Integrations
+  // is where a new tenant pastes the Anthropic key without which the product cannot generate at
+  // all. The first customer to onboard would have been unable to finish onboarding.
+  // Found 2026-09-09 on a fresh local database.
+  await env.DB.prepare("INSERT INTO users (email, pw_hash, pw_salt, role) VALUES (?, ?, ?, 'admin')")
+    .bind(email, hash, salt).run();
   return startSession(env, email);
 }
 
