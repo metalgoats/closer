@@ -741,6 +741,20 @@ console.log("\n== key moments and their timestamps ==");
     "it writes to calls, so the safe default is to report rather than change");
   check("the backfill never creates a call",
     !/backfillUrls[\s\S]{0,1600}INSERT INTO calls/.test(idx));
+  // Fathom returns ONE page and this client does not paginate. "found 10, updated 10" reads as
+  // completion while a hundred calls still have no link -- the same shape as a backup that
+  // reports success having copied nothing.
+  check("the backfill reports how many calls are still unlinked",
+    /remaining,/.test(idx) && /source = 'fathom' AND recording_url IS NULL/.test(idx),
+    "without this, a one-page run looks like a finished job");
+  check("...and says why, rather than leaving a bare number",
+    /returns one page per request and this does not paginate/.test(idx));
+  check("the backfill asks Fathom for metadata only",
+    /fetchFathomMeetings\(key, sinceIso, row\.owner_email, \{ includeTranscript: false \}\)/.test(idx),
+    "re-downloading 134 transcripts to fill in a link is wasteful and re-fetches other people's words");
+  check("...and the poller still gets transcripts by default",
+    /includeTranscript = true \} = \{\}/.test(idx),
+    "flipping the default would silently stop the poller importing any content");
 }
 
 

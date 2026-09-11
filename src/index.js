@@ -1133,11 +1133,14 @@ function flattenTranscript(t) {
 // Fetches meetings from Fathom. Returns { ok, items } or { ok:false, message } — the caller
 // decides whether that becomes an HTTP response or a log line, so the manual pull and the
 // cron share one implementation rather than drifting apart.
-async function fetchFathomMeetings(key, sinceIso, ownerEmail) {
+async function fetchFathomMeetings(key, sinceIso, ownerEmail, { includeTranscript = true } = {}) {
   // recorded_by[] limits results to THIS person's recordings. Without it Fathom returns the
   // whole org's meetings (documented behaviour) — see TASK-063.
   const scope = ownerEmail ? `&recorded_by[]=${encodeURIComponent(ownerEmail)}` : "";
-  const url = `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(sinceIso)}&include_transcript=true${scope}`;
+  // The URL backfill needs metadata only. Defaulting to true keeps the poller unchanged; passing
+  // false stops a backfill from re-downloading 134 transcripts to fill in a link, which is both
+  // wasteful and re-fetches other people's words for no reason.
+  const url = `${FATHOM_BASE}/meetings?created_after=${encodeURIComponent(sinceIso)}&include_transcript=${includeTranscript ? "true" : "false"}${scope}`;
   let data;
   try {
     const res = await fetch(url, { headers: { "X-Api-Key": key }, signal: AbortSignal.timeout(60_000) });
@@ -1380,9 +1383,8 @@ async function fathomBackfillUrls(env, id, days = 90, dry = true) {
   if (!key) return json({ ok: false, message: "No Fathom key saved yet." });
 
   const sinceIso = new Date(Date.now() - days * 86400_000).toISOString();
-  // include_transcript=false: this needs URLs, not content. Re-pulling 134 transcripts to fill in
-  // a link would move megabytes for no reason and re-fetch other people's words.
-  const res = await fetchFathomMeetings(key, sinceIso, row.owner_email);
+  // Metadata only: this needs URLs, not content.
+  const res = await fetchFathomMeetings(key, sinceIso, row.owner_email, { includeTranscript: false });
   if (!res.ok) return json({ ok: false, message: res.message });
 
   const updates = [];
@@ -1404,7 +1406,22 @@ async function fathomBackfillUrls(env, id, days = 90, dry = true) {
     await logEvent(env, { kind: "fathom.urls_backfilled", account_id: row.account_id,
       detail: `${updates.length} call${updates.length === 1 ? "" : "s"} linked to their recording` });
   }
+  // Report what is LEFT, not just what was touched.
+  //
+  // Fathom's /meetings endpoint returns ONE page and this client does not paginate, so a run
+  // covers only the most recent meetings in the window. Without `remaining`, a result reading
+  // "found 10, updated 10" looks like completion when a hundred calls still have no link — the
+  // same shape as a backup that reports success having copied nothing.
+  const left = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM calls WHERE account_id = ? AND source = 'fathom' AND recording_url IS NULL"
+  ).bind(row.account_id).first();
+  const remaining = dry ? left.n : Math.max(0, left.n);
+
   return json({ ok: true, dry, found: res.items.length, updated: updates.length,
+                remaining,
+                note: remaining
+                  ? `Fathom returns one page per request and this does not paginate, so ${remaining} older call${remaining === 1 ? "" : "s"} still ${remaining === 1 ? "has" : "have"} no recording link. Their key moments render as plain timestamps.`
+                  : "Every Fathom call on this account now links to its recording.",
                 calls: updates.slice(0, 40).map(u => ({ id: u.id, name: u.name })) });
 }
 
