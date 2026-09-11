@@ -540,7 +540,7 @@
     },
     {
       "id": "TASK-018",
-      "title": "Register GoHighLevel marketplace app",
+      "title": "Register GoHighLevel marketplace app \u2014 NOT REQUIRED, superseded by Private Integration Tokens",
       "description": "Register a GHL marketplace app to obtain Client ID/Secret, enabling the OAuth login flow that lets Gabriel click Connect instead of pasting keys.",
       "dependencies": [
         "TASK-009"
@@ -558,19 +558,17 @@
         "Redirect URI matches deployed callback route"
       ],
       "files_expected_to_change": [],
-      "status": "blocked",
-      "notes": "RESCOPED 2026-07-16 by TASK-030: now only the On Screen Authority GHL sub-account, not both. BLOCKED: requires Ivan to register the app in the GHL developer marketplace. Missing info: which GHL scopes are needed, and whether Gabriel's GHL plan permits marketplace apps. Possible solutions: (a) register the marketplace app for true OAuth, (b) fall back to GHL Private Integration Tokens (static, simpler, but reintroduces a pasted token \u2014 contradicts Ivan's stated preference), (c) defer GHL entirely and keep copy/paste for CRM notes, which Gabriel already tolerates.",
+      "status": "parked",
+      "notes": "RESCOPED 2026-07-16 by TASK-030: now only the On Screen Authority GHL sub-account, not both. BLOCKED: requires Ivan to register the app in the GHL developer marketplace. Missing info: which GHL scopes are needed, and whether Gabriel's GHL plan permits marketplace apps. Possible solutions: (a) register the marketplace app for true OAuth, (b) fall back to GHL Private Integration Tokens (static, simpler, but reintroduces a pasted token \u2014 contradicts Ivan's stated preference), (c) defer GHL entirely and keep copy/paste for CRM notes, which Gabriel already tolerates. \u2014 SUPERSEDED 2026-09-11. Verified against GoHighLevel's own developer docs: Private Integration Tokens enable custom integrations 'without requiring marketplace app registration'. Owner creates one in Settings > Private Integrations, picks scopes (Contacts, Opportunities, Users all available), sends it as Authorization: Bearer. No developer account, no review, and crucially NO PRODUCT NAME \u2014 which is what this was actually waiting on. Static token, rotate every 90 days, old token valid 7 more days. Matches the app's existing BYOK pattern exactly and matches Gabriel's per-business commercial model. The only thing given up is being listed in GHL's marketplace, which is a distribution question, not a functionality one, and can be done later with a name and a proven integration. Blocked for 8 weeks on something that was never required.",
       "test_results": []
     },
     {
       "id": "TASK-019",
-      "title": "Implement GHL OAuth connect flow",
+      "title": "Implement the GoHighLevel connection (Private Integration Token, not OAuth)",
       "description": "Build the real OAuth 2.0 flow behind the existing stubbed Connect button: authorize redirect, callback handler, encrypted token storage, and automatic refresh (GHL access tokens expire every 24h).",
-      "dependencies": [
-        "TASK-018"
-      ],
+      "dependencies": [],
       "priority": "medium",
-      "estimated_complexity": "high",
+      "estimated_complexity": "medium",
       "acceptance_criteria": [
         "Connect button initiates GHL OAuth and returns successfully",
         "Access + refresh tokens stored server-side, never exposed to the browser",
@@ -590,7 +588,7 @@
         "closer-app/public/app.js"
       ],
       "status": "incomplete",
-      "notes": "Connect button currently shows a toast explaining it needs the marketplace app first. Requires a new migration for oauth token storage (access_token, refresh_token, expires_at per account). Security note recorded in UI: OAuth still stores a sensitive token server-side \u2014 its win is click-to-connect UX + auto-expiry, not eliminating stored credentials.",
+      "notes": "Connect button currently shows a toast explaining it needs the marketplace app first. Requires a new migration for oauth token storage (access_token, refresh_token, expires_at per account). Security note recorded in UI: OAuth still stores a sensitive token server-side \u2014 its win is click-to-connect UX + auto-expiry, not eliminating stored credentials. \u2014 RESCOPED 2026-09-11 and UNBLOCKED. No OAuth flow, no marketplace app, no token refresh: the customer pastes a Private Integration Token the same way they paste the Anthropic and Fathom keys. Drops the whole OAuth round trip, the callback route, the CSRF state parameter and the refresh scheduler from the original scope. Store encrypted server-side, scope minimally, and put 90-day rotation in the onboarding checklist.",
       "test_results": []
     },
     {
