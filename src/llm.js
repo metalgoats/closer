@@ -207,6 +207,11 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
   // have converted a moment of excitement into defined scope. Sales-frame only.
   if (dims.length) {
     schemaParts.push('missedOpenings (array of {moment (string: the point in the call), askInstead (string: the exact micro-commitment question to have asked there)} — use [] if none)');
+    // TASK-123. The moments a sales trainer would replay with the rep. `at` is COPIED from the
+    // transcript, never computed: every line is prefixed HH:MM:SS and the model only has to quote
+    // the one it is describing. Anything it invents is caught by verifyMoments and simply does
+    // not become a link.
+    schemaParts.push('keyMoments (array of {at (string: the EXACT HH:MM:SS timestamp as it appears at the start of that transcript line — copy it character for character; never estimate, round, or calculate one), label (string, 2-5 words: what this moment is, e.g. "price raised", "lost the frame", "buying signal missed"), what (string: one sentence on what happened, quoting the client where it matters), why (string: one sentence on why a sales trainer would replay this exact moment with the rep)} — the 3 to 6 moments that decided this call, in time order. Include the moment it turned, any moment the deal was won or lost, and the strongest buying signal. Use [] for a call with no such moments; do NOT pad it.)');
   }
   // TASK-104. recipientProfile describes how this person COMMUNICATES. buyingProfile describes
   // how they DECIDE — which is what Gabriel actually writes to, and what he was leaving Closer
@@ -353,6 +358,12 @@ Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
   if (wantMessages && onStep) await onStep({ step: "messages", duration_ms: Date.now() - t1 });
   if (!wantMessages) report(99, "Finishing up");
 
+  // Verify timestamps once, here, and write the verified form back into the debrief that gets
+  // stored. An unverified moment keeps its text and loses only its link. Doing this at read time
+  // would mean re-scanning a 75,000-character transcript on every page view.
+  const momentCheck = verifyMoments(parsed.keyMoments, call.transcript);
+  parsed.keyMoments = momentCheck.moments;
+
   return {
     model: provider,
     // The actual Claude model id, NOT the provider. `model` above is "anthropic" and always
@@ -365,6 +376,9 @@ Return ONLY JSON: {"sms": "...", "emailSubject": "...", "email": "..."}` }
     debrief: parsed,
     // Surfaced, never silently corrected -- see scorecardIssues above.
     scorecardIssues: scorecardIssues(parsed.scorecard, dims),
+    // Timestamps are verified against the transcript before storage, so a stored debrief carries
+    // a trustworthy `seconds` (or null) on every moment.
+    momentsUnverified: momentCheck.unverified,
     ghlNote: wantCrmNote ? parsed.ghlNote : null,
     messages,
     // suggested_tone now records WHICH voice was used (always VOICE_TONE) and tone_reason
@@ -520,6 +534,53 @@ const MAX_ATTEMPTS = 4;
 // LIMIT, and it is real: MAX_ATTEMPTS backs off ~1.5s + 3s + 6s. That rescues a momentary
 // rejection. It will NOT rescue a multi-hour block like 2026-08-13, where the same calls only
 // succeeded a day later. This turns a blip into a non-event; it does not turn an outage into one.
+// Timestamps, and the link back into the recording (TASK-123).
+//
+// Fathom writes every transcript line as `HH:MM:SS — speaker: text`, so the model can SEE the
+// time of everything it reads. Asking it to hand that timestamp back beside a key moment turns a
+// paragraph of analysis into "watch the eleven seconds where this call turned".
+//
+// > [!important] The model COPIES a timestamp; it never computes one.
+// > HH:MM:SS to seconds is arithmetic, and arithmetic is what language models are worst at and
+// > most confident about. The conversion happens here, deterministically. The model's only job is
+// > to quote a string already in front of it.
+
+// "00:12:58" -> 778. Null for anything that is not a real timestamp: a null renders as plain
+// text, while a wrong number is a link that opens the wrong part of the call.
+export function parseTimestamp(v) {
+  const m = /^(\d{1,2}):([0-5]\d):([0-5]\d)$/.exec(String(v ?? "").trim());
+  if (!m) return null;
+  return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+}
+
+// Did this timestamp actually occur in the transcript?
+//
+// Same discipline as scorecardIssues, and for the same reason: the model occasionally produces a
+// plausible value that was not in its input. An invented timestamp is worse than a missing one,
+// because it is a link a sales trainer clicks in front of their team that opens the wrong moment,
+// and nothing in the output says it is wrong.
+//
+// A moment is LINKED only if its timestamp appears at the start of a real transcript line.
+// Everything else still renders; it just loses the link.
+export function verifyMoments(moments, transcript) {
+  if (!Array.isArray(moments)) return { moments: [], unverified: 0 };
+  // Collected once. These transcripts run to 75,000 characters and there are up to six moments.
+  const present = new Set();
+  for (const line of String(transcript || "").split("\n")) {
+    const at = line.slice(0, 8);
+    if (/^\d{2}:[0-5]\d:[0-5]\d$/.test(at)) present.add(at);
+  }
+  let unverified = 0;
+  const out = moments.map(m => {
+    const at = String(m?.at ?? "").trim();
+    const seconds = parseTimestamp(at);
+    const verified = seconds !== null && present.has(at.padStart(8, "0"));
+    if (!verified) unverified++;
+    return { ...m, at, seconds: verified ? seconds : null, verified };
+  });
+  return { moments: out, unverified };
+}
+
 // Does the model's scorecard match the dimensions it was asked for? (TASK-121)
 //
 // The prompt says "one for EACH of exactly these dimensions in this order". It usually complies.

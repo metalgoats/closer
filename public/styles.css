@@ -1034,3 +1034,19 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
 /* A disabled action that looks identical to an enabled one reads as a broken button. */
 .chip[disabled] { opacity:.45; cursor:not-allowed; }
 .chip[disabled]:hover { background:var(--paper-100); }
+
+/* ---- Key moments (TASK-123) ---------------------------------------------------------------
+   A linked timestamp and an unlinked one must not look the same. The linked version is the
+   accent colour and underlines on hover; the unlinked one is muted and carries a title saying
+   why. A trainer clicking a dead-looking link in front of their team is the failure to avoid. */
+.km-list { display:flex; flex-direction:column; gap:10px; margin:8px 0 18px; }
+.km { display:flex; gap:12px; align-items:flex-start; padding:10px 12px;
+      border:1px solid var(--line); border-radius:10px; background:var(--paper-50); }
+.km-at { font-family:var(--font-mono); font-size:12px; font-weight:600; white-space:nowrap;
+         padding-top:1px; color:var(--blue-500); text-decoration:none; }
+a.km-at:hover { text-decoration:underline; }
+.km-at.km-plain { color:var(--ink-400); cursor:help; }
+.km-body { flex:1; min-width:0; }
+.km-label { font-weight:600; font-size:13px; }
+.km-what { font-size:13px; color:var(--ink-800); margin-top:3px; }
+.km-why { font-size:12px; color:var(--ink-400); margin-top:3px; }

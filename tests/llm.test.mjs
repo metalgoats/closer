@@ -11,7 +11,7 @@
 //   2. THE SMS IS NEVER SUPPRESSED, even on an email-only call.
 //   3. The enriched debrief (TASK-089) and adaptive-draft plumbing (recipientProfile.detailPreference,
 //      bounded-certainty) are wired, and the new fields survive into what workflow.js persists.
-import { generateOutputs, hasContent, debriefLine, isRetryableForbidden, scorecardIssues } from "../src/llm.js";
+import { generateOutputs, hasContent, debriefLine, isRetryableForbidden, scorecardIssues, parseTimestamp, verifyMoments } from "../src/llm.js";
 import { SPECIMEN_APPROX_TOKENS as SPECIMEN_TOKENS } from "../src/specimen.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -654,6 +654,93 @@ console.log("\n== scorecard integrity ==");
     "a warning nobody can act on is a warning nobody reads");
   check("a clean run logs no mismatch", /if \(gen\.scorecardIssues\?\.length\)/.test(wf),
     "firing on every run makes the signal worthless");
+}
+
+
+// ---- timestamped key moments (TASK-123) ------------------------------------------------------
+//
+// Gabriel: "for that to be easy to do and easy to access". A linked timestamp is the difference
+// between reading about the moment a call turned and watching it. The risk is the same one the
+// scorecard had: the model producing a plausible value that was not in its input. A wrong link is
+// worse than no link, because a trainer clicks it in front of their team and it opens the wrong
+// moment with nothing on screen to say so.
+console.log("\n== key moments and their timestamps ==");
+{
+  check("HH:MM:SS parses to seconds", parseTimestamp("00:12:58") === 778);
+  check("a single-digit hour parses", parseTimestamp("1:02:03") === 3723);
+  check("00:00:00 is zero, not falsy-rejected", parseTimestamp("00:00:00") === 0,
+    "a moment at the very start of a call must still link");
+  check("prose does not parse", parseTimestamp("twelve minutes in") === null);
+  check("an impossible time does not parse", parseTimestamp("00:99:00") === null,
+    "60+ minutes or seconds is not a timestamp, it is a hallucination");
+  check("mm:ss without an hour does not parse", parseTimestamp("12:58") === null,
+    "Fathom always writes HH:MM:SS; a two-part value means the model reformatted it");
+  check("empty and null are handled", parseTimestamp("") === null && parseTimestamp(null) === null);
+
+  const T = "00:00:34 — Gabriel: hi\n00:12:58 — Client: how much is it\n00:41:02 — Gabriel: ok";
+
+  const r = verifyMoments([
+    { at: "00:12:58", label: "price raised" },
+    { at: "00:13:00", label: "invented" },
+    { at: "nope", label: "garbage" },
+  ], T);
+  check("a timestamp present in the transcript is verified and carries seconds",
+    r.moments[0].verified === true && r.moments[0].seconds === 778);
+  check("a plausible but ABSENT timestamp is refused",
+    r.moments[1].verified === false && r.moments[1].seconds === null,
+    "00:13:00 parses perfectly and is not in the transcript — this is the exact failure mode");
+  check("an unparseable timestamp is refused", r.moments[2].verified === false);
+  check("unverified moments are counted, not dropped",
+    r.unverified === 2 && r.moments.length === 3,
+    "the moment's TEXT is still valuable; only the link is withheld");
+  check("the moment keeps its other fields", r.moments[1].label === "invented");
+
+  check("a non-array is handled", verifyMoments(null, T).moments.length === 0);
+  check("a missing transcript verifies nothing", verifyMoments([{ at: "00:12:58" }], "").moments[0].verified === false);
+
+  const llm = readFileSync(new URL("../src/llm.js", import.meta.url), "utf8");
+  check("the model is told to COPY the timestamp, never compute one",
+    /copy it character for character; never estimate, round, or calculate one/.test(llm),
+    "HH:MM:SS to seconds is arithmetic, which is what models are worst at and most sure of");
+  check("the conversion happens in code, not in the prompt",
+    /The model COPIES a timestamp; it never computes one/.test(llm));
+  check("verification runs before storage, not at read time",
+    /const momentCheck = verifyMoments\(parsed\.keyMoments, call\.transcript\);/.test(llm)
+      && /parsed\.keyMoments = momentCheck\.moments;/.test(llm),
+    "re-scanning a 75,000-character transcript on every page view is the alternative");
+  check("keyMoments is gated to scored/sales types like diagnosis and missedOpenings",
+    /if \(dims\.length\) \{[\s\S]{0,1400}keyMoments \(array of/.test(llm),
+    "an internal team call should not be asked for the moment the deal turned");
+  check("the schema asks for a bounded number and forbids padding",
+    /3 to 6 moments/.test(llm) && /do NOT pad it/.test(llm));
+
+  // The UI must distinguish a verified link from an unverified one.
+  const app = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+  check("a link is only rendered when seconds is a real number AND a URL exists",
+    /const linkable = base && Number\.isFinite\(m\.seconds\);/.test(app),
+    "Number.isFinite rather than truthiness, so a moment at 00:00:00 still links");
+  check("an unverified moment renders as text, not as a dead link",
+    /km-at km-plain/.test(app) && /<span class="km-at km-plain"/.test(app));
+  check("...and says why it is not linked", /not found in the transcript, so it is not linked/.test(app));
+  check("the recording URL is escaped into the href", /href="\$\{esc\(base\)\}/.test(app));
+  check("an existing query string is respected",
+    /base\.includes\("\?"\) \? "&" : "\?"/.test(app),
+    "a Fathom URL that already carries a parameter would otherwise get a second ?");
+
+  const idx = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
+  check("the recording URL is stored, never derived from external_id",
+    /const recordingUrl = m\.share_url \|\| m\.url \|\| null;/.test(idx)
+      && /this cannot be derived/.test(idx),
+    "external_id is a numeric recording id; Fathom's public URLs use an opaque token");
+  check("share_url is preferred over url",
+    idx.indexOf("m.share_url || m.url") > 0,
+    "the core use is a manager opening a REP's call, and url is the owner's own view");
+  check("the backfill never overwrites a URL that is already set",
+    /if \(!call \|\| call\.recording_url\) continue;/.test(idx));
+  check("the backfill is dry by default", /url\.searchParams\.get\("apply"\) !== "1"/.test(idx),
+    "it writes to calls, so the safe default is to report rather than change");
+  check("the backfill never creates a call",
+    !/backfillUrls[\s\S]{0,1600}INSERT INTO calls/.test(idx));
 }
 
 

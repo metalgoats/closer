@@ -1243,9 +1243,45 @@ function defaultOutputTab(d) {
 // TASK-089 enriched the debrief from flat lists to structured objects. Every renderer below is
 // SHAPE-TOLERANT: production has processed calls stored in the OLD shape (string[], [label,score]),
 // and they must keep rendering. Each helper branches on typeof and never assumes the new shape.
+// Key moments with a link into the recording (TASK-123).
+//
+// Gabriel: "in the moments where there is a critical moment in the call... for that to be easy to
+// do and easy to access." A sales trainer reads the moment and clicks straight to the second it
+// happened, instead of scrubbing a 48-minute recording.
+//
+// Two states, and the second is the point:
+//   * `seconds` is a number -> the timestamp was VERIFIED against the transcript. Render a link.
+//   * `seconds` is null     -> the model produced a timestamp that is not in the transcript, or
+//                              the call has no recording URL. Render the time as PLAIN TEXT.
+//
+// A wrong link is worse than no link here: it is something a trainer clicks in front of their
+// team and it opens the wrong moment, with nothing on screen to say it is wrong. Verification
+// happens server-side at generation time (verifyMoments in llm.js); this just honours it.
+function keyMoments(d, call) {
+  const list = Array.isArray(d?.keyMoments) ? d.keyMoments : [];
+  if (!list.length) return "";
+  const base = call?.recording_url || "";
+  return `<h4>Key Moments</h4><div class="km-list">${list.map(m => {
+    const linkable = base && Number.isFinite(m.seconds);
+    const at = esc(m.at || "");
+    const stamp = linkable
+      ? `<a class="km-at" href="${esc(base)}${base.includes("?") ? "&" : "?"}timestamp=${m.seconds}"
+            target="_blank" rel="noopener" title="Open the recording at ${at}">${at}</a>`
+      : `<span class="km-at km-plain" title="${base ? "This timestamp was not found in the transcript, so it is not linked" : "No recording link stored for this call"}">${at}</span>`;
+    return `<div class="km">
+      ${stamp}
+      <div class="km-body">
+        <div class="km-label">${esc(m.label || "")}</div>
+        ${m.what ? `<div class="km-what">${esc(m.what)}</div>` : ""}
+        ${m.why ? `<div class="km-why">${esc(m.why)}</div>` : ""}
+      </div></div>`;
+  }).join("")}</div>`;
+}
+
 const DEBRIEF_PAGES = [
   { label: "TL;DR & Scorecard", key: "tldr",
-    render: d => (diagnosisBlock(d) + highlights(d) + (d.scorecard?.length ? `<h4>Call Scorecard</h4>${scorecard(d.scorecard)}` : "")) },
+    render: (d, call) => (diagnosisBlock(d) + highlights(d) + keyMoments(d, call)
+      + (d.scorecard?.length ? `<h4>Call Scorecard</h4>${scorecard(d.scorecard)}` : "")) },
   { label: "Did Well", key: "didWell", render: d => richList(d.didWell, "did") },
   { label: "Hurt Sale", key: "hurtSale", render: d => richList(d.hurtSale, "hurt") },
   { label: "Objections", key: "objections", render: d => (d.objections || []).map(o => `

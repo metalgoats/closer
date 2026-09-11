@@ -3210,7 +3210,7 @@
     },
     {
       "id": "TASK-123",
-      "status": "incomplete",
+      "status": "completed",
       "priority": "high",
       "estimated_complexity": "low",
       "title": "Timestamp the critical moments, and link them into the recording",
@@ -3230,7 +3230,12 @@
         "closer-app/src/llm.js",
         "closer-app/public/app.js"
       ],
-      "notes": "Depends on nothing. Should ship before the Nathan demo."
+      "notes": "Depends on nothing. Should ship before the Nathan demo. DONE 2026-09-11. Model copies the timestamp, code converts to seconds, verifyMoments confirms it appears in the transcript before it becomes a link. recording_url stored from Fathom share_url (never derived from external_id, which is numeric while Fathom URLs use an opaque token). Backfill endpoint is dry by default and never overwrites.",
+      "test_results": [
+        "llm 189/189",
+        "worker-refs 92/92",
+        "full suite 648/648"
+      ]
     },
     {
       "id": "TASK-124",

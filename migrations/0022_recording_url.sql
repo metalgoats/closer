@@ -1,0 +1,20 @@
+-- The link back into the recording (TASK-123).
+--
+-- Gabriel: "for each sales call for each rep to be time stamped so that in the moments where
+-- there is a critical moment in the call... for that to be easy to do and easy to access."
+--
+-- The timestamps were already there and nobody noticed: `flattenTranscript` has written every
+-- line as `HH:MM:SS — speaker: text` since the first import, so all 134 production transcripts
+-- carry them and the model has always been able to see them. What was missing is only the URL to
+-- point at.
+--
+-- WHY A COLUMN RATHER THAN A CONSTRUCTED URL. `external_id` is Fathom's numeric recording id
+-- (e.g. 182347163). Fathom's public URLs use an opaque token instead (`fathom.video/share/xyz123`),
+-- so there is no way to derive one from the other. Guessing a URL pattern here would have shipped
+-- links that 404 on a demo, which is the kind of thing you only find out in front of the buyer.
+-- The API returns `url` and `share_url`; we store one and link to it.
+--
+-- NULL is a supported state, not a defect: the 134 calls imported before today have no URL until
+-- the backfill runs, and a call whose recording was deleted never will. Timestamps still render
+-- as plain text in that case, which is still useful -- a trainer can scrub to 00:12:58 by hand.
+ALTER TABLE calls ADD COLUMN recording_url TEXT;

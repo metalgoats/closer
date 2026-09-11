@@ -38,6 +38,16 @@ Stack: Cloudflare Workers (UI + API in one Worker) · Cloudflare D1 (SQLite) · 
 > so changing it must be a dashboard edit rather than a deploy.
 > Setup: `../2026-09-09 Nathan round/Stripe setup — what to click.md`
 
+> [!note] Key moments link into the recording (TASK-123, 2026-09-11)
+> The debrief returns 3–6 timestamped key moments; each links to that second of the Fathom
+> recording. **A link is rendered only when the timestamp was verified against the transcript**
+> (`verifyMoments` in `llm.js`) *and* the call has a stored `recording_url` — otherwise the time
+> shows as plain text with a tooltip explaining why. An invented timestamp is worse than a missing
+> one: it is a link a trainer clicks in front of their team that opens the wrong moment.
+> `recording_url` is **stored from Fathom's `share_url`, never derived** — `external_id` is a
+> numeric id and Fathom's URLs use an opaque token. Backfill older calls with
+> `POST /api/integrations/:id/backfill-urls?apply=1` (dry by default).
+
 ## Local development (no Cloudflare account needed)
 
 ```bash

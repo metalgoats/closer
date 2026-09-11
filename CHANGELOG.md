@@ -3,6 +3,50 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-11 — Key moments, timestamped and linked into the recording
+
+Gabriel: *"for each sales call for each rep to be time stamped so that in the moments where there
+is a critical moment in the call… for that to be easy to do and easy to access."*
+
+The debrief now returns **3–6 key moments** per call — the moment it turned, where it was won or
+lost, the strongest buying signal — each with the timestamp it happened at, rendered as a link
+that opens the recording at that exact second.
+
+**Most of this already existed and nobody had noticed.** `flattenTranscript` has written every
+line as `HH:MM:SS — speaker: text` since the first import, so all 134 production transcripts carry
+timestamps and the model has always been able to see them. The only missing piece was a URL to
+point at.
+
+**The model copies a timestamp; it never computes one.** `HH:MM:SS` to seconds is arithmetic,
+which is what language models are worst at and most confident about. The conversion happens in
+code. The model's only job is to quote a string already in front of it.
+
+**And a copied timestamp is still checked.** Same discipline the scorecard earned two days ago:
+`verifyMoments` confirms each timestamp appears at the start of a real transcript line before it
+becomes a link. An invented timestamp is *worse* than a missing one — it is something a sales
+trainer clicks in front of their team that opens the wrong moment, with nothing on screen saying
+so. Unverified moments keep their text and lose only the link, and the UI says why on hover.
+
+**The recording URL is stored, never derived.** `external_id` is Fathom's numeric recording id
+(`182347163`); their public URLs use an opaque token (`fathom.video/share/xyz123`). There is no
+way to get one from the other, and guessing the pattern would have shipped links that 404 in
+front of the buyer. The API returns `url` and `share_url`; we store `share_url` first, because the
+core use is a manager opening a *rep's* call rather than their own.
+
+`POST /api/integrations/:id/backfill-urls` fills in the calls imported before the column existed.
+**Dry by default** — it writes to `calls`, so the safe default is to report rather than change —
+and it never overwrites a URL that is already set, and never creates a call.
+
+**One test fixed rather than edited around.** Two TASK-117 assertions broke on this change because
+they pinned `rep_email` to being the *last* column in the Fathom INSERT. The intent was "rep_email
+is written", not "rep_email is last". A brittle assertion that fails on a valid change teaches
+people to edit the test, which is how a real guard gets weakened — so it now parses the column
+list and checks membership, and still goes red when the column is actually dropped.
+
+648 assertions. Five inversions proven red: trusting the model's timestamp unchecked, truthiness
+instead of `Number.isFinite` (which would silently unlink any moment at 00:00:00), deriving the
+URL from `external_id`, a backfill that overwrites, and a backfill that writes by default.
+
 ## 2026-09-09 (billing) — Taking money, without ever touching a card
 
 Ivan: *"add a way for people to sign up and pay us without us having to take their card."*

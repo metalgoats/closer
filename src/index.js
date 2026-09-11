@@ -261,6 +261,13 @@ async function route(request, env, url, ctx) {
     const days = Math.min(365, Math.max(1, +(url.searchParams.get("days") || 30)));
     return fathomBackfillTitles(env, +titleMatch[1], days, url.searchParams.get("dry") === "1");
   }
+  // Dry by default, the opposite of the titles backfill, because this one writes to calls rather
+  // than to a field nobody reads. Pass ?apply=1 to actually write.
+  const urlMatch = /^\/api\/integrations\/(\d+)\/backfill-urls$/.exec(path);
+  if (urlMatch && method === "POST") {
+    const days = Math.min(365, Math.max(1, +(url.searchParams.get("days") || 90)));
+    return fathomBackfillUrls(env, +urlMatch[1], days, url.searchParams.get("apply") !== "1");
+  }
 
   // ---- calls ----
   if (path === "/api/calls" && method === "GET") {
@@ -1226,10 +1233,16 @@ async function importMeeting(env, integ, m) {
   // that owner. Both can be null; null is honest and a later join can fill it.
   const repEmail = m.recorded_by?.email || integ.owner_email || null;
 
+  // The link back into the recording (TASK-123). `share_url` first: the core use is a MANAGER
+  // opening a rep's call, and `url` is the owner's own view. external_id is Fathom's numeric
+  // recording id and their public URLs use an opaque token, so this cannot be derived -- storing
+  // what the API returns is the only correct option. Null is fine; the moment renders as text.
+  const recordingUrl = m.share_url || m.url || null;
+
   const ins = await env.DB.prepare(
-    `INSERT INTO calls (account_id, client_name, attendee_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id, duplicate_of, call_type_id, rep_email)
-     VALUES (?, ?, ?, ?, ?, ?, 'fathom', ?, ?, ?, ?, ?) RETURNING id`
-  ).bind(accountId, name, deriveAttendeeName(m), start, durationMin, transcript, externalId, integ.id, dup?.id ?? null, suggestedType, repEmail).first();
+    `INSERT INTO calls (account_id, client_name, attendee_name, occurred_at, duration_min, transcript, source, external_id, source_integration_id, duplicate_of, call_type_id, rep_email, recording_url)
+     VALUES (?, ?, ?, ?, ?, ?, 'fathom', ?, ?, ?, ?, ?, ?) RETURNING id`
+  ).bind(accountId, name, deriveAttendeeName(m), start, durationMin, transcript, externalId, integ.id, dup?.id ?? null, suggestedType, repEmail, recordingUrl).first();
   if (dup) {
     await logEvent(env, { level: "warn", kind: "call.possible_duplicate", call_id: ins.id, account_id: accountId,
       detail: `${name} overlaps call #${dup.id} (within 20 min) — flagged, not discarded` });
@@ -1353,6 +1366,46 @@ async function fathomImportOne(env, id, externalId) {
   await logEvent(env, { kind: "fathom.imported_manually", call_id: r.callId, account_id: row.account_id,
     detail: `${r.name} — imported by hand from ${row.label || "Fathom"} (recorded by ${m.recorded_by?.email || "unknown"})` });
   return json({ ok: true, imported: true, call_id: r.callId, message: `Imported ${r.name}`, name: r.name });
+}
+
+// Backfill recording URLs for calls imported before the column existed (TASK-123).
+//
+// Modelled on fathomBackfillTitles deliberately: same bounded window, same dry-run default, same
+// "report what it would change" shape. Read-only against Fathom; the only write is one column on
+// calls that already exist, matched by external_id. Never creates a call.
+async function fathomBackfillUrls(env, id, days = 90, dry = true) {
+  const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
+  if (!row || row.kind !== "fathom") return json({ error: "not a Fathom integration" }, 400);
+  const key = keyForRow(row);
+  if (!key) return json({ ok: false, message: "No Fathom key saved yet." });
+
+  const sinceIso = new Date(Date.now() - days * 86400_000).toISOString();
+  // include_transcript=false: this needs URLs, not content. Re-pulling 134 transcripts to fill in
+  // a link would move megabytes for no reason and re-fetch other people's words.
+  const res = await fetchFathomMeetings(key, sinceIso, row.owner_email);
+  if (!res.ok) return json({ ok: false, message: res.message });
+
+  const updates = [];
+  for (const m of res.items) {
+    const url = m.share_url || m.url;
+    if (!url) continue;
+    const ext = String(m.recording_id);
+    const call = await env.DB.prepare(
+      "SELECT id, client_name, recording_url FROM calls WHERE account_id = ? AND external_id = ?"
+    ).bind(row.account_id, ext).first();
+    if (!call || call.recording_url) continue;      // never overwrite one that is already set
+    updates.push({ id: call.id, name: call.client_name, url });
+  }
+
+  if (!dry) {
+    for (const u of updates) {
+      await env.DB.prepare("UPDATE calls SET recording_url = ? WHERE id = ?").bind(u.url, u.id).run();
+    }
+    await logEvent(env, { kind: "fathom.urls_backfilled", account_id: row.account_id,
+      detail: `${updates.length} call${updates.length === 1 ? "" : "s"} linked to their recording` });
+  }
+  return json({ ok: true, dry, found: res.items.length, updated: updates.length,
+                calls: updates.slice(0, 40).map(u => ({ id: u.id, name: u.name })) });
 }
 
 async function fathomBackfillTitles(env, id, days = 30, dry = false) {

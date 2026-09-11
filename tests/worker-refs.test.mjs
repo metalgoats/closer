@@ -307,9 +307,14 @@ console.log("\n== auto-processing skips no-output call types ==");
   const iOwnerFirst = idx.indexOf("integ.owner_email || m.recorded_by?.email");
   check("the fallback order is recorder-then-owner", iRecordedBy > 0 && iOwnerFirst === -1);
 
+  // Anchored on "rep_email appears in the Fathom INSERT's column list and is bound", NOT on it
+  // being the LAST column. The first version pinned the end of the list and broke the moment
+  // recording_url was added beside it (TASK-123) -- a brittle assertion failing on a valid change
+  // teaches people to edit the test, which is how a real guard gets weakened.
+  const fathomInsert = /INSERT INTO calls \(([^)]*)\)[\s\S]{0,500}?'fathom'/.exec(idx)?.[1] || "";
   check("the Fathom INSERT actually writes the column",
-    /INSERT INTO calls \([^)]*rep_email\)[\s\S]{0,400}'fathom'/.test(idx));
-  check("...and binds it", /suggestedType, repEmail\)\.first\(\)/.test(idx));
+    /\brep_email\b/.test(fathomInsert), `columns: ${fathomInsert.slice(0, 160)}`);
+  check("...and binds it", /suggestedType, repEmail\b/.test(idx));
 
   // A manual paste has no recorded_by. The only truthful source is the session user.
   check("a manual paste is attributed to the session user",
