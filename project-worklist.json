@@ -2,7 +2,7 @@
   "project": "Closer \u2014 post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-09-11",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) \u2014 now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 88,
+  "completion_percentage": 89,
   "tasks": [
     {
       "id": "TASK-001",
@@ -587,9 +587,12 @@
         "closer-app/migrations/",
         "closer-app/public/app.js"
       ],
-      "status": "incomplete",
-      "notes": "Connect button currently shows a toast explaining it needs the marketplace app first. Requires a new migration for oauth token storage (access_token, refresh_token, expires_at per account). Security note recorded in UI: OAuth still stores a sensitive token server-side \u2014 its win is click-to-connect UX + auto-expiry, not eliminating stored credentials. \u2014 RESCOPED 2026-09-11 and UNBLOCKED. No OAuth flow, no marketplace app, no token refresh: the customer pastes a Private Integration Token the same way they paste the Anthropic and Fathom keys. Drops the whole OAuth round trip, the callback route, the CSRF state parameter and the refresh scheduler from the original scope. Store encrypted server-side, scope minimally, and put 90-day rotation in the onboarding checklist.",
-      "test_results": []
+      "status": "completed",
+      "notes": "Connect button currently shows a toast explaining it needs the marketplace app first. Requires a new migration for oauth token storage (access_token, refresh_token, expires_at per account). Security note recorded in UI: OAuth still stores a sensitive token server-side \u2014 its win is click-to-connect UX + auto-expiry, not eliminating stored credentials. \u2014 RESCOPED 2026-09-11 and UNBLOCKED. No OAuth flow, no marketplace app, no token refresh: the customer pastes a Private Integration Token the same way they paste the Anthropic and Fathom keys. Drops the whole OAuth round trip, the callback route, the CSRF state parameter and the refresh scheduler from the original scope. Store encrypted server-side, scope minimally, and put 90-day rotation in the onboarding checklist. DONE 2026-09-11. src/ghl.js: v2 API, bearer token, Version 2021-07-28 header. Probe is GET /locations/{id} \u2014 read-only, validates token AND location together, returns the business name. Location ID in config_json (read back on every request, therefore not a secret). Verified live to the extent possible: a fake token reached GoHighLevel and returned 401, proving base URL/headers/auth. Success path unverified until a real token exists. Integrations page rebuilt as rows with per-integration setup instructions and a three-state status (Not connected / Saved, not verified / Connected) after the first build claimed Connected for any saved credential.",
+      "test_results": [
+        "ghl 34/34",
+        "full suite 682/682"
+      ]
     },
     {
       "id": "TASK-020",
@@ -3254,7 +3257,7 @@
       "notes": "Closing this requirement also closed the High-severity trap 'Half of Closer's first real sale has no recording source' \u2014 there is no longer anything to ingest."
     }
   ],
-  "progress_percentage": 88,
+  "progress_percentage": 89,
   "project_principles": [
     "DECISION AUTHORITY (Ivan, 2026-07-19): Ivan is the ultimate authority on what gets built and deployed. Gabriel's input from calls is SUGGESTION and raw material, not specification \u2014 capture it on the potential-features list, but do not treat it as approved work. Ivan's words: 'I trust my instincts and design skills more than his... take it with a grain of salt, though I do expect that he will have great ideas.' PRACTICALLY: never move a Gabriel idea into a build round without Ivan asking for it; when Gabriel's suggestion conflicts with Ivan's design judgement, Ivan wins; surface Gabriel's ideas as options with tradeoffs rather than as requirements."
   ]

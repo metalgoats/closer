@@ -3,6 +3,65 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-11 (later) — GoHighLevel connects, and the Integrations page stops being a wall
+
+**The eight-week blocker was never a requirement.** `TASK-018` — register a GoHighLevel
+marketplace app — has been blocked since 16 July. GoHighLevel's own docs say Private Integration
+Tokens enable custom integrations *"without requiring marketplace app registration"*: no developer
+account, no review queue, and **no product name**, which is what it was actually waiting on. The
+naming decision and the whole CRM integration were coupled for two months for no reason.
+
+`src/ghl.js` talks to the v2 API at `services.leadconnectorhq.com` with a bearer token and the
+`Version: 2021-07-28` header GoHighLevel requires (it versions by header, not by URL path).
+
+**The probe is `GET /locations/{id}`**, chosen for three reasons: read-only, so a connection test
+can never write to a customer's CRM; it validates the **token and the Location ID together**,
+which matters because a valid token pointed at the wrong sub-account is a 404 and that is the
+likeliest setup mistake; and it returns the business name, so a passing test says *"Connected to
+On Screen Authority"* rather than "OK".
+
+**The Location ID lives in `config_json`, not the secret store.** It has to be read back to build
+every request URL, and a value you must read back is not a secret whatever you call it.
+
+> [!note] Verified live, partially
+> A save-then-test with a deliberately fake token **reached GoHighLevel and came back 401**, which
+> proves the base URL, the headers and the auth mechanism. The **success path is still unverified**
+> — no valid token exists yet, so the parsing of a 200 response is an assumption. Everything
+> therefore falls through to GoHighLevel's own message rather than an explanation we invented: a
+> wrong guess should read as "HighLevel said X".
+
+### The Integrations page, rebuilt
+
+The old page gave every integration an always-expanded card with a key field, Save, Test, Remove
+and — for Fathom — two more inputs, then closed with a prose block explaining which services could
+"skip API keys". That block still described GoHighLevel as OAuth needing a marketplace app. **Wrong
+for eight weeks, at the bottom of a page nobody scrolls.**
+
+Rebuilt on three patterns from products that do this well:
+- **Linear / MagicPath** — a quiet list of rows, and each row says what it is connected *as*
+- **Bolt.new** — "Where do I find this?" with the literal click path, inside the row you are
+  configuring, instead of prose at the page bottom where it goes stale
+- **n8n** — the test result appears in the panel and stays, rather than as a toast that vanishes
+
+The rule that keeps it clean: **a collapsed row shows state, an expanded row shows controls**, and
+only one row opens at a time.
+
+> [!warning] The status was lying, and looking at it is what caught it
+> The first build showed **"Connected"** whenever a credential existed — so the GoHighLevel row
+> whose last test returned 401 still read as connected. A page claiming a working connection that
+> does not work is the failure this codebase keeps having to design against. There are now three
+> states: **Not connected** · **Saved, not verified** (amber) · **Connected**. A token existing and
+> a token working are different facts.
+
+Also: an earlier draft of the page called `POST /integrations/:id/key`, a route that does not
+exist, which would have failed on the page's single most important action. And 22 dead CSS rules
+from the old card layout were deleted rather than left — this project already has a trap logged
+about every feature leaving its own permanent strip.
+
+682 assertions across eight files. Three inversions proven red: claiming Connected on any saved
+credential, inventing an explanation for an HTTP status we have never seen, and dropping the
+Version header.
+
 ## 2026-09-11 — Key moments, timestamped and linked into the recording
 
 Gabriel: *"for each sales call for each rep to be time stamped so that in the moments where there

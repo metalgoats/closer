@@ -416,31 +416,13 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .status-off{ background:var(--paper-200); color:var(--ink-600); }
 
 /* API key entry (TASK-032) */
-.integration-card{ border:1px solid var(--line); border-radius:9px; background:var(--paper-50); padding:13px 15px; margin-bottom:10px; }
-.integration-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:11px; }
-.key-row{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-.key-input{
   flex:1; min-width:200px; border:1px solid var(--line); border-radius:7px; padding:8px 11px;
   font-family:var(--font-mono); font-size:12px; background:var(--paper-0); color:var(--ink-950);
 }
-.key-input:focus{ outline:none; border-color:var(--blue-500); }
-.key-input::placeholder{ font-family:var(--font-ui); color:var(--ink-400); }
-.key-reveal{
   background:transparent; border:1px solid var(--line); border-radius:6px; color:var(--ink-600);
   font-size:12px; font-weight:600; padding:7px 9px; cursor:pointer;
 }
-.key-reveal:hover{ border-color:var(--blue-500); color:var(--blue-600); }
-.key-save{ padding:8px 14px; font-size:12px; }
 .key-remove:hover{ border-color:var(--pink-500); color:var(--pink-500); }
-.key-foot{ display:flex; align-items:center; gap:10px; margin-top:9px; flex-wrap:wrap; }
-.key-state{ font-size:13px; color:var(--ink-400); }
-.key-state code{ font-family:var(--font-mono); font-size:12px; color:var(--ink-600); }
-.key-state.on{ color:var(--blue-600); }
-.key-state.on code{ color:var(--blue-600); }
-.key-state.env{ color:var(--violet-600); }
-.key-msg{ font-size:13px; color:var(--ink-600); }
-.key-msg.ok{ color:var(--blue-600); font-weight:600; }
-.key-msg.bad{ color:var(--pink-500); font-weight:600; }
 
 .insight-grid{ display:grid; grid-template-columns:1fr auto; gap:5px 10px; margin-bottom:16px; }
 .insight-grid .bar{ grid-column:1/-1; height:4px; background:var(--paper-200); border-radius:2px; overflow:hidden; margin-bottom:5px; }
@@ -695,10 +677,6 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
 }
 
 /* Fathom token inbox label (TASK-054 follow-up) */
-.label-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); }
-.label-hint{ font-size:12px; color:var(--ink-400); flex-basis:100%; }
-.label-input{ flex:1; min-width:140px; background:var(--paper-50); border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:15px; color:var(--ink-950); font-family:inherit; }
-.label-input:focus{ outline:none; border-color:var(--blue-500); }
 
 /* Template version/date subheading */
 .tpl-date{ color:var(--ink-400); font-weight:400; }
@@ -1050,3 +1028,76 @@ a.km-at:hover { text-decoration:underline; }
 .km-label { font-weight:600; font-size:13px; }
 .km-what { font-size:13px; color:var(--ink-800); margin-top:3px; }
 .km-why { font-size:12px; color:var(--ink-400); margin-top:3px; }
+
+/* ---- Integrations, rebuilt 2026-09-11 ------------------------------------------------------
+   A quiet list, after Linear and MagicPath. A COLLAPSED row shows state; an EXPANDED row shows
+   controls. That single rule is what stopped this page being a wall of always-open forms with
+   four save buttons visible at once. */
+.ig-group { margin-bottom:26px; }
+.ig-group-t { font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--ink-400);
+              font-weight:700; margin-bottom:8px; }
+
+.ig-row { border:1px solid var(--line); border-radius:12px; margin-bottom:8px;
+          background:var(--paper-50); overflow:hidden; }
+.ig-row.is-open { border-color:var(--blue-500); }
+
+/* The whole header is the toggle: a 44px-tall target rather than a chevron you have to hit. */
+.ig-head { display:flex; align-items:center; gap:12px; width:100%; padding:13px 14px;
+           background:none; border:0; text-align:left; cursor:pointer; color:inherit; font:inherit;
+           flex-wrap:wrap; row-gap:6px; }
+.ig-head:hover { background:var(--paper-100); }
+.ig-mark { flex:0 0 28px; height:28px; border-radius:8px; display:grid; place-items:center;
+           font-weight:700; font-size:13px; color:#fff;
+           background:linear-gradient(135deg, var(--blue-500), var(--violet-500)); }
+/* flex-basis 180px with wrap: on a wide pane the state sits on the right, and on a narrow one it
+   drops to its own line instead of colliding with the description. The detail pane is genuinely
+   narrow when the call list is open, and the first version overlapped the badge with the text. */
+.ig-main { flex:1 1 180px; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.ig-name { font-weight:600; font-size:14px; }
+/* One line. A description that wraps to four lines turns a list back into a wall. */
+.ig-blurb { font-size:12px; color:var(--ink-400);
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ig-tag { font-size:11px; font-weight:600; color:var(--ink-400); background:var(--paper-200);
+          border-radius:5px; padding:1px 6px; margin-left:6px; }
+.ig-right { display:flex; align-items:center; gap:10px; flex:0 0 auto; margin-left:auto;
+            max-width:100%; min-width:0; }
+.ig-chev { color:var(--ink-400); font-size:11px; }
+
+/* State, collapsed. "Connected as WHAT" is the thing people actually come here to check. */
+.ig-state { font-size:12px; font-weight:600; }
+.ig-state.ig-on { color:var(--blue-500); }
+.ig-state.ig-off { color:var(--ink-400); }
+/* Amber, not green and not red: a credential is saved and has simply not been proven to work.
+   Colouring it green is a lie; colouring it red implies a failure that may never have happened. */
+.ig-state.ig-unver { color:#D08A32; cursor:help; }
+.ig-as { font-size:11px; color:var(--ink-400); margin-left:8px;
+         display:inline-block; max-width:min(320px, 42vw); overflow:hidden;
+         text-overflow:ellipsis; white-space:nowrap; vertical-align:bottom; }
+.ig-as code { font-family:var(--font-mono); font-size:11px; }
+.ig-warn { color:var(--pink-500); font-weight:600; }
+
+.ig-panel { padding:4px 14px 14px; border-top:1px solid var(--line); }
+
+/* "Where do I find this?" — Bolt.new's move. The instructions live at the point of use rather
+   than in a prose block at the bottom of the page, which is where they went stale for 8 weeks. */
+.ig-where { background:var(--paper-100); border-radius:9px; padding:11px 13px; margin:12px 0 14px; }
+.ig-where-t { font-size:11px; text-transform:uppercase; letter-spacing:.1em; font-weight:700;
+              color:var(--ink-400); margin-bottom:6px; }
+.ig-where ol { margin:0; padding-left:18px; font-size:12.5px; line-height:1.65; color:var(--ink-800); }
+
+.ig-field { display:flex; flex-direction:column; gap:5px; margin-bottom:12px; }
+.ig-field > span:first-child { font-size:11px; text-transform:uppercase; letter-spacing:.02em;
+                               color:var(--ink-400); font-weight:600; }
+.ig-field input { width:100%; }
+.ig-help { font-size:12px; color:var(--ink-400); line-height:1.55; }
+.ig-keyrow { display:flex; gap:8px; }
+.ig-keyrow input { flex:1; }
+
+.ig-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.ig-danger { color:var(--pink-500); }
+
+/* The test result lands here, in the panel, and stays — n8n's pattern. A toast that vanishes is
+   the wrong home for the one sentence telling you why a connection failed. */
+.ig-result { font-size:12.5px; line-height:1.55; margin-top:10px; min-height:1em; color:var(--ink-400); }
+.ig-result.is-ok { color:var(--blue-500); font-weight:600; }
+.ig-result.is-bad { color:var(--pink-500); font-weight:600; }

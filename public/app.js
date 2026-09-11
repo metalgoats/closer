@@ -15,6 +15,8 @@ const api = {
   },
   get: p => api.req("GET", p),
   post: (p, b) => api.req("POST", p, b || {}),
+  put: (p, b) => api.req("PUT", p, b || {}),
+  del: p => api.req("DELETE", p),
   // Raw text body — for the usage-export CSV, which is text and would otherwise be
   // JSON-encoded into a single string the server then has to unwrap.
   async postText(path, text) {
@@ -2564,228 +2566,209 @@ async function renderAccess() {
 // these two were not, because they are referenced INSIDE renderIntegrations — so the module
 // still loads fine and only throws when you actually click Integrations. Integrations has been
 // dead since that commit.
+// ---------------------------------------------------------------- Integrations (rebuilt 2026-09-11)
+//
+// The old page put every integration in an always-expanded card with a key field, a Save, a Test,
+// a Remove and (for Fathom) two more inputs — four accounts' worth of that is a wall. It also
+// ended in a prose section explaining which services "can skip API keys", which had gone stale:
+// it still described GoHighLevel as OAuth needing a marketplace app, which turned out never to
+// have been true.
+//
+// Rebuilt on three patterns from real products:
+//   * Linear / MagicPath — integrations are a quiet LIST of rows, not a grid of boxes. One line
+//     each: what it is, what it does, and what it is connected AS. Configuration is behind the row.
+//   * Bolt.new — the paste field carries a "Where do I find this?" block with the literal click
+//     path, at the moment you need it, instead of prose at the bottom of the page.
+//   * n8n — the test result appears inline in the panel you are working in, with a retry, rather
+//     than as a toast that vanishes.
+//
+// The rule that keeps it clean: a collapsed row shows STATE, an expanded row shows CONTROLS.
 const INTEGRATION_META = {
-  ghl:       { label: "GoHighLevel",          method: "login",   how: "Connect with your GoHighLevel login — OAuth, no key to copy." },
-  fathom:    { label: "Fathom",               method: "selfkey", how: "Generate a key in Fathom → Settings → Integrations → API Access (2 clicks, no dev account)." },
-  anthropic: { label: "Claude (Anthropic)",   method: "key",     how: "API key required — there is no login option for programmatic API access." },
-  openai:    { label: "ChatGPT (OpenAI)",     method: "key",     how: "API key required — there is no login option for programmatic API access." }
-};
-const METHOD_BADGE = {
-  login:   `<span class="status-chip" style="background:var(--blue-100); color:var(--blue-600);">Login (OAuth)</span>`,
-  selfkey: `<span class="status-chip" style="background:var(--violet-100); color:var(--violet-600);">Self-serve key</span>`,
-  key:     `<span class="status-chip status-off">API key</span>`
+  ghl: { label: "GoHighLevel", blurb: "Push CRM notes and read who set the appointment.",
+         method: "token",
+         // Updated 2026-09-11: this said "Login (OAuth) — we register a marketplace app first"
+         // for eight weeks, and it was wrong. A Private Integration Token needs no registration,
+         // no developer account and no product name.
+         where: ["In GoHighLevel, open the sub-account you want to connect.",
+                 "Settings → Private Integrations → Create new integration.",
+                 "Tick the scopes: Contacts, Opportunities, Users.",
+                 "Copy the token, then copy the Location ID from Settings → Business Profile."] },
+  fathom: { label: "Fathom", blurb: "Imports call recordings and transcripts.", method: "token",
+            where: ["In Fathom, go to Settings → Integrations → API Access.",
+                    "Generate a key and copy it. No developer account needed."] },
+  anthropic: { label: "Claude", blurb: "Writes the debrief, the drafts and the CRM note.",
+               method: "key",
+               where: ["console.anthropic.com → Settings → API keys → Create key.",
+                       "A Claude Pro subscription does NOT include API usage — it is billed per token.",
+                       "Set a spend cap on the same page while you are there."] },
+  openai: { label: "ChatGPT", blurb: "Alternative model provider. Not in use.", method: "key",
+            where: ["platform.openai.com → API keys → Create new secret key.",
+                    "A ChatGPT Plus subscription does NOT include API usage."] }
 };
 
 async function renderIntegrations() {
   const { integrations } = await api.get("/integrations");
+  const open = state.openIntegration ?? null;
+
   const byAccount = {};
   for (const i of integrations) (byAccount[i.account_name] = byAccount[i.account_name] || []).push(i);
 
-  const rows = Object.entries(byAccount).map(([acct, items]) => `
-    <h4>${esc(acct)}</h4>
-    ${items.map(i => {
-      const m = INTEGRATION_META[i.kind] || { label: i.kind, method: "key", how: "" };
-      // Two Fathom rows share a kind, so the per-row label is what tells them apart.
-      const displayLabel = i.label ? `${m.label} — ${esc(i.label)}` : m.label;
-
-      // GHL is OAuth — a Connect button, not a key field.
-      if (m.method === "login") {
-        return `<div class="integration-row"><div>
-            <div class="integration-name">${displayLabel} ${METHOD_BADGE[m.method]}</div>
-            <div class="integration-sub">${esc(m.how)}</div></div>
-            <button class="regen-btn" data-connect-ghl="${i.account_id}">Connect</button></div>`;
-      }
-
-      const state = i.has_key
-        ? `<span class="key-state on">✓ Key saved <code>${esc(i.key_preview)}</code>${i.updated_at ? ` · ${esc(i.updated_at)}` : ""}</span>`
-        : i.env_fallback
-          ? `<span class="key-state env">Using <code>${esc(i.secret_name)}</code> from Cloudflare secrets</span>`
-          : `<span class="key-state off">No key yet</span>`;
-
-      return `<div class="integration-card" data-int="${i.id}">
-        <div class="integration-card-head">
-          <div>
-            <div class="integration-name">${displayLabel} ${METHOD_BADGE[m.method]}</div>
-            <div class="integration-sub">${esc(m.how)}</div>
-          </div>
-          <span class="status-chip ${i.status === "connected" ? "status-on" : "status-off"}">${i.status}</span>
-        </div>
-        ${i.kind === "fathom" ? `<div class="label-row">
-          <span class="label-hint">Inbox label — calls imported by this key show this instead of the account name:</span>
-          <input type="text" class="label-input" data-label="${i.id}" value="${esc(i.label || "")}" placeholder="e.g. Hypnosis or OSA" maxlength="40">
-          <span class="label-hint" style="margin-top:6px;">${i.owner_email
-            ? "Only imports calls recorded by this person."
-            : "<b style='color:var(--pink-500)'>Required —</b> Fathom returns the WHOLE org's recordings. Until you set the Fathom account email, this key is skipped so colleagues' calls aren't imported."}</span>
-          <input type="email" class="label-input" data-owner="${i.id}" value="${esc(i.owner_email || "")}" placeholder="gabriel@example.com — whose recordings to import">
-          <button class="regen-btn" data-labelsave="${i.id}">Save</button>
-        </div>` : ""}
-        <div class="key-row">
-          <input type="password" class="key-input" data-int="${i.id}" autocomplete="off"
-                 placeholder="${i.has_key ? "Paste a new key to replace the saved one" : "Paste your key here"}">
-          <button class="key-reveal" data-reveal="${i.id}" title="Show what you typed">Show</button>
-          <button class="primary-btn key-save" data-save="${i.id}">Save</button>
-          <button class="regen-btn" data-test="${i.id}">Test</button>
-          ${i.kind === "fathom" && i.has_key ? `<button class="regen-btn" data-peek="${i.id}">What's in Fathom?</button>` : ""}
-          ${i.has_key ? `<button class="regen-btn key-remove" data-remove="${i.id}">Remove</button>` : ""}
-        </div>
-        <div class="key-foot">${state}<span class="key-msg" data-msg="${i.id}"></span></div>
-        <div class="peek-panel hidden" data-peekpanel="${i.id}"></div>
-      </div>`;
-    }).join("")}`).join("");
-
-  viewShell("Integrations", "Paste a key, hit Save, hit Test. Keys are stored server-side and never sent back to your browser.",
-    rows + `
-    <h4>Which of these can skip API keys?</h4>
-    <ul style="font-size:12.5px; line-height:1.7;">
-      <li><b>GoHighLevel — yes, login.</b> GHL runs on OAuth 2.0; you click Connect, log in, and it stores a
-        refreshing token. One-time setup: we register a GHL marketplace app to get a Client ID/Secret, then this
-        Connect button works for both sub-accounts.</li>
-      <li><b>Fathom — a self-serve key, not a login.</b> No developer dashboard: Gabriel generates a key inside
-        his own Fathom settings in a couple clicks.</li>
-      <li><b>Claude &amp; ChatGPT — API key, unavoidable.</b> There is no "log in with Claude/ChatGPT" for API
-        access, and the $20/mo Pro/Plus subscriptions do <i>not</i> include API usage (it's billed separately per token).
-        Paste the key above once and hit Save — no terminal needed.</li>
-    </ul>
-    <p style="font-size:12px; color:var(--ink-400);">Keys are stored on the server and used only from there — they are
-      never sent to your browser, which is why you see a masked preview instead of the full key after saving. Paste a new
-      key any time to replace it. Set a spend cap in your provider dashboard as a second line of defense.</p>`);
-
-  document.querySelectorAll("[data-connect-ghl]").forEach(btn => btn.addEventListener("click", () =>
-    toast("GHL Connect needs the marketplace app registered first — see next steps.")));
-
-  const msgFor = id => document.querySelector(`[data-msg="${id}"]`);
-  const setMsg = (id, text, ok) => {
-    const el = msgFor(id);
-    if (!el) return;
-    el.textContent = text;
-    el.className = "key-msg " + (ok === true ? "ok" : ok === false ? "bad" : "");
+  // What a row says when collapsed. This is the whole reason the page is readable: a person
+  // scanning it wants "is this on, and as whom", not a form.
+  // THREE states, not two. The first version of this showed "Connected" whenever a credential
+  // existed, so a GoHighLevel row whose last test came back 401 still read as connected — a page
+  // claiming a working connection that does not work is the failure this whole app keeps having
+  // to design against. "Saved" and "verified" are different facts and the row says which it has.
+  const stateLine = i => {
+    let cfg = {}; try { cfg = JSON.parse(i.config_json || "{}"); } catch { /* {} */ }
+    if (!i.has_key && !i.env_fallback) return `<span class="ig-state ig-off">Not connected</span>`;
+    const verified = i.status === "connected";
+    const bits = [];
+    if (i.env_fallback) bits.push(`server secret`);
+    if (i.kind === "fathom" && i.owner_email) bits.push(esc(i.owner_email));
+    if (i.kind === "ghl") bits.push(cfg.location_id ? `location ${esc(cfg.location_id)}` : `<span class="ig-warn">no Location ID yet</span>`);
+    if (i.key_preview && !i.env_fallback) bits.push(`<code>${esc(i.key_preview)}</code>`);
+    const badge = verified
+      ? `<span class="ig-state ig-on">Connected</span>`
+      : `<span class="ig-state ig-unver" title="A credential is saved but the last connection test did not pass. Open this row and press Test connection.">Saved, not verified</span>`;
+    return `${badge}${bits.length ? `<span class="ig-as">${bits.join(" · ")}</span>` : ""}`;
   };
 
-  // Show/hide what you typed — this only reveals the field you're typing into,
-  // never a previously-saved key (the server never sends those back).
-  document.querySelectorAll("[data-reveal]").forEach(btn => btn.addEventListener("click", () => {
-    const input = document.querySelector(`.key-input[data-int="${btn.dataset.reveal}"]`);
-    const showing = input.type === "text";
-    input.type = showing ? "password" : "text";
-    btn.textContent = showing ? "Show" : "Hide";
-  }));
+  const rowsFor = items => items.map(i => {
+    const m = INTEGRATION_META[i.kind] || { label: i.kind, blurb: "", where: [] };
+    const name = i.label ? `${m.label} <span class="ig-tag">${esc(i.label)}</span>` : m.label;
+    const isOpen = open === i.id;
+    let cfg = {}; try { cfg = JSON.parse(i.config_json || "{}"); } catch { /* {} */ }
 
-  document.querySelectorAll("[data-save]").forEach(btn => btn.addEventListener("click", async () => {
-    const id = btn.dataset.save;
-    const input = document.querySelector(`.key-input[data-int="${id}"]`);
-    const val = input.value.trim();
-    if (!val) return setMsg(id, "Paste a key first.", false);
-    setMsg(id, "Saving…");
-    try {
-      await api.put(`/integrations/${id}`, { secret_value: val });
-      input.value = "";
-      setMsg(id, "Saved. Testing…");
-      const r = await api.post(`/integrations/${id}/test`);
-      setMsg(id, r.message, r.ok);
-      renderIntegrations();
-      toast(r.ok ? "Key saved and verified" : "Key saved, but the test failed");
-    } catch (err) {
-      setMsg(id, err.message, false);
-    }
-  }));
+    return `<div class="ig-row ${isOpen ? "is-open" : ""}" data-igrow="${i.id}">
+      <button class="ig-head" data-igtoggle="${i.id}" aria-expanded="${isOpen}">
+        <span class="ig-mark" aria-hidden="true">${esc(m.label.slice(0, 1))}</span>
+        <span class="ig-main">
+          <span class="ig-name">${name}</span>
+          <span class="ig-blurb">${esc(m.blurb)}</span>
+        </span>
+        <span class="ig-right">${stateLine(i)}<span class="ig-chev" aria-hidden="true">${isOpen ? "&#9662;" : "&#9656;"}</span></span>
+      </button>
 
-  document.querySelectorAll("[data-test]").forEach(btn => btn.addEventListener("click", async () => {
-    const id = btn.dataset.test;
-    setMsg(id, "Testing…");
-    try {
-      const r = await api.post(`/integrations/${id}/test`);
-      setMsg(id, r.message, r.ok);
-    } catch (err) {
-      setMsg(id, err.message, false);
-    }
-  }));
+      ${isOpen ? `<div class="ig-panel">
+        ${m.where?.length ? `<div class="ig-where">
+          <div class="ig-where-t">Where do I find this?</div>
+          <ol>${m.where.map(w => `<li>${esc(w)}</li>`).join("")}</ol>
+        </div>` : ""}
 
-  document.querySelectorAll("[data-remove]").forEach(btn => btn.addEventListener("click", async () => {
-    const id = btn.dataset.remove;
-    await api.req("DELETE", `/integrations/${id}`);
-    toast("Key removed");
+        ${i.kind === "ghl" ? `<label class="ig-field"><span>Location ID</span>
+          <input type="text" data-loc="${i.id}" value="${esc(cfg.location_id || "")}" placeholder="the sub-account this token belongs to" autocomplete="off">
+        </label>` : ""}
+
+        ${i.kind === "fathom" ? `
+        <label class="ig-field"><span>Inbox label</span>
+          <input type="text" data-label="${i.id}" value="${esc(i.label || "")}" maxlength="40" placeholder="e.g. OSA">
+        </label>
+        <label class="ig-field"><span>Whose recordings to import</span>
+          <input type="email" data-owner="${i.id}" value="${esc(i.owner_email || "")}" placeholder="gabriel@example.com">
+          <span class="ig-help">${i.owner_email
+            ? "Only this person's recordings are imported."
+            : "<b class='ig-warn'>Required.</b> Fathom returns the whole organisation's recordings. Until this is set the key is skipped, so colleagues' calls are never imported."}</span>
+        </label>` : ""}
+
+        <label class="ig-field"><span>${m.method === "token" ? "Token" : "API key"}</span>
+          <span class="ig-keyrow">
+            <input type="password" data-int="${i.id}" autocomplete="off"
+                   placeholder="${i.has_key ? "Paste a new one to replace it" : "Paste it here"}">
+            <button class="regen-btn" data-reveal="${i.id}">Show</button>
+          </span>
+        </label>
+
+        <div class="ig-actions">
+          <button class="primary-btn" data-save="${i.id}">Save</button>
+          <button class="regen-btn" data-test="${i.id}">Test connection</button>
+          ${i.kind === "fathom" && i.has_key ? `<button class="regen-btn" data-peek="${i.id}">What's in Fathom?</button>` : ""}
+          ${i.has_key ? `<button class="regen-btn ig-danger" data-remove="${i.id}">Remove</button>` : ""}
+        </div>
+        <div class="ig-result" data-msg="${i.id}"></div>
+        <div class="peek-panel hidden" data-peekpanel="${i.id}"></div>
+      </div>` : ""}
+    </div>`;
+  }).join("");
+
+  viewShell("Integrations",
+    "What Closer is connected to. Credentials are stored on the server and never sent back to your browser.",
+    Object.entries(byAccount).map(([acct, items]) =>
+      `<div class="ig-group"><div class="ig-group-t">${esc(acct)}</div>${rowsFor(items)}</div>`).join(""));
+
+  // One row open at a time: this page is a list to scan, and two open panels turns it back into
+  // the wall it used to be.
+  document.querySelectorAll("[data-igtoggle]").forEach(b => b.addEventListener("click", () => {
+    const id = +b.dataset.igtoggle;
+    state.openIntegration = state.openIntegration === id ? null : id;
     renderIntegrations();
   }));
 
-  // Save a Fathom token's inbox label. It propagates live: existing calls imported by this
-  // token pick up the new label because the call list joins to the token, not a snapshot.
-  document.querySelectorAll("[data-labelsave]").forEach(btn => btn.addEventListener("click", async () => {
-    const id = btn.dataset.labelsave;
-    const label = document.querySelector(`.label-input[data-label="${id}"]`).value.trim();
-    const owner_email = document.querySelector(`.label-input[data-owner="${id}"]`).value.trim();
-    await api.post(`/integrations/${id}/label`, { label, owner_email });
-    toast(label ? `Calls from this key now show "${label}"` : "Label cleared");
-    if (state.calls.length) await refreshCalls();   // reflect the relabel in the inbox immediately
-    renderIntegrations();
+  document.querySelectorAll("[data-reveal]").forEach(b => b.addEventListener("click", () => {
+    const inp = document.querySelector(`input[data-int="${b.dataset.reveal}"]`);
+    if (!inp) return;
+    inp.type = inp.type === "password" ? "text" : "password";
+    b.textContent = inp.type === "password" ? "Show" : "Hide";
   }));
 
-  // Pull exactly one call — the most recent. Lands unprocessed; you choose when to spend tokens.
-  // Import one specific recording the automatic poll skipped. Deliberately per-call: the cron
-  // stays scoped to Gabriel's own recordings, so nothing arrives just because it exists in the org.
-  function wirePeekActions(panel) {
-    panel.querySelectorAll("[data-imp]").forEach(b => b.addEventListener("click", async () => {
-      const cell = b.closest("td");
-      b.disabled = true; b.textContent = "Importing…";
-      try {
-        const r = await api.post(`/integrations/${b.dataset.int}/import/${encodeURIComponent(b.dataset.imp)}`);
-        if (!r.ok) { b.disabled = false; b.textContent = "Import"; toast(r.message); return; }
-        const row = b.closest("tr");
-        row.classList.remove("peek-skip");
-        row.querySelector("td").innerHTML = `<span class="peek-yes">In app</span>`;
-        cell.innerHTML = `<button class="peek-open" data-openid="${r.call_id}">Open</button>`;
-        wirePeekActions(panel);                    // the new Open button needs its handler
-        toast(r.message);
-        await refreshCalls();
-      } catch (err) { b.disabled = false; b.textContent = "Import"; toast(err.message); }
-    }));
-    panel.querySelectorAll("[data-openid]").forEach(b => b.addEventListener("click", () => {
-      openCall(+b.dataset.openid);
-      showDetailMobile();
-    }));
-  }
+  const say = (id, text, ok) => {
+    const el = document.querySelector(`[data-msg="${id}"]`);
+    if (el) { el.textContent = text; el.className = `ig-result ${ok === true ? "is-ok" : ok === false ? "is-bad" : ""}`; }
+  };
 
-  // "What's in Fathom?" — read-only. Shows everything the key can see, including recordings we
-  // deliberately skip, so "are we missing calls?" is answered by looking instead of by widening
-  // the import and hoovering up the whole org. Fetches no transcripts and writes nothing.
-  document.querySelectorAll("[data-peek]").forEach(btn => btn.addEventListener("click", async () => {
-    const id = btn.dataset.peek;
+  document.querySelectorAll("[data-save]").forEach(b => b.addEventListener("click", async () => {
+    const id = b.dataset.save;
+    const inp = document.querySelector(`input[data-int="${id}"]`);
+    const loc = document.querySelector(`input[data-loc="${id}"]`);
+    const label = document.querySelector(`input[data-label="${id}"]`);
+    const owner = document.querySelector(`input[data-owner="${id}"]`);
+    say(id, "Saving…");
+    try {
+      // Config and label first, so that a Test straight after a Save uses the values just typed
+      // rather than the ones that were there when the page rendered.
+      if (loc) await api.post(`/integrations/${id}/config`, { location_id: loc.value });
+      if (label || owner) await api.post(`/integrations/${id}/label`,
+        { label: label?.value ?? undefined, owner_email: owner?.value ?? undefined });
+      // PUT /integrations/:id with `secret_value` — the route that exists. An earlier draft of
+      // this handler invented POST /integrations/:id/key, which would have failed at runtime on
+      // the one action the page is for.
+      if (inp?.value.trim()) { await api.put(`/integrations/${id}`, { secret_value: inp.value.trim() }); inp.value = ""; }
+      say(id, "Saved. Now press Test connection.", true);
+    } catch (e) { say(id, e.message || "Could not save.", false); }
+  }));
+
+  document.querySelectorAll("[data-test]").forEach(b => b.addEventListener("click", async () => {
+    const id = b.dataset.test;
+    say(id, "Testing…");
+    try {
+      const r = await api.post(`/integrations/${id}/test`);
+      say(id, r.message || (r.ok ? "Connected." : "Failed."), !!r.ok);
+    } catch (e) { say(id, e.message || "Test failed.", false); }
+  }));
+
+  document.querySelectorAll("[data-remove]").forEach(b => b.addEventListener("click", async () => {
+    const id = b.dataset.remove;
+    if (!confirm("Remove the stored credential for this integration?")) return;
+    try { await api.del(`/integrations/${id}`); state.openIntegration = +id; renderIntegrations(); }
+    catch (e) { say(id, e.message || "Could not remove.", false); }
+  }));
+
+  document.querySelectorAll("[data-peek]").forEach(b => b.addEventListener("click", async () => {
+    const id = b.dataset.peek;
     const panel = document.querySelector(`[data-peekpanel="${id}"]`);
-    if (!panel.classList.contains("hidden") && panel.dataset.loaded === "1") {
-      panel.classList.add("hidden"); return;                       // second click closes it
-    }
+    if (!panel) return;
     panel.classList.remove("hidden");
-    panel.innerHTML = `<div class="peek-loading">Asking Fathom…</div>`;
-    btn.disabled = true;
+    panel.innerHTML = `<div class="ig-help">Checking Fathom…</div>`;
     try {
-      const days = 7;
-      const r = await api.get(`/integrations/${id}/preview?days=${days}`);
-      if (!r.ok) { panel.innerHTML = `<div class="peek-loading">${esc(r.message)}</div>`; return; }
-      const rows = r.meetings.map(m => `
-        <tr class="${m.imported ? "" : "peek-skip"}" data-row="${esc(m.external_id)}">
-          <td>${m.imported ? `<span class="peek-yes">In app</span>` : `<span class="peek-no">Not imported</span>`}</td>
-          <td class="peek-when">${esc(String(m.occurred_at || "").slice(0, 16).replace("T", " "))}</td>
-          <td>${esc(m.title)}</td>
-          <td class="peek-by">${esc(m.recorded_by)}</td>
-          <td class="peek-act">${m.imported
-            ? `<button class="peek-open" data-openid="${m.call_id}">Open</button>`
-            : `<button class="peek-import" data-imp="${esc(m.external_id)}" data-int="${id}">Import</button>`}</td>
-        </tr>`).join("");
-      panel.innerHTML = `
-        <div class="peek-head">Last ${days} days · <b>${r.total}</b> recording${r.total === 1 ? "" : "s"} visible to this key —
-          <b>${r.imported}</b> in the app, <b>${r.missing}</b> skipped.
-          Importing only <i>${esc(r.owner_email || "—")}</i>'s own recordings.</div>
-        <div style="overflow-x:auto;"><table class="peek-table"><tbody>${rows || `<tr><td>Nothing in this window.</td></tr>`}</tbody></table></div>
-        <div class="peek-foot">Only ${esc(r.owner_email || "this person")}'s own recordings import automatically.
-          Anything else is here to import by hand if you want it — note that a meeting several people recorded
-          appears once per recorder, so importing more than one copy will duplicate it.</div>`;
-      panel.dataset.loaded = "1";
-      wirePeekActions(panel);
-    } catch (err) {
-      panel.innerHTML = `<div class="peek-loading">${esc(err.message)}</div>`;
-    } finally { btn.disabled = false; }
+      const r = await api.get(`/integrations/${id}/preview?days=3`);
+      panel.innerHTML = !r.meetings?.length
+        ? `<div class="ig-help">Nothing in Fathom in the last 3 days.</div>`
+        : `<div class="ig-help">${r.imported} of ${r.total} imported.</div>
+           <table class="ev-table"><tbody>${r.meetings.slice(0, 12).map(x => `<tr>
+             <td>${esc(x.title)}</td><td>${esc((x.occurred_at || "").slice(0, 10))}</td>
+             <td>${x.imported ? "✓ imported" : esc(x.skipped_reason || "not imported")}</td></tr>`).join("")}</tbody></table>`;
+    } catch (e) { panel.innerHTML = `<div class="ig-help ig-warn">${esc(e.message || "Could not reach Fathom.")}</div>`; }
   }));
-
-
 }
 
 // ---------- utilities ----------

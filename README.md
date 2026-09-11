@@ -48,6 +48,16 @@ Stack: Cloudflare Workers (UI + API in one Worker) · Cloudflare D1 (SQLite) · 
 > numeric id and Fathom's URLs use an opaque token. Backfill older calls with
 > `POST /api/integrations/:id/backfill-urls?apply=1` (dry by default).
 
+> [!important] GoHighLevel uses a Private Integration Token, NOT OAuth (TASK-019, 2026-09-11)
+> No marketplace app, no developer account, **no product name**. The customer creates a token in
+> Settings → Private Integrations, pastes it with their Location ID, and presses Test. The Location
+> ID is stored in `integrations.config_json` in the clear — it is read back on every request, so it
+> is not a secret. Connection test is `GET /locations/{id}`: read-only, validates token *and*
+> location together, and returns the business name.
+> **The success path is unverified** — a fake token has been confirmed to reach GoHighLevel and
+> return 401, but no valid token exists yet, so a 200's shape is an assumption. Errors fall through
+> to GoHighLevel's own message on purpose.
+
 ## Local development (no Cloudflare account needed)
 
 ```bash

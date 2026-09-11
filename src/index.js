@@ -2,6 +2,7 @@ import { hashPassword, verifyPassword, newSessionToken, sessionCookie, readSessi
 import { roster, person, WINDOWS } from "./people.js";
 import { weeklyReport, renderWeeklyEmail, weekBounds } from "./report.js";
 import { verifyStripeSignature, createCheckoutSession, createPortalSession, accessFromEvent, HANDLED_EVENTS } from "./billing.js";
+import { testGhl } from "./ghl.js";
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
 import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
@@ -191,7 +192,7 @@ async function route(request, env, url, ctx) {
   // the browser — only a masked preview derived server-side.
   if (path === "/api/integrations" && method === "GET") {
     const { results } = await env.DB.prepare(
-      `SELECT i.id, i.account_id, i.kind, i.status, i.secret_name, i.updated_at, i.label, i.owner_email,
+      `SELECT i.id, i.account_id, i.kind, i.status, i.secret_name, i.updated_at, i.label, i.owner_email, i.config_json,
               a.name AS account_name,
               CASE WHEN i.secret_value IS NULL OR i.secret_value = '' THEN 0 ELSE 1 END AS has_key,
               CASE WHEN i.secret_value IS NULL OR i.secret_value = '' THEN NULL
@@ -238,6 +239,30 @@ async function route(request, env, url, ctx) {
     // A label is not a secret — safe to log.
     await logEvent(env, { kind: "integration.labeled", detail: `#${intLabelMatch[1]} -> ${(label||"").trim() || "(cleared)"}` });
     return json({ ok: true });
+  }
+
+  // Per-integration config that is NOT a secret (TASK-019). GoHighLevel needs the Location ID
+  // alongside the token; it identifies a sub-account and is visible in the customer's own URL,
+  // so it is stored in the clear in config_json rather than as a secret. Keeping it out of the
+  // secret store matters: it has to be READ BACK to build every request URL, and a value you
+  // must read back is not a secret, whatever you call it.
+  const intCfgMatch = path.match(/^\/api\/integrations\/(\d+)\/config$/);
+  if (intCfgMatch && method === "POST") {
+    const id = +intCfgMatch[1];
+    const row = await env.DB.prepare("SELECT * FROM integrations WHERE id = ?").bind(id).first();
+    if (!row) return json({ error: "not found" }, 404);
+    const body = await request.json().catch(() => ({}));
+    let cfg = {}; try { cfg = JSON.parse(row.config_json || "{}"); } catch { /* keep {} */ }
+    if (typeof body.location_id === "string") {
+      // Trim only. GoHighLevel location ids are opaque; validating their shape would mean
+      // guessing a format and rejecting a legitimate value on a hunch.
+      cfg.location_id = body.location_id.trim();
+    }
+    await env.DB.prepare("UPDATE integrations SET config_json = ? WHERE id = ?")
+      .bind(JSON.stringify(cfg), id).run();
+    await logEvent(env, { kind: "integration.configured", account_id: row.account_id,
+      detail: `${row.kind} · location ${cfg.location_id ? "set" : "cleared"}` });
+    return json({ ok: true, config: cfg });
   }
 
   const intTestMatch = path.match(/^\/api\/integrations\/(\d+)\/test$/);
@@ -1515,9 +1540,23 @@ async function testIntegration(env, id) {
     }
   }
 
+  // GoHighLevel: a Private Integration Token plus the Location ID it belongs to (TASK-019).
+  // Validates BOTH together — a valid token pointed at the wrong sub-account is a 404, and that
+  // is the likeliest setup mistake. On success it reports the business name, so the test says
+  // WHICH account it connected to rather than just "OK".
+  if (row.kind === "ghl") {
+    let cfg = {}; try { cfg = JSON.parse(row.config_json || "{}"); } catch { /* keep {} */ }
+    const r = await testGhl(key, cfg.location_id);
+    await env.DB.prepare("UPDATE integrations SET status = ? WHERE id = ?")
+      .bind(r.ok ? "connected" : "disconnected", id).run();
+    await logEvent(env, { level: r.ok ? "info" : "warn", kind: "integration.tested",
+      account_id: row.account_id,
+      detail: `ghl · ${r.ok ? `pass${r.name ? ` · ${r.name}` : ""}` : `fail (${r.status ?? "?"})`}` });
+    return json(r);
+  }
+
   const ep = endpoints[row.kind];
   if (!ep) {
-    // Don't guess at an API we haven't verified (GHL is OAuth — see TASK-018/019).
     return json({ ok: false, message: `No connection test available for ${row.kind} yet — the key is saved.` });
   }
 
