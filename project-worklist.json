@@ -1,8 +1,8 @@
 {
   "project": "Closer \u2014 post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
-  "last_updated": "2026-09-09",
+  "last_updated": "2026-09-11",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) \u2014 now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 89,
+  "completion_percentage": 88,
   "tasks": [
     {
       "id": "TASK-001",
@@ -796,7 +796,7 @@
         "TASK-017",
         "TASK-019"
       ],
-      "priority": "low",
+      "priority": "medium",
       "estimated_complexity": "high",
       "acceptance_criteria": [
         "Multiple tenants isolated from each other",
@@ -812,7 +812,7 @@
         "closer-app/src/"
       ],
       "status": "parked",
-      "notes": "Deliberately deferred. Current architecture (email+password in D1, per-account model) was chosen specifically to not block this. Do NOT start before v1 proves value with Gabriel \u2014 Ivan and Gabriel both framed this as later. \u2014 Multi-tenancy \u2014 a product-strategy decision that has to be made before it can be built. Parked 2026-07-29.",
+      "notes": "Deliberately deferred. Current architecture (email+password in D1, per-account model) was chosen specifically to not block this. Do NOT start before v1 proves value with Gabriel \u2014 Ivan and Gabriel both framed this as later. \u2014 Multi-tenancy \u2014 a product-strategy decision that has to be made before it can be built. Parked 2026-07-29. \u2014 2026-09-11: no longer a guess. Gabriel's agreed model bills each business separately with its own API key and CRM, which IS multi-tenancy. Not needed for Nathan's first business; needed the day his second signs.",
       "test_results": []
     },
     {
@@ -2914,7 +2914,8 @@
         "TASK-108"
       ],
       "source": "2026-08-04 pricing model",
-      "description": "At $6,500 installation + $997/seat, roughly half of year-one revenue is installation fees \u2014 which means year one is a services business wearing a SaaS hat, and every new client costs Ivan real hours of calibration. That is fine as a starting shape and dangerous as a steady state: revenue stops the month selling stops. Work: a repeatable calibration path (connect recorder + CRM + their key, ingest N of their real calls, tune the master prompt against them, verify against a specimen) that a checklist can drive rather than Ivan's judgment. The luxury positioning depends on the calibration being genuinely good, so this is about making it repeatable, NOT about making it self-serve."
+      "description": "At $6,500 installation + $997/seat, roughly half of year-one revenue is installation fees \u2014 which means year one is a services business wearing a SaaS hat, and every new client costs Ivan real hours of calibration. That is fine as a starting shape and dangerous as a steady state: revenue stops the month selling stops. Work: a repeatable calibration path (connect recorder + CRM + their key, ingest N of their real calls, tune the master prompt against them, verify against a specimen) that a checklist can drive rather than Ivan's judgment. The luxury positioning depends on the calibration being genuinely good, so this is about making it repeatable, NOT about making it self-serve.",
+      "notes": " \u2014 2026-09-11: Gabriel answered 'the activation fee is a budget being paid to Ivan, because Ivan is the only technician.' Answered, not resolved: if Ivan is the technician the fee is a wage and the business funds nothing. Pricing v2 sets activation at $3,500 so a second technician is affordable; hiring one is still open."
     },
     {
       "id": "TASK-110",
@@ -3206,9 +3207,51 @@
         "closer-app/tests/billing.test.mjs"
       ],
       "notes": "BLOCKED for go-live on Ivan: create the Stripe products/prices, enable Stripe Tax and the Customer Portal, add the webhook endpoint, and set four secrets. Guide: '2026-09-09 Nathan round/Stripe setup \u2014 what to click.md'. Also blocked on two decisions: the price, and which legal entity is the counterparty."
+    },
+    {
+      "id": "TASK-123",
+      "status": "incomplete",
+      "priority": "high",
+      "estimated_complexity": "low",
+      "title": "Timestamp the critical moments, and link them into the recording",
+      "source": "2026-09-11 Gabriel decision brief",
+      "dependencies": [],
+      "description": "Gabriel: 'for each sales call for each rep to be time stamped so that in the moments where there is a critical moment in the call, for example moments where we lost a call or key moments a sales trainer would want to revisit, for that to be easy to do and easy to access.' CHEAPER THAN IT SOUNDS: flattenTranscript has always written every line as `timestamp \u2014 speaker: text`, so all 134 production transcripts already carry timestamps and the model already sees them. Every call also stores its Fathom recording_id, and Fathom share links accept ?timestamp=<seconds>. Work: have the debrief return a timestamp alongside each key moment / objection / missed opening, then render it as a deep link into the recording at that second. Most demo-able item on the list.",
+      "acceptance_criteria": [
+        "Key moments and objections carry a timestamp",
+        "Each is a link that opens the recording at that second",
+        "A call with no usable timestamp degrades to plain text rather than a dead link"
+      ],
+      "testing_criteria": [
+        "A moment without a timestamp must not render a broken link",
+        "Timestamps are parsed, not invented"
+      ],
+      "files_expected_to_change": [
+        "closer-app/src/llm.js",
+        "closer-app/public/app.js"
+      ],
+      "notes": "Depends on nothing. Should ship before the Nathan demo."
+    },
+    {
+      "id": "TASK-124",
+      "status": "parked",
+      "priority": "low",
+      "estimated_complexity": "medium",
+      "title": "Appointment-setter call analysis \u2014 custom work for Nathan only, if he asks",
+      "source": "2026-09-11 Gabriel decision brief",
+      "dependencies": [
+        "TASK-019"
+      ],
+      "description": "PARKED BY DECISION, not by capacity. Gabriel removed setter and triage call analysis from the product on 2026-09-11: 'This is Closer AI so we're just focusing on the closers. It is too much of a cost and it adds too much complexity.' It becomes bespoke work for Nathan alone if he asks after signing. The three candidate prompts are written and on file in '2026-09-09 Nathan round/Appointment setter prompts \u2014 three drafts.md'. NOTE: this parks the setter's CALLS, not the setter's NAME \u2014 per-lead attribution (client, closer, who set the appointment) is unchanged and still comes from GoHighLevel.",
+      "acceptance_criteria": [
+        "Not to be built unless a specific customer pays for it"
+      ],
+      "testing_criteria": [],
+      "files_expected_to_change": [],
+      "notes": "Closing this requirement also closed the High-severity trap 'Half of Closer's first real sale has no recording source' \u2014 there is no longer anything to ingest."
     }
   ],
-  "progress_percentage": 89,
+  "progress_percentage": 88,
   "project_principles": [
     "DECISION AUTHORITY (Ivan, 2026-07-19): Ivan is the ultimate authority on what gets built and deployed. Gabriel's input from calls is SUGGESTION and raw material, not specification \u2014 capture it on the potential-features list, but do not treat it as approved work. Ivan's words: 'I trust my instincts and design skills more than his... take it with a grain of salt, though I do expect that he will have great ideas.' PRACTICALLY: never move a Gabriel idea into a build round without Ivan asking for it; when Gabriel's suggestion conflicts with Ivan's design judgement, Ivan wins; surface Gabriel's ideas as options with tradeoffs rather than as requirements."
   ]
