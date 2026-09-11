@@ -207,6 +207,32 @@ async function route(request, env, url, ctx) {
     return json({ integrations: results.map(i => ({ ...i, env_fallback: false })) });
   }
 
+  // Add another integration (TASK-125). Two Fathom accounts already exist in production and the
+  // only way to get the second one was a hand-written SQL INSERT — the UI could edit rows it
+  // could not create.
+  //
+  // Deliberately allows MORE THAN ONE of the same kind: Gabriel records in two Fathom accounts,
+  // and Gabriel's per-business model means several GoHighLevel sub-accounts. A uniqueness
+  // constraint on (account_id, kind) would have been the obvious schema and the wrong one.
+  if (path === "/api/integrations" && method === "POST") {
+    const { account_id, kind, label } = await request.json().catch(() => ({}));
+    const KINDS = ["fathom", "ghl", "anthropic", "openai"];
+    if (!KINDS.includes(kind)) return json({ error: `Unknown integration type "${kind}".` }, 400);
+    const acct = account_id
+      ? await env.DB.prepare("SELECT id FROM accounts WHERE id = ?").bind(+account_id).first()
+      : await env.DB.prepare("SELECT id FROM accounts ORDER BY id LIMIT 1").first();
+    if (!acct) return json({ error: "No account to attach this to." }, 400);
+
+    const ins = await env.DB.prepare(
+      `INSERT INTO integrations (account_id, kind, status, secret_name, label)
+       VALUES (?, ?, 'disconnected', ?, ?) RETURNING id`
+    ).bind(acct.id, kind, `${kind.toUpperCase()}_API_KEY`, (label || "").trim() || null).first();
+
+    await logEvent(env, { kind: "integration.added", account_id: acct.id,
+      detail: `${kind}${label ? ` · ${label}` : ""} — added, no credential yet` });
+    return json({ ok: true, id: ins.id });
+  }
+
   const intMatch = path.match(/^\/api\/integrations\/(\d+)$/);
   if (intMatch && method === "PUT") {
     const { secret_value } = await request.json();

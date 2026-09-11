@@ -335,6 +335,7 @@ function openRelevantCall() {
 // Return the detail pane to the calls context: drop any workspace-view highlight,
 // make sure a call filter is active, and open a relevant call (or the empty state).
 function showCallsView() {
+  document.body.classList.remove("workspace");
   document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
   if (!document.querySelector(".nav-item[data-filter].active")) {
     const allFilter = document.querySelector('.nav-item[data-filter="all"]');
@@ -903,6 +904,10 @@ function fmtTime(iso) {
 
 // ---------- call detail ----------
 async function openCall(id) {
+  // Opening a call always leaves workspace mode. The People page links straight into a call, so
+  // without this the list pane would stay hidden while a call is on screen and there would be no
+  // visible way back to the inbox.
+  document.body.classList.remove("workspace");
   state.currentCallId = id;
   document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
   markCallSeen(id);          // opening it is what clears the "new" mark, like unread mail
@@ -1760,7 +1765,18 @@ function renderEmpty() {
 }
 
 // ---------- workspace views ----------
+// WORKSPACE MODE (2026-09-11). A settings page shares the window with the call list only if
+// the call list is useful there, and on Integrations, Spend, People, Billing and Access it never
+// is: it is 280px of unrelated conversation while you are pasting an API key.
+//
+// So a workspace view takes the whole width. `body.workspace` collapses the grid to two columns
+// and hides the list pane, matching how Devin, Pipedrive and Google Drive treat settings.
+//
+// Full width is NOT full bleed: the content inside is capped and centred (see .view-body in the
+// stylesheet). A form stretched across 1900px is worse to read than one at 280px, and the point
+// of the change is readability rather than square footage.
 function viewShell(title, sub, bodyHtml) {
+  document.body.classList.add("workspace");
   state.currentCallId = null; renderCallList();
   $("#detailPane").innerHTML = `
     <div class="detail-header"><div class="dh-top"><div>
@@ -2583,9 +2599,17 @@ async function renderAccess() {
 //     than as a toast that vanishes.
 //
 // The rule that keeps it clean: a collapsed row shows STATE, an expanded row shows CONTROLS.
+// `tint` is each service's own accent so the marks are distinguishable at a glance rather than
+// four identical gradient squares.
+//
+// > `icon` is a deliberate empty slot. Ivan asked for real company logos, and shipping my own
+// > approximations of other companies' trademarks — or hot-linking their SVGs from their servers
+// > — are both worse than a clean monogram. Drop the real file in as an inline `<svg>` string
+// > here and it replaces the monogram everywhere, in the rows and in the picker, with no other
+// > change. Until then the monogram is honest about being a placeholder.
 const INTEGRATION_META = {
   ghl: { label: "GoHighLevel", blurb: "Push CRM notes and read who set the appointment.",
-         method: "token",
+         method: "token", tint: "#2F6FED", icon: null, multi: true,
          // Updated 2026-09-11: this said "Login (OAuth) — we register a marketplace app first"
          // for eight weeks, and it was wrong. A Private Integration Token needs no registration,
          // no developer account and no product name.
@@ -2594,17 +2618,45 @@ const INTEGRATION_META = {
                  "Tick the scopes: Contacts, Opportunities, Users.",
                  "Copy the token, then copy the Location ID from Settings → Business Profile."] },
   fathom: { label: "Fathom", blurb: "Imports call recordings and transcripts.", method: "token",
+            tint: "#E0533D", icon: null, multi: true,
             where: ["In Fathom, go to Settings → Integrations → API Access.",
                     "Generate a key and copy it. No developer account needed."] },
   anthropic: { label: "Claude", blurb: "Writes the debrief, the drafts and the CRM note.",
-               method: "key",
+               method: "key", tint: "#CC785C", icon: null, multi: false,
                where: ["console.anthropic.com → Settings → API keys → Create key.",
                        "A Claude Pro subscription does NOT include API usage — it is billed per token.",
                        "Set a spend cap on the same page while you are there."] },
   openai: { label: "ChatGPT", blurb: "Alternative model provider. Not in use.", method: "key",
+            tint: "#10A37F", icon: null, multi: false,
             where: ["platform.openai.com → API keys → Create new secret key.",
                     "A ChatGPT Plus subscription does NOT include API usage."] }
 };
+
+// One mark, used by the rows and the picker, so a real logo dropped into `icon` appears in both.
+const igMark = (m, size = 28) => m.icon
+  ? `<span class="ig-mark" style="width:${size}px;height:${size}px;background:${m.tint || "var(--paper-200)"}">${m.icon}</span>`
+  : `<span class="ig-mark" style="width:${size}px;height:${size}px;background:${m.tint || "var(--paper-200)"}">${esc(m.label.slice(0, 1))}</span>`;
+
+// The picker. Frame's compact tile grid rather than StackAI's searchable catalogue: there are
+// four integration types, and a search field over four items is decoration.
+function integrationPicker(accountId) {
+  const tiles = Object.entries(INTEGRATION_META).map(([kind, m]) => `
+    <button class="ig-tile" data-add="${kind}" data-addacct="${accountId}">
+      ${igMark(m, 34)}
+      <span class="ig-tile-name">${esc(m.label)}</span>
+      <span class="ig-tile-blurb">${esc(m.blurb)}</span>
+      ${m.multi ? `<span class="ig-tile-note">More than one allowed</span>` : ""}
+    </button>`).join("");
+  return `<div class="ig-modal" id="igModal" role="dialog" aria-modal="true" aria-label="Add an integration">
+    <div class="ig-modal-card">
+      <div class="ig-modal-head">
+        <div><div class="ig-modal-t">Add an integration</div>
+        <div class="ig-modal-s">Pick a service. You will paste its credential next.</div></div>
+        <button class="ig-modal-x" id="igModalX" aria-label="Close">&times;</button>
+      </div>
+      <div class="ig-tiles">${tiles}</div>
+    </div></div>`;
+}
 
 async function renderIntegrations() {
   const { integrations } = await api.get("/integrations");
@@ -2642,7 +2694,7 @@ async function renderIntegrations() {
 
     return `<div class="ig-row ${isOpen ? "is-open" : ""}" data-igrow="${i.id}">
       <button class="ig-head" data-igtoggle="${i.id}" aria-expanded="${isOpen}">
-        <span class="ig-mark" aria-hidden="true">${esc(m.label.slice(0, 1))}</span>
+        ${igMark(m)}
         <span class="ig-main">
           <span class="ig-name">${name}</span>
           <span class="ig-blurb">${esc(m.blurb)}</span>
@@ -2691,10 +2743,35 @@ async function renderIntegrations() {
     </div>`;
   }).join("");
 
+  const firstAccount = integrations[0]?.account_id ?? "";
   viewShell("Integrations",
     "What Closer is connected to. Credentials are stored on the server and never sent back to your browser.",
+    `<div class="ig-top"><button class="primary-btn" id="igAdd">+ Add integration</button></div>` +
     Object.entries(byAccount).map(([acct, items]) =>
-      `<div class="ig-group"><div class="ig-group-t">${esc(acct)}</div>${rowsFor(items)}</div>`).join(""));
+      `<div class="ig-group"><div class="ig-group-t">${esc(acct)}</div>${rowsFor(items)}</div>`).join("") +
+    integrationPicker(firstAccount));
+
+  const modal = $("#igModal");
+  const closeModal = () => modal?.classList.remove("show");
+  $("#igAdd")?.addEventListener("click", () => modal?.classList.add("show"));
+  $("#igModalX")?.addEventListener("click", closeModal);
+  // Click the backdrop, not the card, to dismiss.
+  modal?.addEventListener("click", e => { if (e.target === modal) closeModal(); });
+  document.addEventListener("keydown", function esc(e) {
+    if (e.key === "Escape" && modal?.classList.contains("show")) { closeModal(); }
+  }, { once: true });
+
+  document.querySelectorAll("[data-add]").forEach(b => b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      const r = await api.post("/integrations", { account_id: b.dataset.addacct || undefined, kind: b.dataset.add });
+      closeModal();
+      // Open the new row straight away — the next thing anyone wants is to paste the credential,
+      // and making them find the row they just created is a pointless extra step.
+      state.openIntegration = r.id;
+      renderIntegrations();
+    } catch (e) { toast(e.message || "Could not add that."); b.disabled = false; }
+  }));
 
   // One row open at a time: this page is a list to scan, and two open panels turns it back into
   // the wall it used to be.

@@ -3255,6 +3255,42 @@
       "testing_criteria": [],
       "files_expected_to_change": [],
       "notes": "Closing this requirement also closed the High-severity trap 'Half of Closer's first real sale has no recording source' \u2014 there is no longer anything to ingest."
+    },
+    {
+      "id": "TASK-125",
+      "status": "completed",
+      "priority": "medium",
+      "estimated_complexity": "low",
+      "title": "Settings pages take the whole window, and integrations can be added from the UI",
+      "source": "2026-09-11 Ivan",
+      "dependencies": [
+        "TASK-019"
+      ],
+      "description": "Two changes. (1) Workspace mode: body.workspace hides the call list and collapses the grid to two columns on all eight workspace views. Full width is not full bleed \u2014 content is capped at 1120px and centred. The rule is repeated inside the <=1100 and <=900 media queries because both re-declare grid-template-columns, drag handles are hidden, and openCall removes the class as well as showCallsView (People links straight into a call). (2) POST /api/integrations plus a picker modal, because two Fathom rows already existed in production and the only way to make the second was a hand-written SQL INSERT. More than one of the same kind is deliberate: two Fathom accounts, one GHL sub-account per business \u2014 do NOT add UNIQUE(account_id, kind). Brand tints per service; INTEGRATION_META.icon is an empty slot for real logo SVGs rather than shipping approximations of other companies' trademarks.",
+      "acceptance_criteria": [
+        "Every workspace view hides the call list",
+        "Content is capped and centred, not stretched",
+        "Opening a call restores the list",
+        "An integration can be added from the UI",
+        "Two integrations of the same kind can coexist"
+      ],
+      "testing_criteria": [
+        "Dropping the <=900 rule fails",
+        "Removing the content cap fails",
+        "Not clearing workspace mode in openCall fails",
+        "Accepting an arbitrary kind fails"
+      ],
+      "files_expected_to_change": [
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css",
+        "closer-app/src/index.js",
+        "closer-app/tests/ghl.test.mjs"
+      ],
+      "notes": "Real company logo SVGs still need to be dropped into INTEGRATION_META.icon \u2014 deliberately not approximated or hot-linked.",
+      "test_results": [
+        "ghl 55/55",
+        "full suite 703/703"
+      ]
     }
   ],
   "progress_percentage": 89,

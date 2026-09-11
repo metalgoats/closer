@@ -58,6 +58,20 @@ Stack: Cloudflare Workers (UI + API in one Worker) · Cloudflare D1 (SQLite) · 
 > return 401, but no valid token exists yet, so a 200's shape is an assumption. Errors fall through
 > to GoHighLevel's own message on purpose.
 
+> [!note] Workspace mode: settings pages are full width (2026-09-11)
+> `body.workspace` hides the call list and drops the app grid to two columns. Added by
+> `viewShell()`, removed by `showCallsView()` **and by `openCall()`** — the People page links
+> straight into a call, and without that second one the list stays hidden with no way back.
+> The rule must be repeated inside the ≤1100px and ≤900px media queries, which re-declare
+> `grid-template-columns`. Content is capped at 1120px and centred: **full width is not full
+> bleed.**
+>
+> Integrations can be added from the UI (`POST /api/integrations`), and **more than one of the
+> same kind is allowed on purpose** — two Fathom accounts, one GoHighLevel per business. Do not
+> add a `UNIQUE(account_id, kind)` constraint.
+> `INTEGRATION_META.icon` is an empty slot for a real logo SVG; it renders in the row and the
+> picker from one place.
+
 ## Local development (no Cloudflare account needed)
 
 ```bash

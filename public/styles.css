@@ -1046,9 +1046,11 @@ a.km-at:hover { text-decoration:underline; }
            background:none; border:0; text-align:left; cursor:pointer; color:inherit; font:inherit;
            flex-wrap:wrap; row-gap:6px; }
 .ig-head:hover { background:var(--paper-100); }
-.ig-mark { flex:0 0 28px; height:28px; border-radius:8px; display:grid; place-items:center;
-           font-weight:700; font-size:13px; color:#fff;
-           background:linear-gradient(135deg, var(--blue-500), var(--violet-500)); }
+/* Size and tint come from the markup so one renderer serves both the rows and the picker tiles,
+   and so a real logo SVG dropped into INTEGRATION_META.icon lands in both at once. */
+.ig-mark { flex:0 0 auto; border-radius:8px; display:grid; place-items:center;
+           font-weight:700; font-size:13px; color:#fff; overflow:hidden; }
+.ig-mark svg { width:62%; height:62%; }
 /* flex-basis 180px with wrap: on a wide pane the state sits on the right, and on a narrow one it
    drops to its own line instead of colliding with the description. The detail pane is genuinely
    narrow when the call list is open, and the first version overlapped the badge with the text. */
@@ -1101,3 +1103,54 @@ a.km-at:hover { text-decoration:underline; }
 .ig-result { font-size:12.5px; line-height:1.55; margin-top:10px; min-height:1em; color:var(--ink-400); }
 .ig-result.is-ok { color:var(--blue-500); font-weight:600; }
 .ig-result.is-bad { color:var(--pink-500); font-weight:600; }
+
+/* ---- Workspace mode (2026-09-11) -----------------------------------------------------------
+   Settings pages take the whole window. The call list is 280px of unrelated conversation while
+   you are pasting an API key, and hiding it is the difference between a settings page and a
+   settings column. Matches how Devin, Pipedrive and Google Drive treat settings.
+
+   Declared AFTER the shell rules so it wins, and repeated inside the ≤900px band because that
+   band re-declares grid-template-columns and would otherwise put the list back. */
+body.workspace .call-list { display:none; }
+body.workspace .app { grid-template-columns:var(--w-sidebar, 208px) minmax(0,1fr); }
+body.workspace.sb-collapsed .app { grid-template-columns:0 minmax(0,1fr); }
+/* Both handles sit on column boundaries that no longer exist here. */
+body.workspace .resizer { display:none; }
+@media (max-width:1100px){ body.workspace .app { grid-template-columns:var(--w-sidebar, 176px) minmax(0,1fr); } }
+@media (max-width:900px){ body.workspace .app { grid-template-columns:240px minmax(0,1fr); } }
+
+/* Full width is not full bleed. A form stretched across 1900px is harder to read than one at
+   280px, and readability is the whole point of the change — so the content is capped and
+   centred while the PANE is full width. Tables and charts opt out with .view-wide. */
+body.workspace .view-body { max-width:1120px; margin-inline:auto; }
+body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; width:100%; }
+
+/* ---- Add-integration picker (2026-09-11) ---------------------------------------------------
+   Frame's compact tile grid rather than a searchable catalogue: there are four integration
+   types, and a search field over four items is decoration pretending to be a feature. */
+.ig-top { display:flex; justify-content:flex-end; margin-bottom:14px; }
+
+.ig-modal { position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:60;
+            display:none; align-items:center; justify-content:center; padding:24px; }
+.ig-modal.show { display:flex; }
+.ig-modal-card { width:min(680px, 100%); max-height:82vh; overflow:auto;
+                 background:var(--paper-0); border:1px solid var(--line); border-radius:16px;
+                 box-shadow:0 24px 64px rgba(0,0,0,.45); padding:20px; }
+.ig-modal-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+                 margin-bottom:16px; }
+.ig-modal-t { font-family:var(--font-display); font-size:19px; font-weight:600; }
+.ig-modal-s { font-size:12.5px; color:var(--ink-400); margin-top:3px; }
+.ig-modal-x { background:none; border:0; color:var(--ink-400); font-size:22px; line-height:1;
+              cursor:pointer; padding:0 4px; }
+.ig-modal-x:hover { color:var(--ink-800); }
+
+.ig-tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; }
+.ig-tile { display:flex; flex-direction:column; align-items:flex-start; gap:6px; text-align:left;
+           padding:14px; border:1px solid var(--line); border-radius:12px; cursor:pointer;
+           background:var(--paper-50); color:inherit; font:inherit; }
+.ig-tile:hover { border-color:var(--blue-500); background:var(--paper-100); }
+.ig-tile:disabled { opacity:.5; cursor:wait; }
+.ig-tile-name { font-weight:600; font-size:14px; margin-top:2px; }
+.ig-tile-blurb { font-size:12px; color:var(--ink-400); line-height:1.45; }
+.ig-tile-note { font-size:11px; color:var(--ink-400); background:var(--paper-200);
+                border-radius:5px; padding:1px 6px; }

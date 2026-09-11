@@ -128,5 +128,78 @@ check("dead CSS from the old page was removed, not left behind",
   !/\.integration-card|\.key-row|\.label-hint|\.key-state/.test(css),
   "this project already has a trap logged about every feature leaving its own permanent strip");
 
+console.log("\nWorkspace mode — a settings page is a page, not a column");
+
+check("entering any workspace view hides the call list",
+  /document\.body\.classList\.add\("workspace"\);/.test(app)
+    && /body\.workspace \.call-list \{ display:none; \}/.test(css),
+  "280px of unrelated conversation while you paste an API key");
+check("the grid drops to two columns", /body\.workspace \.app \{ grid-template-columns:var\(--w-sidebar/.test(css));
+check("...and stays two columns when the sidebar is collapsed",
+  /body\.workspace\.sb-collapsed \.app/.test(css));
+// Both narrow bands re-declare grid-template-columns, so without repeating the rule inside them
+// the list comes back at exactly the widths where there is least room for it.
+// Asserted by CONTEXT, not by counting occurrences. A count is brittle — it fails on a valid
+// edit and teaches people to bump the number, which is how a guard quietly stops guarding.
+check("the rule is repeated inside BOTH narrow media queries",
+  /@media \(max-width:1100px\)\{[^}]*body\.workspace \.app/.test(css)
+    && /@media \(max-width:900px\)\{[^}]*body\.workspace \.app/.test(css),
+  "both bands re-declare grid-template-columns and would otherwise put the list back at exactly the widths with least room");
+check("the drag handles are hidden, since their columns no longer exist",
+  /body\.workspace \.resizer \{ display:none; \}/.test(css));
+
+// Full width is not full bleed.
+check("content is capped and centred rather than stretched",
+  /body\.workspace \.view-body \{ max-width:\d+px; margin-inline:auto; \}/.test(css),
+  "a form across 1900px is harder to read than one at 280px; readability is the point");
+check("...and the reason is written down", /Full width is NOT full bleed|Full width is not full bleed/.test(css + app));
+
+check("leaving for the inbox restores the list",
+  /function showCallsView\(\) \{\s*\n\s*document\.body\.classList\.remove\("workspace"\);/.test(app));
+check("opening a call also restores it",
+  /async function openCall\(id\) \{[\s\S]{0,320}document\.body\.classList\.remove\("workspace"\);/.test(app),
+  "People links straight into a call; without this the list stays hidden with no way back");
+
+console.log("\nAdd-integration picker");
+
+check("there is an add button", /id="igAdd"/.test(app));
+check("the picker offers every known kind",
+  ["ghl", "fathom", "anthropic", "openai"].every(k => new RegExp(`data-add="${k}"`).test(app)
+    || /Object\.entries\(INTEGRATION_META\)\.map/.test(app)));
+check("kinds that support more than one say so",
+  /multi: true/.test(app) && /More than one allowed/.test(app),
+  "Gabriel records in two Fathom accounts and will have a GHL sub-account per business");
+check("the modal closes on the backdrop and on Escape",
+  /if \(e\.target === modal\) closeModal\(\)/.test(app) && /e\.key === "Escape"/.test(app));
+check("adding opens the new row immediately",
+  /state\.openIntegration = r\.id;/.test(app),
+  "the next thing anyone wants is to paste the credential");
+
+check("the create route validates the kind against a list",
+  /const KINDS = \["fathom", "ghl", "anthropic", "openai"\]/.test(idx)
+    && /Unknown integration type/.test(idx),
+  "an arbitrary kind would create a row nothing can ever configure or test");
+check("the create route does NOT enforce one-per-kind",
+  !/UNIQUE\(account_id, kind\)/.test(idx) && /Deliberately allows MORE THAN ONE of the same kind/.test(idx),
+  "two Fathom accounts already exist in production");
+check("a new integration starts with no credential and disconnected",
+  /VALUES \(\?, \?, 'disconnected', \?, \?\)/.test(idx));
+check("adding is logged", /kind: "integration\.added"/.test(idx));
+
+console.log("\nBrand marks");
+
+check("each service has its own tint rather than one shared gradient",
+  (app.match(/tint: "#[0-9A-Fa-f]{6}"/g) || []).length >= 4);
+check("one mark renderer serves both the rows and the picker",
+  /const igMark = \(m, size = 28\)/.test(app)
+    && /<button class="ig-tile"[\s\S]{0,120}\$\{igMark\(m, 34\)\}/.test(app)   // the picker tile
+    && /<button class="ig-head"[\s\S]{0,160}\$\{igMark\(m\)\}/.test(app),      // the row
+  "so a real logo dropped into `icon` appears in both without a second edit");
+// Ivan asked for real logos. Shipping my own approximations of other companies' trademarks, or
+// hot-linking their SVGs, are both worse than a clean monogram — so the slot is explicit.
+check("there is an explicit slot for a real logo, and it is documented as empty",
+  /icon: null/.test(app) && /deliberate empty slot/.test(app),
+  "the placeholder must be obviously a placeholder, not mistaken for the finished thing");
+
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

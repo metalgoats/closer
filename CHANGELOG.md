@@ -3,6 +3,51 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-11 (evening) — Settings pages take the whole window, and you can add integrations
+
+**Workspace mode.** A settings page shared the window with the call list, which meant 280px of
+unrelated conversation sitting beside you while you pasted an API key. `body.workspace` now
+collapses the grid to two columns and hides the list on all eight workspace views — Integrations,
+Spend, People, Billing, Access, Activity, Prompt Library, Insights and Suggestions. Matches how
+Devin, Pipedrive and Google Drive treat settings.
+
+**Full width is not full bleed.** The pane is full width; the content inside is capped at 1120px
+and centred. A form stretched across 1900px is harder to read than one at 280px, and readability
+was the entire point of the change — so widening the container without capping the content would
+have missed it.
+
+Three details that are each a bug if missed: the ≤1100px and ≤900px bands **re-declare**
+`grid-template-columns`, so the rule is repeated inside both or the list reappears at exactly the
+widths with least room for it; the drag handles are hidden, because they sit on a column boundary
+that no longer exists; and **opening a call leaves workspace mode**, which matters because People
+links straight into a call and the list would otherwise stay hidden with no way back to the inbox.
+
+**Adding integrations.** Two Fathom accounts already existed in production and the only way to
+create the second was a hand-written SQL INSERT — the UI could edit rows it could not create.
+`POST /api/integrations` now creates one, and a picker (Frame's compact tile grid, not a
+searchable catalogue — there are four types and a search field over four items is decoration)
+offers each service. Kinds that support more than one say so on the tile.
+
+**More than one of the same kind is deliberate.** A `UNIQUE(account_id, kind)` constraint is the
+obvious schema and the wrong one: Gabriel records in two Fathom accounts, and the per-business
+pricing model gives each business its own GoHighLevel sub-account.
+
+**Brand marks, with an honest placeholder.** Each service now has its own tint instead of four
+identical gradient squares. `INTEGRATION_META.icon` is a deliberate empty slot: Ivan asked for real
+company logos, and shipping my own approximations of other companies' trademarks — or hot-linking
+their SVGs off their servers — are both worse than a clean monogram. Drop the real file in as an
+inline SVG string and it replaces the monogram in the rows *and* the picker with no other change.
+
+**Two test assertions rewritten rather than bumped.** Both counted occurrences (`>= 4` CSS rules,
+`>= 3` calls) and both were simply miscounted by me. A count-based assertion fails on a valid edit
+and teaches the next person to bump the number, which is how a guard quietly stops guarding — so
+they now assert by context: the rule appears *inside each media query*, and `igMark` is used *in
+the row template and in the tile template*.
+
+703 assertions across eight files. Four inversions proven red: dropping the ≤900 rule, removing
+the content cap, forgetting to leave workspace mode on openCall, and accepting an arbitrary
+integration kind.
+
 ## 2026-09-11 (later) — GoHighLevel connects, and the Integrations page stops being a wall
 
 **The eight-week blocker was never a requirement.** `TASK-018` — register a GoHighLevel
