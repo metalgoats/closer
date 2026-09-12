@@ -2746,7 +2746,10 @@ async function renderIntegrations() {
   const firstAccount = integrations[0]?.account_id ?? "";
   viewShell("Integrations",
     "What Closer is connected to. Credentials are stored on the server and never sent back to your browser.",
-    `<div class="ig-top"><button class="primary-btn" id="igAdd">+ Add integration</button></div>` +
+    // Secondary, not primary. This page's job is to be a quiet reference you scan; adding an
+// integration is the rarest thing done here and it was rendering as the brightest object on
+// the screen, pulling the eye away from the rows that are the actual content.
+`<div class="ig-top"><button class="regen-btn" id="igAdd">+ Add integration</button></div>` +
     Object.entries(byAccount).map(([acct, items]) =>
       `<div class="ig-group"><div class="ig-group-t">${esc(acct)}</div>${rowsFor(items)}</div>`).join("") +
     integrationPicker(firstAccount));
