@@ -2,7 +2,7 @@
   "project": "Closer \u2014 post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
   "last_updated": "2026-09-11",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) \u2014 now the sole template, so it affects 100% of calls.",
-  "completion_percentage": 89,
+  "completion_percentage": 90,
   "tasks": [
     {
       "id": "TASK-001",
@@ -3291,9 +3291,55 @@
         "ghl 55/55",
         "full suite 703/703"
       ]
+    },
+    {
+      "id": "TASK-126",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "title": "The assistant \u2014 one question over every call you are allowed to see",
+      "source": "2026-09-11 Gabriel call",
+      "dependencies": [
+        "TASK-117"
+      ],
+      "description": "Ivan, 2026-09-11: 'I want to see a V1 of the chatbot... make sure that the data access is controlled at the level of the little helper bot.' DONE. src/assistant.js builds a role-scoped context pack: an admin gets every rep, a member gets only rows where rep_email is their own address, enforced in SQL at build time rather than by prompting. Index AND aggregates are both scoped. Not admin-gated, because a rep asking about their own calls is half the product. Two production lessons: (1) the first version wrote a raw fetch, omitted `thinking`, and Opus 5 spent the entire 1200-token budget reasoning and returned an empty answer -- it now uses completeWithRetry like everything else; (2) it miscounted, reporting '13 of 30' when the truth was 4, so dimension averages are now computed in SQL and handed to it.",
+      "acceptance_criteria": [],
+      "testing_criteria": [],
+      "files_expected_to_change": [
+        "closer-app/src/assistant.js",
+        "closer-app/src/llm.js",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "test_results": [
+        "full suite 758/758"
+      ]
+    },
+    {
+      "id": "TASK-127",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "title": "A no-show is not a sales call and must not be scored like one",
+      "source": "2026-09-11 Gabriel call",
+      "dependencies": [
+        "TASK-117"
+      ],
+      "description": "Found by the assistant's first run over real data. Five production calls with transcripts of 37-311 characters had full scorecards -- graded out of ten on rapport, trust and emotional connection -- and were sitting inside every average on the People page. MIN_SCORABLE_CHARS = 500, measured from the real distribution: 122 of 136 calls exceed 5,000 chars, the next band starts at 1,000, nothing legitimate is below 500. The call is still imported and summarised; it just gets no scorecard, reusing the path that already existed for internal calls. NOT retro-fixed: the five historical rows keep their scores, same as TASK-121.",
+      "acceptance_criteria": [],
+      "testing_criteria": [],
+      "files_expected_to_change": [
+        "closer-app/src/assistant.js",
+        "closer-app/src/llm.js",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js"
+      ],
+      "test_results": [
+        "full suite 758/758"
+      ]
     }
   ],
-  "progress_percentage": 89,
+  "progress_percentage": 90,
   "project_principles": [
     "DECISION AUTHORITY (Ivan, 2026-07-19): Ivan is the ultimate authority on what gets built and deployed. Gabriel's input from calls is SUGGESTION and raw material, not specification \u2014 capture it on the potential-features list, but do not treat it as approved work. Ivan's words: 'I trust my instincts and design skills more than his... take it with a grain of salt, though I do expect that he will have great ideas.' PRACTICALLY: never move a Gabriel idea into a build round without Ivan asking for it; when Gabriel's suggestion conflicts with Ivan's design judgement, Ivan wins; surface Gabriel's ideas as options with tradeoffs rather than as requirements."
   ]

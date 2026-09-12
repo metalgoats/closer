@@ -3,6 +3,60 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-11 (late) — The assistant, and the no-shows it found on its first run
+
+**V1 of the assistant is live** (TASK-126). Ivan asked for it by name: *"I want to see a V1 of the
+chatbot… and make sure that the data access is controlled at the level of the little helper bot."*
+
+`Ask` in the Coaching nav. One question over every call the asker is allowed to see.
+
+> [!danger] The role boundary is a WHERE clause, not a prompt
+> An admin's question is answered from every rep's calls; a member's from their own and nothing
+> else. That is applied when the **context is built**, not by asking the model to be discreet — a
+> prompt is a request, a WHERE clause is a boundary. If a member's pack physically contains no
+> other rep's data then no prompting extracts it, and a prompt injection buried in a client's
+> transcript becomes a non-event rather than a breach.
+>
+> Both the index **and** the aggregates are scoped. Scoping one and not the other is the subtle
+> version of the same leak, and it has its own test.
+>
+> Deliberately NOT admin-gated: a rep asking "where am I losing calls" is half the product.
+
+**Two things the first production run taught, both the hard way.**
+
+**1. It returned an empty answer.** `output_tokens` hit the 1,200 cap exactly and no text came
+out: Opus 5 defaulted extended thinking ON because the request omitted `thinking` entirely. The
+app already had `thinkingFor()` for precisely this and the assistant had bypassed it by writing a
+raw `fetch`. Now it uses `completeWithRetry` like everything else, which also buys it the retry
+policy and the 403 handling for free. **Duplicated infrastructure is duplicated badly.**
+
+**2. Its analysis was good and its arithmetic was wrong.** It reported *"13 of 30 calls score 1
+across the board"* when the real figure is **4**, and cited call ids that were not among them.
+Same lesson as the timestamps in a new place: counting is what models are worst at and most
+confident about. Dimension averages are now computed **in SQL** and handed to the model, which is
+told to use them and not recount. The re-run was exact.
+
+### What it found that nobody was looking for
+
+**Five production calls with transcripts of 37 to 311 characters had been scored out of ten** on
+rapport, trust and emotional connection. They are no-shows and dead connections. The model, asked
+for a scorecard, produced 1s — and every one of those rows sits inside the averages on the People
+page.
+
+That is not a harmless zero. A manager who opens one of those calls and finds nobody was on it
+stops trusting every number on the page, which is the same failure mode as calling something a
+"close rate" when it is not.
+
+`MIN_SCORABLE_CHARS = 500`, and the threshold is **measured rather than guessed**: 122 of 136
+production calls exceed 5,000 characters, the next band down starts at 1,000, and nothing
+legitimate lives below 500. The call is still imported, still summarised, still in the inbox — it
+just does not receive a score it cannot have earned. It reuses the no-scorecard path that already
+existed for internal calls.
+
+758 assertions across nine files. Guards proven red: dropping the member filter, widening on an
+empty email, sending full transcripts, letting the client name the rep, an unscoped aggregate
+query, and removing the no-show guard.
+
 ## 2026-09-11 (night) — Real logos for two of four, and a layout bug that shipped for an hour
 
 **Claude and Fathom now carry their actual marks.** Claude's is from Simple Icons (CC0, sourced

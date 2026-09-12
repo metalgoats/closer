@@ -11,7 +11,7 @@
 //   2. THE SMS IS NEVER SUPPRESSED, even on an email-only call.
 //   3. The enriched debrief (TASK-089) and adaptive-draft plumbing (recipientProfile.detailPreference,
 //      bounded-certainty) are wired, and the new fields survive into what workflow.js persists.
-import { generateOutputs, hasContent, debriefLine, isRetryableForbidden, scorecardIssues, parseTimestamp, verifyMoments } from "../src/llm.js";
+import { generateOutputs, hasContent, debriefLine, isRetryableForbidden, scorecardIssues, parseTimestamp, verifyMoments, MIN_SCORABLE_CHARS } from "../src/llm.js";
 import { SPECIMEN_APPROX_TOKENS as SPECIMEN_TOKENS } from "../src/specimen.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -755,6 +755,33 @@ console.log("\n== key moments and their timestamps ==");
   check("...and the poller still gets transcripts by default",
     /includeTranscript = true \} = \{\}/.test(idx),
     "flipping the default would silently stop the poller importing any content");
+}
+
+
+// ---- a no-show is not a sales call (TASK-127) ------------------------------------------------
+//
+// Found by the assistant's first run over real data: five production calls with transcripts of
+// 37 to 311 characters had been scored out of ten on rapport, trust and emotional connection.
+// Dead connections, graded like conversations, sitting inside every average on the People page.
+console.log("\n== no-shows are not scored ==");
+{
+  const llm = readFileSync(new URL("../src/llm.js", import.meta.url), "utf8");
+  check("there is a minimum transcript length before anything is scored",
+    MIN_SCORABLE_CHARS === 500);
+  check("the threshold was measured, not guessed",
+    /122 of 136 calls exceed 5,000 characters/.test(llm),
+    "a made-up threshold is how a real short call silently stops being scored");
+  check("the guard runs BEFORE the call type's dimensions are read",
+    /if \(String\(call\.transcript \|\| ""\)\.trim\(\)\.length < MIN_SCORABLE_CHARS\) return \[\];[\s\S]{0,120}if \(!callType\) return LEGACY_DIMENSIONS;/.test(llm),
+    "after it, an unlabelled no-show would still get the legacy ten sales dimensions");
+  check("an empty dims list is the mechanism, so nothing else needs to change",
+    /return \[\];/.test(llm) && /deliberately NO scorecard/.test(llm),
+    "the no-scorecard path already existed for internal calls; this reuses it");
+  check("the call is still imported and still summarised",
+    /The call is still imported,\s*\n?\/\/ still gets a written summary/.test(llm),
+    "dropping the call would hide a no-show that a manager may want to see");
+  check("the reason is recorded, including who it misleads",
+    /stops trusting every other number/.test(llm));
 }
 
 

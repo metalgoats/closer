@@ -144,6 +144,23 @@ export async function generateOutputs(env, { account, call, masterPrompt, callTy
   //   • callType missing entirely (legacy/unlabelled) -> the original 10 sales dimensions
   // Defaulting the legacy case to [] silently stripped the scorecard off every unlabelled call.
   const dims = (() => {
+    // A NO-SHOW IS NOT A SALES CALL, AND MUST NOT BE SCORED LIKE ONE (TASK-127).
+    //
+    // Six production calls have transcripts under 500 characters -- 37, 73, 192, 311 -- and five
+    // of them were scored out of ten on rapport, trust and emotional connection. They are dead
+    // connections and no-shows. The model, asked for a scorecard, dutifully produced 1s.
+    //
+    // That is not a harmless zero. Every one of those rows is inside the averages on the People
+    // page and inside the assistant's answers, quietly dragging the whole floor down. A manager
+    // who checks one of those calls and finds nobody was on it stops trusting every other number
+    // on the page -- which is the same failure mode as calling something a "close rate" when it
+    // is not.
+    //
+    // 500 characters is where the real data breaks: 122 of 136 calls are over 5,000, the next
+    // band starts at 1,000, and nothing legitimate lives below 500. The call is still imported,
+    // still gets a written summary, and still appears in the inbox. It just does not get a score
+    // it cannot have earned.
+    if (String(call.transcript || "").trim().length < MIN_SCORABLE_CHARS) return [];
     if (!callType) return LEGACY_DIMENSIONS;
     try { const d = JSON.parse(callType.dimensions_json || "[]"); return Array.isArray(d) ? d : []; }
     catch { return LEGACY_DIMENSIONS; }
@@ -580,6 +597,11 @@ export function verifyMoments(moments, transcript) {
   });
   return { moments: out, unverified };
 }
+
+// Below this, a transcript is a no-show rather than a short call (TASK-127). Measured, not
+// guessed: in production, 122 of 136 calls exceed 5,000 characters, the next band down starts at
+// 1,000, and everything under 500 is a dead connection.
+export const MIN_SCORABLE_CHARS = 500;
 
 // Does the model's scorecard match the dimensions it was asked for? (TASK-121)
 //
