@@ -145,6 +145,15 @@ check("the rule is repeated inside BOTH narrow media queries",
   /@media \(max-width:1100px\)\{[^}]*body\.workspace \.app/.test(css)
     && /@media \(max-width:900px\)\{[^}]*body\.workspace \.app/.test(css),
   "both bands re-declare grid-template-columns and would otherwise put the list back at exactly the widths with least room");
+// SHIPPED BROKEN for an hour. Below 900px the sidebar stops being a grid column and becomes a
+// fixed slide-over, so the two columns there are the call list and the detail. Hiding the list
+// left the detail in a 240px slot against a black void, with its own rows overflowing it.
+// Overflow checks were clean the whole time; only measuring element POSITIONS found it.
+check("below 900px workspace mode is ONE column, not two",
+  /@media \(max-width:900px\)\{ body\.workspace \.app \{ grid-template-columns:minmax\(0,1fr\); \} \}/.test(css),
+  "the sidebar is an overlay in that band, so a second column reserves space for a list that is hidden");
+check("...and the reason is recorded so it is not 'tidied' back to two",
+  /sidebar stops being a grid column and becomes a fixed slide-over/.test(css));
 check("the drag handles are hidden, since their columns no longer exist",
   /body\.workspace \.resizer \{ display:none; \}/.test(css));
 
@@ -185,6 +194,31 @@ check("the create route does NOT enforce one-per-kind",
 check("a new integration starts with no credential and disconnected",
   /VALUES \(\?, \?, 'disconnected', \?, \?\)/.test(idx));
 check("adding is logged", /kind: "integration\.added"/.test(idx));
+
+console.log("\nReal logos");
+
+// Simple Icons' "Fathom" sources from usefathom.com — Fathom ANALYTICS, an unrelated company.
+// Using it would have put a stranger's logo on the recorder we integrate with.
+check("the Fathom mark is NOT the Simple Icons one",
+  /NOT the "Fathom" in Simple Icons/.test(app) && /usefathom\.com/.test(app),
+  "check the source URL, not the name");
+check("Fathom's mark is its own multi-path colour logo",
+  /viewBox="0 0 151 153"/.test(app) && /#00BEFF/.test(app));
+check("Claude's mark is present and painted in Anthropic's hex",
+  /viewBox="0 0 24 24"/.test(app) && /#D97757/.test(app));
+check("the two with no sourceable SVG stay monograms and say why",
+  /ghl:[\s\S]{0,400}icon: null/.test(app) && /openai:[\s\S]{0,300}icon: null/.test(app)
+    && /would be a blurred smear at/.test(app) && /removed from Simple Icons/.test(app),
+  "a bad upscale of a 16x16 favicon is worse than a clean letter");
+
+// A colour logo and a white letter need opposite backgrounds.
+check("a real logo gets a NEUTRAL tile, a monogram keeps the tint",
+  /ig-mark ig-mark-logo" style="width:\$\{size\}px;height:\$\{size\}px"/.test(app)
+    && /\.ig-mark-logo \{ background:var\(--paper-100\)/.test(css),
+  "Fathom's cyan on a coral square is a clash; every reference puts real logos on a plain surface");
+check("the SVGs are embedded, never hot-linked",
+  !/<img[^>]+src="https?:\/\/(cdn|assets|images)\./.test(app),
+  "a logo fetched from their server on every page load is fragile and leaks a referrer");
 
 console.log("\nBrand marks");
 

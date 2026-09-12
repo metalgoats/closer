@@ -1051,6 +1051,10 @@ a.km-at:hover { text-decoration:underline; }
 .ig-mark { flex:0 0 auto; border-radius:8px; display:grid; place-items:center;
            font-weight:700; font-size:13px; color:#fff; overflow:hidden; }
 .ig-mark svg { width:62%; height:62%; }
+/* A real brand mark brings its own colours, so it gets a neutral surface rather than a tint.
+   The faint border keeps a white-ish logo from vanishing into a light theme. */
+.ig-mark-logo { background:var(--paper-100); border:1px solid var(--line); }
+.ig-mark-logo svg { width:66%; height:66%; }
 /* flex-basis 180px with wrap: on a wide pane the state sits on the right, and on a narrow one it
    drops to its own line instead of colliding with the description. The detail pane is genuinely
    narrow when the call list is open, and the first version overlapped the badge with the text. */
@@ -1117,7 +1121,14 @@ body.workspace.sb-collapsed .app { grid-template-columns:0 minmax(0,1fr); }
 /* Both handles sit on column boundaries that no longer exist here. */
 body.workspace .resizer { display:none; }
 @media (max-width:1100px){ body.workspace .app { grid-template-columns:var(--w-sidebar, 176px) minmax(0,1fr); } }
-@media (max-width:900px){ body.workspace .app { grid-template-columns:240px minmax(0,1fr); } }
+/* ONE column below 900px, not two.
+   In this band the sidebar stops being a grid column and becomes a fixed slide-over, so the two
+   columns are the call list and the detail. Hiding the list therefore leaves the detail sitting
+   in a 240px slot with the rest of the window empty — which is exactly what shipped for an hour:
+   the Integrations page rendered 240px wide against a black void, and its rows overflowed their
+   own column. Found by measuring element positions, not by checking for overflow, which was
+   clean the whole time. Same band as the icon-rail bug of 2026-08-05. */
+@media (max-width:900px){ body.workspace .app { grid-template-columns:minmax(0,1fr); } }
 
 /* Full width is not full bleed. A form stretched across 1900px is harder to read than one at
    280px, and readability is the whole point of the change — so the content is capped and

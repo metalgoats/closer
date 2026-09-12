@@ -3,6 +3,49 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-11 (night) — Real logos for two of four, and a layout bug that shipped for an hour
+
+**Claude and Fathom now carry their actual marks.** Claude's is from Simple Icons (CC0, sourced
+from claude.ai), painted in Anthropic's own `#D97757`. Fathom's is its own `logotype-new.svg`
+pulled from fathom.video's asset CDN. Both embedded inline — a logo fetched from someone else's
+server on every page load is fragile and leaks a referrer.
+
+> [!danger] Simple Icons' "Fathom" is the wrong company
+> Its record sources from **usefathom.com** — Fathom **Analytics**, a privacy-analytics company
+> with no relation to Fathom Video, the recorder this app integrates with. The slug matched, the
+> title matched, and shipping it would have put a stranger's logo on our most-used integration.
+> **Check the source URL, not the name.**
+
+**GoHighLevel and OpenAI stay monograms, and that is the right answer.** GoHighLevel has no SVG in
+Simple Icons, no `favicon.svg` on any subdomain, and a single 16×16 `favicon.ico` that would be a
+blurred smear at 34px. OpenAI has been removed from Simple Icons and openai.com returns 403 to a
+plain fetch. A clean letter beats a bad upscale, and both now carry a comment saying exactly why.
+
+**A real logo needs the opposite background to a monogram.** Brand marks bring their own colours,
+so they sit on a neutral tile — Fathom's cyan on a coral square is a clash, and every reference
+that shows real logos puts them on a plain surface. Monograms keep the tint, because a white
+letter needs it.
+
+> [!warning] The 641–900px band, again
+> Workspace mode shipped broken at that width for about an hour. Below 900px the sidebar stops
+> being a grid column and becomes a fixed slide-over, so the two columns there are the **call list
+> and the detail**. Hiding the list therefore left the detail rendering in a **240px slot against a
+> black void**, with its own rows overflowing their column.
+>
+> **Overflow checks were clean the entire time.** `document.body.scrollWidth > innerWidth` was
+> false at every width I tested, because the content was not too wide for the page — it was in the
+> wrong column. It took measuring `getBoundingClientRect()` on the panes to see it: the sidebar was
+> at `x = -242` and the detail at `x = 0, width = 240`.
+>
+> Same band as the icon-rail bug of 2026-08-05, and the same lesson in a new costume: **checking
+> that nothing overflows is not the same as checking that things are where they belong.**
+
+Also: the "+ Add integration" button was the app's pink primary, which made the rarest action on
+the page its brightest object. Secondary now. And picker tiles bottomed out ragged because the two
+kinds with a "more than one" badge were taller than the two without.
+
+735 assertions. Two inversions proven red, including reverting the narrow band to two columns.
+
 ## 2026-09-11 (evening) — Settings pages take the whole window, and you can add integrations
 
 **Workspace mode.** A settings page shared the window with the call list, which meant 280px of
