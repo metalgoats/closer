@@ -17,7 +17,7 @@
 //
 // COST: nothing to us. This runs on the account's own Anthropic key, like everything else here.
 
-import { resolveKey } from "./llm.js";
+import { resolveKey, completeWithRetry } from "./llm.js";
 import { DEFAULT_MODEL } from "./models.js";
 import { windowStart } from "./people.js";
 
@@ -134,7 +134,12 @@ export async function ask(env, { user, account, message, view = "month", history
       callCount: 0, scope: ctx.scope, model };
   }
 
+  // `complete()` has no `system` parameter -- this app puts the system text in the first user
+  // message, the same way chatTurn does. Kept consistent on purpose rather than adding a second
+  // convention for one caller.
   const msgs = [
+    { role: "user", content: [{ type: "text", text: systemPrompt(ctx) }] },
+    { role: "assistant", content: [{ type: "text", text: "Understood. Ask your question." }] },
     ...history.slice(-6).map(h => ({ role: h.role === "assistant" ? "assistant" : "user",
                                      content: [{ type: "text", text: String(h.text || "") }] })),
     { role: "user", content: [
@@ -143,19 +148,18 @@ export async function ask(env, { user, account, message, view = "month", history
     ] },
   ];
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model, max_tokens: 1200, system: systemPrompt(ctx), messages: msgs, stream: false }),
-    signal: AbortSignal.timeout(90000),
+  // Reuses the app's own completion path rather than a raw fetch, which is not a tidiness
+  // preference: it carries the retry/backoff, the 403 handling, and `thinkingFor`.
+  //
+  // The first version of this called the API directly and omitted `thinking` entirely. Opus 5
+  // then defaulted it ON, spent all 1,200 output tokens reasoning, and returned an EMPTY answer
+  // with usage that looked like a completed call. `think: false` is what makes this a fast
+  // question-answering path instead of a slow, silent one.
+  const out = await completeWithRetry(env, provider, key, msgs, {
+    model, think: false, effort: "medium", maxTokens: 1600,
   });
-  const text = await res.text();
-  if (!res.ok) {
-    let msg; try { msg = JSON.parse(text)?.error?.message; } catch { /* raw */ }
-    throw new Error(msg || `Anthropic returned ${res.status}`);
-  }
-  const data = JSON.parse(text);
-  const answer = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+  const answer = String(out.text || "").trim();
+
   return { answer, callCount: ctx.callCount, scope: ctx.scope, model,
-           usage: data.usage || null, truncated: ctx.truncated };
+           usage: out.usage || null, truncated: ctx.truncated };
 }

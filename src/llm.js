@@ -636,7 +636,11 @@ class TransientError extends Error {
 // COST NOTE: a retry re-sends the input, so it is not free. It is worth it because the
 // failures we retry die early (an overload at 8.6s had generated almost nothing), and the
 // alternative is an unattended run failing permanently overnight.
-async function completeWithRetry(env, provider, key, messages, opts = {}) {
+// Exported for the account-level assistant (TASK-126), which needs the same retry behaviour,
+// the same 403 handling and — the reason this matters — the same `thinkingFor` logic. A raw
+// fetch that omits `thinking` lets Opus 5 default it ON, and the first version of the assistant
+// spent its entire 1,200-token budget thinking and returned an empty answer.
+export async function completeWithRetry(env, provider, key, messages, opts = {}) {
   let lastErr;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
