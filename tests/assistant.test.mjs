@@ -115,6 +115,37 @@ check("full transcripts are never sent",
   !/c\.transcript/.test(a) && /never the debriefs themselves|COMPRESSED INDEX/.test(a),
   "136 calls of transcript is 8.5MB; the pack is an index, not the archive");
 
+console.log("\nAssistant — arithmetic is done in SQL, not by the model");
+
+// The first production run's analysis was good and its counting was wrong: it reported "13 of 30
+// calls score 1 across the board" when the true figure is 4, and cited ids that were not among
+// them. Same lesson as the timestamps: counting is what models are worst at and surest about.
+{
+  const db = stubDb([CALL]);
+  const ctx = await buildContext({ DB: db }, { user: { email: "b@x.com", role: "admin" }, view: "month", accountId: 1 });
+  check("a second query computes the dimension averages",
+    db.seen.length >= 2 && /AVG\(json_extract\(j\.value,'\$\[1\]'\)\)/.test(db.seen[1].sql),
+    "the model must not be asked to average 60 lines by eye");
+  check("the aggregate query is scoped the SAME way as the index",
+    db.seen[1].sql.includes("c.archived_at IS NULL") && db.seen[1].binds.length === db.seen[0].binds.length,
+    "an unscoped aggregate would leak team averages to a member through the back door");
+  check("the model is told to use the supplied numbers and not recount",
+    /use THESE numbers, do not recount/.test(a) || /use THESE "\n\s*\+ "numbers/.test(a));
+  check("...and the prompt says so too",
+    /Do not recompute them by counting index lines/.test(a));
+  check("a count it was not given must be refused, not guessed",
+    /do not state a count you were\s*\n\s*not given/.test(a));
+}
+
+{
+  // A member's aggregates must be their own, not the team's.
+  const db = stubDb([CALL]);
+  await buildContext({ DB: db }, { user: { email: "rep@x.com", role: "member" }, view: "month", accountId: 1 });
+  check("a MEMBER's aggregate query is filtered to them as well",
+    /c\.rep_email = \?/.test(db.seen[1].sql) && db.seen[1].binds.includes("rep@x.com"),
+    "scoping the index but not the averages is the subtle version of the same leak");
+}
+
 console.log("\nAssistant — the routes");
 
 // Deliberately NOT admin-only: a rep asking about their own calls is half the product.

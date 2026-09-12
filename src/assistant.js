@@ -85,8 +85,32 @@ export async function buildContext(env, { user, view = "month", accountId = null
       + (key ? `  moments: ${key}\n` : "");
   });
 
+  // PRECOMPUTED AGGREGATES, from SQL.
+  //
+  // The first production run of this feature asked the model to work out the weakest dimension
+  // by reading 60 index lines. Its analysis was good and its arithmetic was wrong: it reported
+  // "13 of 30 calls score 1 across the board" when the real figure is 4, and it cited call ids
+  // that were not among them. Same lesson as the timestamps, in a new place -- counting is what
+  // models are worst at and most confident about, so the counting happens here and the model is
+  // left to interpret numbers it did not have to derive.
+  const { results: dims } = await env.DB.prepare(
+    `SELECT json_extract(j.value,'$[0]') AS dim,
+            ROUND(AVG(json_extract(j.value,'$[1]')), 1) AS avg,
+            COUNT(*) AS n
+       FROM calls c, json_each(json_extract(c.debrief_json,'$.scorecard')) j
+      WHERE ${where.join(" AND ")}
+      GROUP BY dim ORDER BY avg ASC`
+  ).bind(...binds).all();
+
+  const agg = dims.length
+    ? "DIMENSION AVERAGES (computed from the database, not from the index above -- use THESE "
+      + "numbers, do not recount):\n"
+      + dims.map(d => `  ${d.dim}: ${d.avg} across ${d.n} scored call${d.n === 1 ? "" : "s"}`).join("\n")
+    : "";
+
   return {
     isAdmin,
+    aggregates: agg,
     scope: isAdmin ? "every rep on this account" : `only ${user?.email}'s own calls`,
     window: view,
     callCount: calls.length,
@@ -108,6 +132,9 @@ HOW TO ANSWER:
 - Cite calls by #id and date so the reader can open them. Quote a timestamp when you have one.
 - Numbers beat adjectives: "objection handling averaged 4.3 across 12 calls", not "objection
   handling seems weak".
+- USE THE SUPPLIED AVERAGES. Dimension averages and their call counts are computed for you from
+  the database. Do not recompute them by counting index lines, and do not state a count you were
+  not given -- if you want a figure that is not supplied, say what you would need instead.
 - Say how many calls a claim rests on. A pattern across three calls is not a pattern and you
   should say so rather than dress it up.
 - If the index does not contain the answer, say so plainly and say what would. Never invent a
@@ -143,6 +170,7 @@ export async function ask(env, { user, account, message, view = "month", history
     ...history.slice(-6).map(h => ({ role: h.role === "assistant" ? "assistant" : "user",
                                      content: [{ type: "text", text: String(h.text || "") }] })),
     { role: "user", content: [
+      ...(ctx.aggregates ? [{ type: "text", text: ctx.aggregates }] : []),
       { type: "text", text: `CALL INDEX\n\n${ctx.text}` },
       { type: "text", text: `QUESTION\n\n${message}` },
     ] },
