@@ -184,8 +184,6 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 /* margin-right:auto keeps the toggle+title paired on the left and pushes + New to the right;
    space-between alone would strand the title in the middle once the toggle was added. */
 .list-title{ font-family:var(--font-display); font-size:21px; font-weight:600; letter-spacing:0.011em; margin-right:auto; }
-.new-call-btn{ background:var(--pink-500); color:#0A0D13; border:none; border-radius:7px; padding:7px 12px; font-size:15px; font-weight:600; letter-spacing:-0.016em; cursor:pointer; }
-.new-call-btn:hover{ background:var(--pink-600); }
 .search-row{ padding:8px 14px 10px; border-bottom:1px solid var(--line); }
 .search-box{ display:flex; align-items:center; background:var(--paper-100); border:1px solid var(--line); border-radius:7px; padding:6px 9px; }
 .search-box:focus-within{ border-color:var(--blue-500); }
@@ -260,10 +258,6 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .tone-opt.selected{ background:var(--paper-0); color:var(--ink-950); box-shadow:var(--shadow); }
 .tone-suggested{ display:flex; align-items:center; gap:6px; font-size:13px; color:var(--violet-600); background:var(--violet-100); padding:4px 10px; border-radius:100px; }
 .applies-to{ font-size:13px; color:var(--ink-400); }
-
-.followup-banner{ margin:12px 22px 0; padding:10px 14px; border:1px solid var(--violet-100); border-left:3px solid var(--violet-500); border-radius:8px; background:var(--violet-100); font-size:15px; color:var(--ink-800); display:flex; flex-direction:column; gap:6px; flex-shrink:0; }
-.followup-banner-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.followup-banner b{ color:var(--violet-600); }
 .brief-toggle{ background:transparent; border:1px solid var(--violet-500); color:var(--violet-600); border-radius:6px; padding:4px 10px; font-size:12px; font-weight:600; cursor:pointer; margin-left:auto; }
 .brief-body{ font-size:15px; line-height:1.5; border-top:1px solid var(--line); padding-top:8px; }
 
@@ -308,8 +302,6 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .unified-body h4:first-of-type{ margin-top:2px; }
 .unified-body ul{ margin:0 0 10px; padding-left:16px; }
 .unified-body li{ margin-bottom:5px; }
-.debrief-cols{ column-width:340px; column-gap:28px; }
-.debrief-cols > *{ break-inside:avoid; }
 
 .highlights{ border:1px solid var(--line); border-radius:9px; background:var(--paper-100); padding:11px 13px; margin-bottom:14px; display:flex; flex-direction:column; gap:6px; }
 .hl-title{ font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.02em; color:var(--ink-400); }
@@ -371,12 +363,6 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .opane{ display:none; height:100%; }
 .opane.active{ display:flex; flex-direction:column; min-height:0; height:100%; }
 .panel{ display:flex; flex-direction:column; flex:1; min-height:0; }
-.panel-head{ border-bottom:1px solid var(--line); background:var(--paper-50); flex-shrink:0; }
-.panel-chrome{ display:flex; gap:5px; padding:9px 14px 0; }
-.chrome-dot{ width:8px; height:8px; border-radius:50%; }
-.chrome-dot.d1{ background:var(--blue-500); } .chrome-dot.d2{ background:var(--violet-500); } .chrome-dot.d3{ background:var(--pink-500); }
-.panel-head-row{ padding:7px 14px 10px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
-.panel-actions{ display:flex; gap:6px; margin-left:auto; }
 .copy-btn, .sent-btn{ display:flex; align-items:center; gap:5px; border-radius:6px; padding:6px 11px; font-size:13px; font-weight:600; cursor:pointer; }
 .copy-btn{ background:var(--paper-0); border:1px solid var(--line-strong); color:var(--ink-800); }
 .copy-btn:hover{ border-color:var(--blue-500); color:var(--blue-600); }
@@ -422,7 +408,6 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
   background:transparent; border:1px solid var(--line); border-radius:6px; color:var(--ink-600);
   font-size:12px; font-weight:600; padding:7px 9px; cursor:pointer;
 }
-.key-remove:hover{ border-color:var(--pink-500); color:var(--pink-500); }
 
 .insight-grid{ display:grid; grid-template-columns:1fr auto; gap:5px 10px; margin-bottom:16px; }
 .insight-grid .bar{ grid-column:1/-1; height:4px; background:var(--paper-200); border-radius:2px; overflow:hidden; margin-bottom:5px; }
@@ -463,8 +448,6 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 /* TASK-104. Replaces the tone segmented control on single-voice calls. Reads as a quiet note
    from the app, not a control — there is nothing to pick, and styling it like a chip would
    invite Gabriel to click it. */
-.voice-row{ align-items:baseline; }
-.voice-note{ font-size:13px; line-height:1.5; color:var(--ink-600); font-style:italic; }
 
 /* Hidden except in the 641-900px band, where it is the only door to navigation. */
 .list-nav-btn{ display:none; background:var(--paper-200); color:var(--ink-950);
@@ -489,7 +472,6 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .chat-section{ display:flex; flex-direction:column; gap:8px; border-top:1px solid var(--line);
   padding:12px 16px 14px; background:var(--paper-50); }
 .chat-log{ display:flex; flex-direction:column; gap:8px; max-height:260px; overflow-y:auto; }
-.chat-empty{ font-size:13px; line-height:1.5; color:var(--ink-400); padding:6px 2px; }
 .chat-msg{ font-size:14px; line-height:1.55; padding:9px 12px; border-radius:12px;
   max-width:82%; white-space:pre-wrap; word-break:break-word; }
 .chat-u{ align-self:flex-end; background:var(--blue-100); color:var(--ink-950); border-bottom-right-radius:4px; }
@@ -543,7 +525,6 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
   .progress-fill{ transition:none; }
   .progress-fill.indeterminate{ animation:none; background:var(--blue-500); }
 }
-
 
 /* Debrief pagination (pills act as tabs). Exactly one page is in flow at a time — the point is
    that you never scroll past one section to reach another. */
@@ -612,8 +593,6 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
     display:flex; align-items:center; gap:10px; grid-row:1;
     padding:10px 14px; background:var(--paper-100); border-bottom:1px solid var(--line);
   }
-  .mbtn{ background:var(--paper-200); color:var(--ink-950); border:1px solid var(--line);
-    border-radius:8px; min-height:44px; padding:0 15px; font-size:17px; cursor:pointer; }
   .mobile-title{ font-weight:600; font-size:17px; letter-spacing:-0.022em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   /* Back button only when a call/detail is showing; menu only when on the list. */
   #mBackBtn{ display:none; }
@@ -672,14 +651,11 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
 
   /* finger-sized targets */
   .nav-item{ min-height:40px; }
-  .tone-opt, .chip, .regen-btn, .copy-btn, .primary-btn, .new-call-btn{ min-height:38px; }
+  .tone-opt, .chip, .regen-btn, .copy-btn, .primary-btn{ min-height:38px; }
   .call-item{ padding-top:12px; padding-bottom:12px; }
 }
 
 /* Fathom token inbox label (TASK-054 follow-up) */
-
-/* Template version/date subheading */
-.tpl-date{ color:var(--ink-400); font-weight:400; }
 
 /* "New version available" reload banner (TASK-046) */
 .update-banner{
@@ -746,7 +722,6 @@ body.sb-collapsed .user-btn-mini{ display:inline-flex; align-items:center; }
   --shadow: 0 1px 2px rgba(16,22,40,.08), 0 12px 32px rgba(16,22,40,.10);
 }
 :root[data-theme="light"] body{ background:var(--paper-50); }
-:root[data-theme="light"] .new-call-btn{ color:#fff; }
 :root[data-theme="light"] .avatar{ background:var(--ink-800); color:#fff; }
 :root[data-theme="light"] .update-banner{ color:#fff; }
 
@@ -1169,9 +1144,8 @@ body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; 
 .ig-tile-note { font-size:11px; color:var(--ink-400); background:var(--paper-200);
                 border-radius:5px; padding:1px 6px; margin-top:auto; }
 
-/* ---- Ask (TASK-126) ------------------------------------------------------------------------ */
-.ask-scope { font-size:12px; color:var(--ink-400); margin-bottom:12px;
-             padding:8px 12px; background:var(--paper-100); border-radius:8px; }
+/* ---- Conversation bubbles. Born with the Ask page (TASK-126); the page is gone and Vera's panel
+   (TASK-128/129) renders the same .ask-msg / .ask-who / .ask-body. One rule family, one feature. */
 .ask-log { min-height:180px; max-height:52vh; overflow-y:auto; display:flex; flex-direction:column;
            gap:14px; padding:4px 2px 12px; }
 .ask-msg { display:flex; flex-direction:column; gap:4px; }
@@ -1179,12 +1153,8 @@ body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; 
            font-weight:700; }
 .ask-body { font-size:14.5px; line-height:1.65; }
 .ask-user .ask-body { background:var(--paper-100); border-radius:10px; padding:10px 12px; }
-.ask-empty { padding:26px 0; }
-.ask-empty-t { font-size:15px; color:var(--ink-400); margin-bottom:12px; }
-.ask-starters { display:flex; flex-wrap:wrap; gap:8px; }
 .ask-compose { display:flex; gap:8px; align-items:flex-end; }
 .ask-compose textarea { flex:1; resize:vertical; min-height:44px; }
-
 
 /* ---------------------------------------------------------------- Vera (TASK-128)
    The assistant got a name and a voice, so the panel had to stop looking like a query box with
@@ -1219,78 +1189,102 @@ body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; 
   .ask-dots i{ animation:none; opacity:0.55; }
 }
 
-.ask-starters{ display:flex; flex-wrap:wrap; gap:7px; margin-top:2px; }
 .ask-starter{ cursor:pointer; text-align:left; }
-.ask-scope{ margin-top:10px; font-size:15px; color:var(--ink-400); }
 
-
-/* ---------------------------------------------------------------- Vera, floating (TASK-129)
+/* ---------------------------------------------------------------- Vera, floating (TASK-129/130)
    Ivan: "I would rather her be in the lower right corner, like a chatbot, always available and
-   easy to reach, an icon that is inspired by the latest version of Siri but one that fits with
-   our colors and design."
+   easy to reach, an icon inspired by the latest Siri but in our colors... Make her a little
+   smaller until clicked. Animate the movement... Think of how Jony Ive and Dieter Rams might
+   have designed this."
 
-   The orb is CSS only: a slowly turning conic gradient in the app's own blue, violet and pink,
-   a blurred copy of itself behind for the glow, and a dark core so it reads as a ring of light
-   rather than a flat disc. No image asset, so it is theme-correct for free and costs nothing to
-   recolour. It turns faster while she is reading, which is the honest state of that second. */
+   The Rams half: as little as possible. A 40px ring at rest, no glow, one colour system, one
+   easing, nothing that moves unless it is telling you something. The Ive half: it is ONE object.
+   The ring in the corner is the same ring that sits in the panel's header -- on open it travels
+   there (a FLIP morph in app.js), and on close it travels back. The panel does not "appear";
+   she moves. Speed and glow are reserved for the one honest state: reading. */
+:root{ --vera-idle:40px; --vera-hover:44px; --vera-ease:cubic-bezier(.3,0,.16,1); }
 .vera-fab{
-  position:fixed; right:20px; bottom:20px; z-index:100;
-  width:56px; height:56px; padding:0; border:0; border-radius:50%; cursor:pointer;
-  background:transparent; -webkit-tap-highlight-color:transparent;
-  transition:transform .18s ease;
+  position:fixed; right:22px; bottom:22px; z-index:100;
+  width:var(--vera-idle); height:var(--vera-idle); padding:0; border:0; border-radius:50%;
+  cursor:pointer; background:transparent; -webkit-tap-highlight-color:transparent;
+  transition:width .22s var(--vera-ease), height .22s var(--vera-ease), opacity .18s var(--vera-ease), transform .18s var(--vera-ease);
 }
-.vera-fab:hover{ transform:translateY(-1px) scale(1.04); }
-.vera-fab:active{ transform:scale(.97); }
-.vera-fab:focus-visible{ outline:2px solid var(--focus); outline-offset:4px; }
-.vera-orb{ position:relative; display:block; width:56px; height:56px; border-radius:50%; }
-.vera-orb-glow, .vera-orb-core{ position:absolute; inset:0; border-radius:50%; }
-.vera-orb-glow{
-  background:conic-gradient(from var(--vera-a, 0deg), var(--blue-500), var(--violet-500), var(--pink-500), var(--blue-600), var(--blue-500));
-  filter:blur(9px); opacity:.55; transform:scale(1.08);
-  animation:vera-turn 9s linear infinite;
-}
+.vera-fab:hover, .vera-fab:focus-visible{ width:var(--vera-hover); height:var(--vera-hover); }
+.vera-fab:active{ transform:scale(.96); }
+.vera-fab:focus-visible{ outline:2px solid var(--focus); outline-offset:5px; }
+/* While she is in the panel, the corner is empty. The ghost handles the travel. */
+.vera-fab[aria-expanded="true"]{ opacity:0; pointer-events:none; }
+
+.vera-orb{ position:relative; display:block; width:100%; height:100%; border-radius:50%; }
+.vera-orb-glow, .vera-orb-core, .vera-orb-center{ position:absolute; inset:0; border-radius:50%; }
+/* The ring: one conic gradient in the app's three accents, and the LAYER rotates -- a plain
+   transform, not an animated @property. Two reasons. Older Safari has no @property, so the ring
+   simply did not turn there. And on the phone viewport an animated registered property in a
+   subtree stalled every animation on its ancestors: the travelling ring never arrived and the
+   panel froze at its first keyframe. A rotating circle is visually identical and boring, which is
+   the point. Idle turn is 14s: alive, not busy. */
 .vera-orb-core{
-  background:conic-gradient(from var(--vera-a, 0deg), var(--blue-500), var(--violet-500), var(--pink-500), var(--blue-600), var(--blue-500));
-  animation:vera-turn 9s linear infinite;
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
+  background:conic-gradient(from 0deg, var(--blue-500), var(--violet-500), var(--pink-500), var(--blue-600), var(--blue-500));
+  animation:vera-turn 14s linear infinite;
 }
-/* The dark centre that turns a disc into a ring of light. */
-.vera-orb-core::after{
-  content:""; position:absolute; inset:7px; border-radius:50%;
-  background:radial-gradient(circle at 38% 35%, rgba(255,255,255,.14), transparent 55%), var(--paper-50);
+/* The centre is a SIBLING, not a child of the ring, so it does not rotate with it: the little
+   highlight stays at ten o'clock like light on a real object. inset is the ring's thickness --
+   10% of the diameter is a fine line at 40px and the same line at 24px. */
+.vera-orb-center{
+  inset:10%;
+  background:radial-gradient(circle at 38% 34%, rgba(255,255,255,.10), transparent 58%), var(--paper-50);
 }
-[data-theme="light"] .vera-orb-core::after{ background:radial-gradient(circle at 38% 35%, rgba(255,255,255,.9), transparent 55%), #fff; }
-/* Reading: the ring turns quickly and the glow breathes. Idle: slow. Open: slow but brighter. */
-.vera-fab.busy .vera-orb-glow, .vera-fab.busy .vera-orb-core{ animation-duration:1.6s; }
-.vera-fab.busy .vera-orb-glow{ animation:vera-turn 1.6s linear infinite, vera-breathe 1.6s ease-in-out infinite; }
-.vera-fab[aria-expanded="true"] .vera-orb-glow{ opacity:.8; }
-@property --vera-a { syntax:"<angle>"; inherits:false; initial-value:0deg; }
-@keyframes vera-turn{ to{ --vera-a:360deg; } }
-@keyframes vera-breathe{ 0%,100%{ transform:scale(1.08); } 50%{ transform:scale(1.22); } }
+[data-theme="light"] .vera-orb-center{ background:radial-gradient(circle at 38% 34%, rgba(255,255,255,.95), transparent 58%), #fff; }
+/* The glow exists but is OFF at rest. Rams would not have it at all; it earns its place only
+   when she is doing something -- hover (you are about to), open (she is here), reading. */
+.vera-orb-glow{
+  background:conic-gradient(from 0deg, var(--blue-500), var(--violet-500), var(--pink-500), var(--blue-600), var(--blue-500));
+  filter:blur(8px); opacity:0; scale:1.05;
+  animation:vera-turn 14s linear infinite;
+  transition:opacity .22s var(--vera-ease), scale .22s var(--vera-ease);
+}
+.vera-fab:hover .vera-orb-glow, .vera-fab:focus-visible .vera-orb-glow{ opacity:.35; }
+.vera-head .vera-orb-glow{ opacity:.28; filter:blur(5px); }
+/* Reading: the only fast state. */
+.vera-fab.busy .vera-orb-core, .vera-fab.busy .vera-orb-glow,
+.vera-panel.busy .vera-orb-core, .vera-panel.busy .vera-orb-glow{ animation-duration:1.4s; }
+.vera-fab.busy .vera-orb-glow, .vera-panel.busy .vera-orb-glow{ opacity:.6; scale:1.18; }
+@keyframes vera-turn{ to{ transform:rotate(360deg); } }
 @media (prefers-reduced-motion: reduce){
   .vera-orb-glow, .vera-orb-core{ animation:none !important; }
-  .vera-fab.busy .vera-orb-glow{ opacity:.85; }
+  .vera-fab.busy .vera-orb-glow, .vera-panel.busy .vera-orb-glow{ opacity:.7; scale:1; }
 }
+/* The travelling ring. Created by app.js for the duration of an open or close, then removed. */
+.vera-ghost{ position:fixed; z-index:120; pointer-events:none; will-change:transform; }
+.vera-ghost .vera-orb-glow{ opacity:.3; }
 
-/* The panel: a card that opens above the orb. Non-modal -- the page behind stays live. */
+/* The panel opens from the corner she left. Non-modal: the page behind stays live. */
 .vera-panel{
-  position:fixed; right:20px; bottom:88px; z-index:110;
-  width:min(420px, calc(100vw - 40px)); height:min(640px, calc(100vh - 112px));
+  position:fixed; right:22px; bottom:22px; z-index:110;
+  width:min(420px, calc(100vw - 44px)); height:min(640px, calc(100vh - 44px));
   display:flex; flex-direction:column; min-height:0;
-  background:var(--paper-100); border:1px solid var(--line-strong); border-radius:16px;
+  background:var(--paper-100); border:1px solid var(--line-strong); border-radius:18px;
   box-shadow:var(--shadow); overflow:hidden;
-  transform-origin:bottom right;
-  animation:vera-open .16s ease-out;
+  /* No CSS entrance here on purpose: it is driven from app.js (fadePanel) so it can be raced and
+     cancelled like the ring's travel. A fill:both keyframe left the panel invisible when the
+     document timeline stalled. The origin is the corner she left. */
+  transform-origin:calc(100% - 20px) calc(100% - 20px);
 }
-@keyframes vera-open{ from{ opacity:0; transform:translateY(8px) scale(.98); } to{ opacity:1; transform:none; } }
-@media (prefers-reduced-motion: reduce){ .vera-panel{ animation:none; } }
 .vera-head{ display:flex; align-items:center; gap:10px; padding:12px 12px 12px 14px; border-bottom:1px solid var(--line); }
-.vera-head .vera-orb{ width:26px; height:26px; flex:none; }
-.vera-head .vera-orb-core::after{ inset:4px; }
-.vera-head .vera-orb-glow{ filter:blur(5px); }
-.vera-title{ font-family:var(--font-display); font-size:17px; font-weight:600; letter-spacing:-0.022em; }
-.vera-sub{ font-size:12px; color:var(--ink-400); letter-spacing:.02em; }
-.vera-close{ margin-left:auto; width:32px; height:32px; border-radius:8px; border:1px solid transparent; background:transparent; color:var(--ink-600); font-size:18px; line-height:1; cursor:pointer; }
+.vera-head .vera-orb{ width:24px; height:24px; flex:none; }
+.vera-title{ font-family:var(--font-display); font-size:17px; font-weight:600; letter-spacing:-0.022em; line-height:1.2; }
+.vera-sub{ font-size:12px; line-height:16px; color:var(--ink-400); letter-spacing:.02em; display:flex; align-items:baseline; gap:4px; flex-wrap:wrap; }
+/* The window control is text until you touch it. It reads as part of the sentence: same size,
+   same line, same weight; only a dotted underline and a hairline chevron say it can change. */
+.vera-window{ appearance:none; -webkit-appearance:none; background:transparent; border:0; margin:0; padding:0 11px 0 0;
+  font-family:inherit; font-size:12px; line-height:16px; font-weight:400; letter-spacing:.02em; color:var(--ink-600);
+  cursor:pointer; border-bottom:1px dotted var(--line-strong); border-radius:0; vertical-align:baseline; height:16px;
+  background-image:linear-gradient(45deg, transparent 50%, var(--ink-400) 50%), linear-gradient(135deg, var(--ink-400) 50%, transparent 50%);
+  background-position:calc(100% - 5px) 7px, calc(100% - 2px) 7px; background-size:3px 3px, 3px 3px; background-repeat:no-repeat; }
+.vera-window option{ color:var(--ink-950); background:var(--paper-100); }
+.vera-window:hover{ color:var(--ink-950); }
+.vera-window:focus-visible{ outline:2px solid var(--focus); outline-offset:2px; border-radius:2px; }
+.vera-close{ margin-left:auto; width:32px; height:32px; border-radius:8px; border:1px solid transparent; background:transparent; color:var(--ink-600); font-size:18px; line-height:1; cursor:pointer; transition:background .15s var(--vera-ease), color .15s var(--vera-ease); }
 .vera-close:hover{ background:var(--paper-200); color:var(--ink-950); }
 .vera-close:focus-visible{ outline:2px solid var(--focus); }
 .vera-body{ flex:1 1 auto; min-height:0; overflow-y:auto; padding:14px; }
@@ -1305,9 +1299,8 @@ body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; 
 
 /* Phone: the panel is the screen, and the orb stays clear of the thumb-side edge. */
 @media (max-width:640px){
-  .vera-fab{ right:14px; bottom:14px; width:52px; height:52px; }
-  .vera-orb{ width:52px; height:52px; }
-  .vera-panel{ inset:0; width:auto; height:auto; border-radius:0; border:0; }
-  .vera-fab[aria-expanded="true"]{ display:none; }   /* the panel has its own close */
+  :root{ --vera-idle:44px; --vera-hover:44px; }   /* thumbs, not pointers */
+  .vera-fab{ right:16px; bottom:16px; }
+  .vera-panel{ inset:0; width:auto; height:auto; border-radius:0; border:0; transform-origin:calc(100% - 38px) calc(100% - 38px); }
   .detail{ padding-bottom:78px; }
 }

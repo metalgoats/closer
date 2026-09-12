@@ -498,8 +498,8 @@ check("switching tabs also switches the action set",
   "tab switch would leave the wrong Copy button wired");
 check("the CSS hides inactive action sets",
   /\.oacts\{[^}]*display:none/.test(css) && /\.oacts\.active\{[^}]*display:flex/.test(css));
-check("the actions are pushed right by margin, not by space-between",
-  /\.panel-actions\{[^}]*margin-left:auto/.test(css),
+check("the panel-actions rule is GONE with the strip it styled",
+  !/\.panel-actions\{/.test(css),
   "without margin-left:auto the buttons sit on the left of an otherwise empty row");
 
 console.log("\n== release notes aggregate per day (TASK-092) ==");
@@ -649,8 +649,8 @@ check("the selected tone falls back to one the call actually has",
 check("the voice note survives in the header summary line",
   /dh-sum-note/.test(src) && /call\.tone_reason/.test(src),
   "collapsing the settings must not lose the one line that explains why the draft reads as it does");
-check("the voice note has styling",
-  /\.voice-note\{/.test(css));
+check("the voice-note rule is GONE: nothing renders that class any more",
+  !/\.voice-note\{/.test(css));
 
 // Executed, not pattern-matched: pull the two functions out of app.js and run them against both
 // data shapes. The regex checks above prove the code is written; these prove it behaves.
@@ -936,10 +936,10 @@ console.log("\n== Vera floats, and her suggestions follow the screen (TASK-129) 
   check("...renders the suggestion chips", /class="chip ask-starter"/.test(panelHtml));
   check("...and the composer", /id="askInput"/.test(panelHtml) && /id="askSend"/.test(panelHtml));
   check("...and the scope footnote says whose key it runs on", /own key/.test(panelHtml));
-  T.openVera();
+  await T.openVera();
   check("openVera flips aria-expanded on the orb", get("#veraFab").getAttribute("aria-expanded") === "true");
   check("...and shows the panel", !get("#veraPanel").classList.contains("hidden"));
-  T.closeVera();
+  await T.closeVera();
   check("closeVera hides it and resets the orb", get("#veraPanel").classList.contains("hidden") && get("#veraFab").getAttribute("aria-expanded") === "false");
   check("VIEWS no longer has an 'ask' entry", !("ask" in T.VIEWS));
   // Deploy skew: old markup can carry a nav item whose view the new bundle no longer has. The
@@ -955,18 +955,31 @@ console.log("\n== Vera floats, and her suggestions follow the screen (TASK-129) 
   // She is non-modal, so the screen can change under her. Her suggestions must change with it,
   // or "this call" silently means the previous one.
   S.currentCallId = 1; clearNav();
-  T.openVera(); await new Promise(r => setTimeout(r, 0));
+  await T.openVera();
   // The FIRST chip is the context chip; the stub scope route also offers a Marcus starter, so
   // its mere presence proves nothing.
   const firstChip = () => (/class="chip ask-starter" data-q="([^"]*)"/.exec(get("#veraPanel")._html) || [])[1];
-  const sub = () => (/class="vera-sub">([^<]*)</.exec(get("#veraPanel")._html) || [])[1] || "";
+  const sub = () => ((/class="vera-sub">([\s\S]*?)<\/div>/.exec(get("#veraPanel")._html) || [])[1] || "")
+    .replace(/<option[^>]*selected[^>]*>([^<]*)<\/option>/, "$1").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
   check("open on a call, the first chip is about that call", firstChip() === "What went wrong on the Marcus call?", firstChip());
   check("...and the header says she is looking at it", /Looking at Marcus/.test(sub()), sub());
   await T.VIEWS.people(); await new Promise(r => setTimeout(r, 0));
   check("navigating to People while she is open re-renders her for People",
     firstChip() === "Who is improving, and who is slipping?" && /People/.test(sub()),
     `first chip: ${firstChip()} | sub: ${sub()}`);
-  T.closeVera(); clearNav();
+  await T.closeVera(); clearNav();
+
+  // The window control: changing it changes the request window and re-renders.
+  await T.openVera();
+  const winEl = get("#veraWindow"); winEl.value = "week"; winEl.fire("change", { target: { value: "week" } });
+  await new Promise(r => setTimeout(r, 0));
+  check("changing the window control sets state.askView", S.askView === "week", String(S.askView));
+  check("...and the header re-renders with it selected", /value="week" selected/.test(get("#veraPanel")._html));
+  S.askView = "month";
+  await T.closeVera();
+  // Dead CSS from the page version must not come back with the panel version.
+  check("the page-era Ask styles are gone", !/\.ask-empty\b|\.ask-scope\b|\.ask-starters\b/.test(css),
+    "the panel has its own .vera-* rules; two rule families for one feature is drift");
 }
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);

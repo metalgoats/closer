@@ -75,6 +75,77 @@ handler down. HTML/JS skew is a property of every deploy, not of this one.
 **891 assertions.** Twelve inversions proven red, including dropping the rep filter from the
 focus query, regressing to the misaligned binds, offering a rep the team questions, and putting
 her back in the nav.
+## 2026-09-12 — The launcher, twice over; and a pass across the whole site
+
+Ivan: *"Make her a little smaller until clicked. Can you animate movement and refine the icon and
+launcher through a few revision rounds to keep improving it. Think of how Jony Ive and Dieter Rams
+might have designed this. Also, do a review of the entire site to update any old UI, code, systems
+no longer needed because of our updates."*
+
+### The launcher
+
+**Rams half: as little as possible.** The ring at rest is **40px** (was 56), set 22px into the
+corner, with **no glow at all** — the glow is now a state, not a decoration: it appears on hover
+(you are about to), in the panel header (she is here), and while she is reading (the one honest
+fast state). One easing curve, `cubic-bezier(.3,0,.16,1)`, for every movement she makes. The ring's
+line is 10% of its diameter so the corner copy and the header copy are the same drawing at two
+sizes.
+
+**Ive half: she is one object.** The ring in the corner *travels* to the panel's header when you
+open her and travels back when you close her — a FLIP: measure first, measure last, invert, play.
+A cloned ring does the moving so neither the button nor the header leaves its layout; the corner
+empties while she is in the panel and refills as she leaves. The panel itself scales in from the
+point she left. Skipped under `prefers-reduced-motion`.
+
+Round two restored what round one lost: the **time window** (week / month / 6 months / year / all)
+is back as a control that reads as part of the header sentence — text until you touch it.
+
+> [!danger] The state machine never waits on an animation
+> On the phone viewport the travelling ring's `finished` promise did not resolve: open hung with
+> **both rings invisible**, and the next tap stacked a second ghost on the first. I first
+> suspected the ring's own spin — it animated a `@property`-registered custom property — and
+> rebuilt the spin as a plain layer rotation with the centre as a non-rotating sibling. That was
+> worth doing anyway (older Safari has no `@property`, so the ring simply never turned there), but
+> **it was not the cause.** A bare red circle stalled too. The cause was the tool: the preview
+> pane was hidden while I worked, and a hidden pane freezes `requestAnimationFrame` and the
+> document timeline, so nothing time-based advances. No visible browser does that.
+>
+> The hardening stays, because a state machine that can be hung by *anything* outside it is
+> wrong regardless of what hung it: the ring's travel **and the panel's own fade** are raced
+> against their duration plus a margin and cancelled at cleanup, stale ghosts are swept before a
+> new one starts, and open/close are serialised — a tap mid-travel is ignored, which is what a
+> physical object would do. The panel's entrance moved from a `fill:both` CSS keyframe to that
+> same raced path, because a frozen timeline had held it at **opacity 0**. Re-measured with the
+> pane hidden: open completes in 591ms including the fetch, close in 238ms, at most one ghost
+> ever, a triple-tap lands in one consistent state.
+
+### The site pass (per the `ui-cleanup` procedure: survey first, then one fix)
+
+Every view at **1280, 800 and 375**, screenshots, nothing touched until all were seen. The in-
+between band, where the last pass found unreachable navigation, is clean: the sidebar is an
+overlay, the orb clears the per-call Send button by 22px, the panel stays inside the viewport.
+
+**The one disease this time is smaller than last time's, and it is the honest finding: retired
+features left their clothes behind.** Twenty-four CSS rules for markup nothing renders — the
+page-era Ask block, the old `panel-head`/`panel-chrome`/`panel-actions` strips, the follow-up
+banner, voice notes, `chrome-dot`, `mbtn`, `key-remove`, `debrief-cols`, `new-call-btn`,
+`tpl-date`, `chat-empty`. Found mechanically (every class in the stylesheet checked against the
+markup and the script), removed, and the **two tests that had been pinning dead rules were
+flipped to assert absence** rather than deleted — a deleted test lets the shape creep back
+silently.
+
+Not touched, deliberately: `/backup`, `/report/weekly*`, `/stripe/webhook` have no client caller
+because they are called by cron, by hand, and by Stripe. The per-call composer ("rewrite the email
+without the price") is not redundant with Vera — it edits outputs; she does not.
+
+**Stale in-app copy.** "What's new" had not been updated since **4–5 August**, while rep
+attribution, People, timestamps, GoHighLevel, Integrations, billing, the no-show guard and Vera
+had all shipped. One entry, newest first, in user language — and it tripped the GoHighLevel copy
+guard on the word "marketplace" even while saying the opposite, which is the guard working.
+
+**906 assertions.** Eleven inversions proven red this round, including the idle ring growing back to
+56px, a glow that is always on, a window control that changes nothing, and each of the three
+places the panel could have waited on an animation forever.
 
 ## 2026-09-12 — Vera
 

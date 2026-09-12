@@ -162,6 +162,20 @@ function showUpdateBanner() {
 // purpose — seeing the complete day beats seeing only its tail.
 const RELEASES = [
   {
+    v: "2026-09-12",
+    date: "9–12 September 2026",
+    title: "Vera, the People page, GoHighLevel, and every moment linked to its second in the recording",
+    items: [
+      "Meet Vera. The ring in the lower-right corner of every screen. She has read every call you can see, and she opens with the weakest thing she found — a real number from your calls, not a guess. Her suggestions change with what is on your screen: open a call and she asks about that call; open People and she asks about the team.",
+      "People: every rep on one page — calls, scored, average, hours, last call — and one click into any person's dimensions and how they have moved week by week. Every call now knows who ran it.",
+      "Every key moment in a debrief is timestamped and links straight into the Fathom recording at that second. Click the moment the call turned and watch it.",
+      "GoHighLevel connects with a Private Integration Token — paste it in Integrations and press Test. Nothing to register, nothing to wait for. CRM notes push, and the setter's name is on its way.",
+      "Integrations is a full page now, with a + to add a second Fathom or a second key for another business. Real logos, a Test button on each, and a 'where do I find this?' under every field.",
+      "A weekly email report is built and waiting on a sending address. Billing runs through Stripe's own pages — no card detail ever touches this app.",
+      "Calls with almost no transcript — no-shows, dead lines — are no longer scored. They were sitting inside your averages as 1s.",
+    ]
+  },
+  {
     v: "2026-08-05",
     date: "4–5 August 2026",
     title: "One follow-up written for the buyer, a chat that edits in place, and you can finally see what you select",
@@ -2416,17 +2430,85 @@ const veraFab = () => $("#veraFab");
 const veraPanel = () => $("#veraPanel");
 function veraIsOpen() { return !veraPanel()?.classList.contains("hidden"); }
 
-function openVera() {
-  const p = veraPanel(); if (!p) return;
-  p.classList.remove("hidden");
-  veraFab()?.setAttribute("aria-expanded", "true");
-  renderVera().then(() => $("#askInput")?.focus());
+// She is one object. The ring in the corner travels to the panel's header on open and back on
+// close -- a FLIP: measure First, measure Last, Invert, Play. A cloned ring does the travelling
+// so neither the button nor the header has to leave its layout. Skipped entirely under
+// prefers-reduced-motion and wherever element.animate does not exist (the test harness).
+const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+// THE STATE MACHINE NEVER WAITS ON AN ANIMATION. Found on the phone viewport, 2026-09-12: the
+// ghost's `finished` promise did not resolve there, so open() hung with the header ring hidden
+// and a second click stacked a second ghost on top. Whatever stalls an animation -- a throttled
+// tab, a paused document, an emulated viewport -- must not be able to stall the panel. So the
+// travel is raced against its own duration plus a margin, the animation is cancelled at cleanup
+// either way, and any ghost left over from an earlier attempt is swept before a new one starts.
+function flyOrb(fromEl, toEl, ms = 280) {
+  document.querySelectorAll(".vera-ghost").forEach(g => g.remove());
+  if (!fromEl || !toEl || reducedMotion() || typeof fromEl.animate !== "function") return Promise.resolve();
+  const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+  if (!a.width || !b.width) return Promise.resolve();
+  const ghost = fromEl.cloneNode(true);
+  ghost.classList.add("vera-ghost");
+  Object.assign(ghost.style, { left: `${a.left}px`, top: `${a.top}px`, width: `${a.width}px`, height: `${a.height}px` });
+  document.body.appendChild(ghost);
+  fromEl.style.visibility = "hidden"; toEl.style.visibility = "hidden";
+  const dx = (b.left + b.width / 2) - (a.left + a.width / 2), dy = (b.top + b.height / 2) - (a.top + a.height / 2);
+  let anim = null;
+  try {
+    anim = ghost.animate(
+      [{ transform: "translate(0,0) scale(1)" }, { transform: `translate(${dx}px, ${dy}px) scale(${b.width / a.width})` }],
+      { duration: ms, easing: "cubic-bezier(.3,0,.16,1)", fill: "forwards" });
+  } catch { /* fall through to cleanup */ }
+  const done = anim && anim.finished ? anim.finished.catch(() => {}) : Promise.resolve();
+  return Promise.race([done, sleep(ms + 120)]).then(() => {
+    try { anim && anim.cancel(); } catch { /* already gone */ }
+    ghost.remove(); fromEl.style.visibility = ""; toEl.style.visibility = "";
+  });
 }
-function closeVera() {
-  const p = veraPanel(); if (!p) return;
-  p.classList.add("hidden");
-  veraFab()?.setAttribute("aria-expanded", "false");
-  veraFab()?.focus();
+
+// The panel's own entrance and exit, by the same rule: raced against their duration, cancelled
+// at cleanup, never able to leave the panel invisible. (A CSS animation with fill:both did exactly
+// that when the document timeline stalled on the phone viewport: opacity 0, held forever.)
+function fadePanel(p, opening) {
+  if (!p || reducedMotion() || typeof p.animate !== "function") return Promise.resolve();
+  const ms = opening ? 260 : 200;
+  const from = opening ? { opacity: 0, transform: "scale(.94)" } : { opacity: 1, transform: "none" };
+  const to   = opening ? { opacity: 1, transform: "none" }       : { opacity: 0, transform: "scale(.96)" };
+  let anim = null;
+  try { anim = p.animate([from, to], { duration: ms, easing: "cubic-bezier(.3,0,.16,1)" }); } catch { /* cleanup below */ }
+  const done = anim && anim.finished ? anim.finished.catch(() => {}) : Promise.resolve();
+  return Promise.race([done, sleep(ms + 120)]).then(() => { try { anim && anim.cancel(); } catch { /* gone */ } });
+}
+
+// One transition at a time. A click during the travel is ignored rather than queued, which is
+// what a physical object would do.
+let veraMoving = false;
+async function openVera() {
+  const p = veraPanel(), f = veraFab(); if (!p || veraMoving) return;
+  veraMoving = true;
+  try {
+    f?.setAttribute("aria-expanded", "true");
+    p.classList.remove("hidden");
+    await renderVera();
+    await Promise.all([
+      fadePanel(p, true),
+      flyOrb(f?.querySelector(".vera-orb"), p.querySelector(".vera-head .vera-orb")),
+    ]);
+    $("#askInput")?.focus();
+  } finally { veraMoving = false; }
+}
+async function closeVera() {
+  const p = veraPanel(), f = veraFab(); if (!p || p.classList.contains("hidden") || veraMoving) return;
+  veraMoving = true;
+  try {
+    f?.setAttribute("aria-expanded", "false");          // the corner comes back as she leaves
+    await Promise.all([
+      fadePanel(p, false),
+      flyOrb(p.querySelector(".vera-head .vera-orb"), f?.querySelector(".vera-orb"), 220),
+    ]);
+    p.classList.add("hidden");
+    f?.focus();
+  } finally { veraMoving = false; }
 }
 function toggleVera() { veraIsOpen() ? closeVera() : openVera(); }
 
@@ -2465,9 +2547,11 @@ async function renderVera() {
 
   p.innerHTML = `
     <div class="vera-head">
-      <span class="vera-orb" aria-hidden="true"><span class="vera-orb-glow"></span><span class="vera-orb-core"></span></span>
+      <span class="vera-orb" aria-hidden="true"><span class="vera-orb-glow"></span><span class="vera-orb-core"></span><span class="vera-orb-center"></span></span>
       <div><div class="vera-title">${esc(name)}</div>
-        <div class="vera-sub">${scope ? `${scope.callCount} call${scope.callCount === 1 ? "" : "s"} in the last ${esc(ASK_WINDOWS.find(([v]) => v === view)?.[1]?.toLowerCase() || view)}${where ? ` · ${where}` : ""}` : "&nbsp;"}</div></div>
+        <div class="vera-sub">${scope ? `${scope.callCount} call${scope.callCount === 1 ? "" : "s"} in the last
+          <select class="vera-window" id="veraWindow" aria-label="Time window">${ASK_WINDOWS.map(([v, l]) =>
+            `<option value="${v}" ${v === view ? "selected" : ""}>${esc(v === "all" ? "all time" : l.toLowerCase())}</option>`).join("")}</select>${where ? `<span>· ${where}</span>` : ""}` : "&nbsp;"}</div></div>
       <button class="vera-close" id="veraClose" type="button" aria-label="Close">×</button>
     </div>
     <div class="vera-body" id="askLog"><div class="ask-log">${opener}${bubbles}</div></div>
@@ -2489,7 +2573,7 @@ async function renderVera() {
     if (el) el.value = "";
     state.askLog.push({ role: "user", text });
     state.askLog.push({ role: "assistant", text: "", pending: true });
-    veraFab()?.classList.add("busy");
+    veraFab()?.classList.add("busy"); veraPanel()?.classList.add("busy");
     await renderVera();
     try {
       const r = await api.post("/ask", { message: text, view,
@@ -2501,11 +2585,12 @@ async function renderVera() {
       // screen the first time a key was rejected.
       state.askLog[state.askLog.length - 1] = { role: "assistant", text: `**${e.message || "That failed."}**`, error: true };
     }
-    veraFab()?.classList.remove("busy");
+    veraFab()?.classList.remove("busy"); veraPanel()?.classList.remove("busy");
     await renderVera();
   };
 
   $("#veraClose")?.addEventListener("click", closeVera);
+  $("#veraWindow")?.addEventListener("change", e => { state.askView = e.target.value; renderVera(); });
   $("#askSend")?.addEventListener("click", () => send());
   $("#askInput")?.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }

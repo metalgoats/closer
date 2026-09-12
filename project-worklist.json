@@ -3404,6 +3404,30 @@
       "test_results": [
         "891 across the suite; 12 inversions proven red"
       ]
+    },
+    {
+      "id": "TASK-130",
+      "status": "completed",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "title": "Launcher rounds two and three (Rams/Ive), a stalled-animation guard, and a site-wide cleanup pass",
+      "source": "Ivan, 2026-09-12",
+      "dependencies": [
+        "TASK-129"
+      ],
+      "description": "Ivan: 'Make her a little smaller until clicked... animate movement and refine the icon and launcher through a few revision rounds... Think of how Jony Ive and Dieter Rams might have designed this. Also, do a review of the entire site to update any old UI, code, systems no longer needed.' Idle ring 40px with no glow at rest (glow only on hover/open/reading), one easing, a FLIP travel of the ring between corner and header, the time-window control restored inside the header sentence. Found on the phone: the ghost's finished promise stalled and open hung with both rings hidden; the state machine now races the travel against its duration, sweeps stale ghosts and serialises open/close. Site pass per ui-cleanup: surveyed 1280/800/375, removed 24 dead CSS rules mechanically, flipped two tests pinning dead rules to absence, refreshed the month-stale What's-new.",
+      "acceptance_criteria": [],
+      "testing_criteria": [],
+      "files_expected_to_change": [
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css",
+        "closer-app/tests/assistant.test.mjs",
+        "closer-app/tests/ui-smoke.test.mjs",
+        "closer-app/tests/ghl.test.mjs"
+      ],
+      "test_results": [
+        "905 across the suite; 8 inversions proven red"
+      ]
     }
   ],
   "progress_percentage": 90,

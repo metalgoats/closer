@@ -303,6 +303,44 @@ console.log("\nVera — the panel");
   check("the orb is drawn from the app's own colour tokens, not an asset",
     /\.vera-orb-core\{[^}]*conic-gradient\([^}]*var\(--blue-500\)[^}]*var\(--violet-500\)[^}]*var\(--pink-500\)/.test(css)
       && !/\.vera[^{]*\{[^}]*url\(/.test(css));
+  // Round two (TASK-130): Ivan asked for her to be smaller until clicked, and for the movement
+  // to be animated. The Rams half is measurable: small, no glow at rest, one easing.
+  check("the idle ring is 40px and grows only on hover",
+    /--vera-idle:40px/.test(css) && /--vera-hover:44px/.test(css)
+      && /\.vera-fab:hover, \.vera-fab:focus-visible\{ width:var\(--vera-hover\)/.test(css));
+  check("the glow is OFF at rest and earns its place on hover, open and reading",
+    /\.vera-orb-glow\{[^}]*opacity:0;/.test(css) && /\.vera-fab:hover \.vera-orb-glow[^{]*\{ opacity:\.35/.test(css)
+      && /\.vera-panel\.busy \.vera-orb-glow\{ opacity:\.6/.test(css),
+    "a glow that is always on is decoration; Rams would delete it");
+  check("one easing curve for every movement she makes",
+    (css.match(/var\(--vera-ease\)/g) || []).length >= 6 && !/\.vera-[a-z-]*\{[^}]*ease-in-out/.test(css.replace(/@keyframes[\s\S]*?\}\s*\}/g, "")));
+  check("the corner empties while she is in the panel", /\.vera-fab\[aria-expanded="true"\]\{ opacity:0; pointer-events:none; \}/.test(css));
+  check("the travelling ring has a class and sits above the panel", /\.vera-ghost\{ position:fixed; z-index:120/.test(css));
+  check("she is ONE object: the ring travels between corner and header (FLIP in app.js)",
+    /function flyOrb\(fromEl, toEl/.test(app) && /flyOrb\(f\?\.querySelector\("\.vera-orb"\), p\.querySelector\("\.vera-head \.vera-orb"\)\)/.test(app)
+      && /flyOrb\(p\.querySelector\("\.vera-head \.vera-orb"\), f\?\.querySelector\("\.vera-orb"\)/.test(app)
+      && /await Promise\.all\(\[\s*fadePanel\(p, true\),\s*flyOrb\(/.test(app),
+    "the corner ring must arrive in the header on open and leave it on close, alongside the panel's own fade");
+  // The phone viewport stalled the ghost's `finished` promise and the panel hung with the header
+  // ring hidden. The state machine may never wait on an animation without a way out.
+  check("the travel is raced against its own duration, so a stalled animation cannot hang the panel",
+    /Promise\.race\(\[done, sleep\(ms \+ 120\)\]\)/.test(app) && /anim && anim\.cancel\(\)/.test(app)
+      && /document\.querySelectorAll\("\.vera-ghost"\)\.forEach\(g => g\.remove\(\)\)/.test(app),
+    "a ghost that never finishes leaves both rings invisible and stacks on the next click");
+  // Scoped to fadePanel's OWN body: flyOrb carries the identical race line, so a file-wide match
+  // stayed green when the panel's race was removed. (Proven red only after this scoping.)
+  const fadeBody = (/function fadePanel\(p, opening\) \{([\s\S]*?)\n\}/.exec(app) || [])[1] || "";
+  check("the panel's own entrance is raced and cancelled the same way, never a fill:both keyframe",
+    fadeBody.length > 0 && /Promise\.race\(\[done, sleep\(ms \+ 120\)\]\)/.test(fadeBody) && /anim\.cancel\(\)/.test(fadeBody)
+      && !/@keyframes vera-open/.test(css) && !/animation:vera-open/.test(css),
+    "a CSS entrance with fill:both held the panel at opacity 0 when the timeline stalled");
+  check("open and close are serialized: a click mid-travel is ignored, not queued",
+    /if \(!p \|\| veraMoving\) return;/.test(app) && /\|\| veraMoving\) return;/.test(app) && /finally \{ veraMoving = false; \}/.test(app));
+  check("...and the travel is skipped under prefers-reduced-motion and where animate() is missing",
+    /reducedMotion\(\) \|\| typeof fromEl\.animate !== "function"\) return Promise\.resolve\(\)/.test(app));
+  check("the time window is a control again, inside the header sentence",
+    /id="veraWindow"/.test(app) && /state\.askView = e\.target\.value; renderVera\(\)/.test(app),
+    "v1 of the floating panel lost the week/month/year picker the page had");
   check("the orb stops turning under prefers-reduced-motion",
     /prefers-reduced-motion: reduce\)\{\s*\.vera-orb-glow, \.vera-orb-core\{ animation:none/.test(css));
   check("the client name mirrors the server's and says so",
