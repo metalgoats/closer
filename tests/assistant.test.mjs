@@ -8,7 +8,7 @@
 // The scoping is enforced when the CONTEXT IS BUILT, not by asking the model to be discreet. That
 // distinction is the whole design: a prompt is a request, a WHERE clause is a boundary. These
 // tests therefore inspect the SQL and its bindings, because that is where the guarantee lives.
-import { buildContext, systemPrompt, greeting, starters, ASSISTANT_NAME, HISTORY_TURNS, MIN_PATTERN_CALLS, MAX_CONTEXT_CALLS } from "../src/assistant.js";
+import { buildContext, systemPrompt, greeting, starters, describeScreen, ASSISTANT_NAME, HISTORY_TURNS, MIN_PATTERN_CALLS, MAX_CONTEXT_CALLS } from "../src/assistant.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -169,6 +169,7 @@ console.log("\nAssistant — rendering model output");
 
 const app = readFileSync(join(here, "..", "public", "app.js"), "utf8");
 const css = readFileSync(join(here, "..", "public", "styles.css"), "utf8");
+const html = readFileSync(join(here, "..", "public", "index.html"), "utf8");
 check("model output is escaped before any markdown is applied",
   /return esc\(String\(t\)\)\s*\n?\s*\.replace/.test(app),
   "this text was produced by a model that just read a client's transcript");
@@ -286,8 +287,24 @@ console.log("\nVera — the openers come from the data");
 console.log("\nVera — the panel");
 
 {
-  check("the nav label comes from the constant, not the markup",
-    /navAsk\.textContent = ASSISTANT_NAME/.test(app));
+  // Ivan, on v1: "I dont like where you placed Vera as a list option." She is a presence now.
+  check("she is NOT a nav item any more", !/data-view="ask"/.test(html) && !/ask: renderAsk/.test(app),
+    "a floating assistant that is also a page is two assistants");
+  check("the orb is a real button with its state exposed",
+    /id="veraFab"[^>]*aria-expanded="false"/.test(html) && /aria-controls="veraPanel"/.test(html));
+  check("the panel is a non-modal dialog, so the page behind stays usable",
+    /id="veraPanel"[^>]*role="dialog"/.test(html) && /aria-modal="false"/.test(html));
+  check("both live inside #mainView so they vanish on logout",
+    html.indexOf('id="veraFab"') > html.indexOf('id="mainView"') && html.indexOf('id="veraFab"') < html.indexOf("/#mainView"));
+  check("Escape closes her", /e\.key === "Escape" && veraIsOpen\(\)/.test(app));
+  check("the detail column leaves room so the orb never covers the per-call Send button",
+    /\.detail\{[^}]*padding-bottom:84px/.test(css),
+    "the composer is the last element in that column and the orb sits on exactly that corner");
+  check("the orb is drawn from the app's own colour tokens, not an asset",
+    /\.vera-orb-core\{[^}]*conic-gradient\([^}]*var\(--blue-500\)[^}]*var\(--violet-500\)[^}]*var\(--pink-500\)/.test(css)
+      && !/\.vera[^{]*\{[^}]*url\(/.test(css));
+  check("the orb stops turning under prefers-reduced-motion",
+    /prefers-reduced-motion: reduce\)\{\s*\.vera-orb-glow, \.vera-orb-core\{ animation:none/.test(css));
   check("the client name mirrors the server's and says so",
     /Mirrors ASSISTANT_NAME in src\/assistant\.js/.test(app));
   check("the greeting is rendered as her message, not empty-state furniture",
@@ -308,6 +325,78 @@ console.log("\nVera — the panel");
     "a raw API error is one long token; the column grew and took the send button with it");
   check("the scope endpoint serves the greeting so the panel opens populated",
     /greeting: greeting\(ctx\), starters: starters\(ctx\)/.test(idx));
+}
+
+console.log("\nVera — she knows what is on screen, and it cannot widen her access");
+
+// A stub whose .first() answers the focus query and whose .all() answers the index.
+function stubDb2(rows = [], focusRow = null) {
+  const seen = [];
+  return { seen, prepare(sql) {
+    const rec = { sql, binds: [] }; seen.push(rec);
+    return { bind: (...b) => { rec.binds = b; return {
+      all: async () => ({ results: rows }),
+      first: async () => focusRow } } };
+  } };
+}
+
+{
+  const OTHER = { ...CALL, id: 99, client_name: "Colleague's client", rep_email: "other@x.com" };
+
+  // MEMBER focusing a call: the focus query carries the SAME rep filter as the index.
+  const db = stubDb2([CALL], null);
+  const ctx = await buildContext({ DB: db }, { user: { email: "rep@x.com", role: "member" }, view: "month", accountId: 1, focusCallId: 99 });
+  const whereOf = q => q ? q.sql.slice(q.sql.indexOf("WHERE")) : "";
+  const fq = db.seen.find(q => /c\.id = \?/.test(q.sql));
+  check("a focus request issues a query for that one call", !!fq);
+  check("...and for a MEMBER it still carries the rep_email filter",
+    fq && /c\.rep_email = \?/.test(whereOf(fq)) && fq.binds.includes("rep@x.com"),
+    "without this a member could focus any call id and read a colleague's call");
+  check("...bound to the requested id", fq && fq.binds[fq.binds.length - 1] === 99);
+  check("a call the scope does not return is simply NOT focused -- no error, no leak",
+    ctx.focus === null && !/ON SCREEN NOW/.test(ctx.text));
+
+  // ADMIN focusing a call that is older than the window: the window filter is dropped for it.
+  const db2 = stubDb2([CALL], OTHER);
+  const ctx2 = await buildContext({ DB: db2 }, { user: { email: "boss@x.com", role: "admin" }, view: "week", accountId: 1, focusCallId: 99 });
+  const fq2 = db2.seen.find(q => /c\.id = \?/.test(q.sql));
+  check("an admin's focus query has no rep filter", fq2 && !/c\.rep_email/.test(whereOf(fq2)));
+  check("the focus query ignores the time window, so an old open call still resolves",
+    fq2 && !/c\.occurred_at/.test(whereOf(fq2)),
+    "the call on screen is on screen regardless of which window the panel is set to");
+  check("...but still respects the account and the archive filter",
+    fq2 && /c\.account_id = \?/.test(whereOf(fq2)) && /archived_at IS NULL/.test(whereOf(fq2))
+      && JSON.stringify(fq2.binds) === JSON.stringify([1, 99]),
+    "the binds were once [date, 99] -- the date bound to account_id -- and matched nothing");
+  check("the focused call is reported and marked first in the index",
+    ctx2.focus?.id === 99 && ctx2.text.startsWith("[ON SCREEN NOW] #99"));
+  check("...without duplicating it if it was already in the index",
+    (await (async () => { const d = stubDb2([CALL], CALL); const c = await buildContext({ DB: d }, { user: { email: "b@x.com", role: "admin" }, view: "month", accountId: 1, focusCallId: 7 });
+      return (c.text.match(/#7 /g) || []).length === 1 && c.text.startsWith("[ON SCREEN NOW] #7"); })()));
+
+  // A malformed id is ignored rather than queried. 7.5 is the honest test: Number() already
+  // turns "7; DROP TABLE" into NaN, so that input cannot tell the integer check from no check.
+  for (const bad of [7.5, 0, -3, "abc"]) {
+    const db3 = stubDb2([CALL], CALL);
+    await buildContext({ DB: db3 }, { user: { email: "b@x.com", role: "admin" }, view: "month", accountId: 1, focusCallId: bad });
+    check(`a focus id of ${JSON.stringify(bad)} never reaches SQL`, !db3.seen.some(q => /c\.id = \?/.test(q.sql)));
+  }
+
+  // The prompt tells her what is open.
+  const pf = systemPrompt({ isAdmin: true, callCount: 3, scope: "x", window: "month", focus: { id: 99, client: "Northwind", on: "2026-09-01" } });
+  check("the prompt names the call on screen and what 'this call' means",
+    /ON SCREEN RIGHT NOW: call #99, Northwind, 2026-09-01/.test(pf) && /"this call"/.test(pf));
+  const ps = systemPrompt({ isAdmin: true, callCount: 3, scope: "x", window: "month", screen: "the People page, looking at rep@x.com" });
+  check("...or which page, when no call is open", /ON SCREEN RIGHT NOW: the People page, looking at rep@x\.com/.test(ps));
+  check("...and says nothing about the screen when it knows nothing",
+    !/ON SCREEN RIGHT NOW/.test(systemPrompt({ isAdmin: true, callCount: 3, scope: "x", window: "month" })));
+
+  check("describeScreen: People with a rep", describeScreen({ view: "people", rep: "g@x.com" }, true) === "the People page, looking at g@x.com");
+  check("describeScreen: the follow-up list", /still need a follow-up/.test(describeScreen({ view: "calls", filter: "followup" }, true)));
+  check("describeScreen: a rep's inbox is described as their own", /their own calls/.test(describeScreen({}, false)));
+  check("describeScreen: unknown input does not throw", typeof describeScreen(null, true) === "string");
+  check("the route passes context through and says why it is safe",
+    /context: context && typeof context === "object" \? context : null/.test(idx) && /cannot widen what the reader may see/.test(idx));
 }
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);

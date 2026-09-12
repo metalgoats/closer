@@ -336,6 +336,8 @@ function openRelevantCall() {
 // make sure a call filter is active, and open a relevant call (or the empty state).
 function showCallsView() {
   document.body.classList.remove("workspace");
+  state.currentView = null;
+  veraTrack();
   document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
   if (!document.querySelector(".nav-item[data-filter].active")) {
     const allFilter = document.querySelector('.nav-item[data-filter="all"]');
@@ -367,10 +369,15 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
 // Mirrors ASSISTANT_NAME in src/assistant.js, which is the source of truth. Same pattern as
 // ADMIN_VIEWS below: duplicated deliberately and named identically, so a rename that misses one
 // is visible rather than silent. The server's value wins wherever a response carries it; this is
-// what the nav and the first paint use before /ask/scope has answered.
+// what the panel's first paint uses before /ask/scope has answered.
 const ASSISTANT_NAME = "Vera";
 
-const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess, people: renderPeople, billing: renderBilling, ask: renderAsk };
+const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess, people: renderPeople, billing: renderBilling };
+// Every entry into a workspace view goes through VIEWS[key](). Recording the key here is what
+// lets Vera's screenContext() know you are on People, Billing or Integrations -- those open from
+// the settings menu and never light a nav item, so reading `.nav-item.active` alone called the
+// People page "the inbox". Found by the harness, which mirrors the real markup.
+for (const k of Object.keys(VIEWS)) { const fn = VIEWS[k]; VIEWS[k] = (...a) => { state.currentView = k; return fn(...a); }; }
 
 // Mirrors ADMIN_ONLY in src/index.js. Kept as a named constant next to the thing it hides so a
 // future page added to one list is visibly missing from the other.
@@ -381,10 +388,6 @@ function applyRoleVisibility() {
     if (ADMIN_VIEWS.includes(el.dataset.view)) el.classList.toggle("hidden", !isAdmin());
   });
 }
-// Her name in the nav, from the constant rather than the markup, so renaming her is one edit.
-const navAsk = document.querySelector('.nav-item[data-view="ask"]');
-if (navAsk) navAsk.textContent = ASSISTANT_NAME;
-
 document.querySelectorAll(".nav-item[data-view]").forEach(el => {
   el.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
@@ -919,6 +922,8 @@ async function openCall(id) {
   // visible way back to the inbox.
   document.body.classList.remove("workspace");
   state.currentCallId = id;
+  state.currentView = null;   // a call is on screen, not a workspace view
+  veraTrack();
   document.querySelectorAll(".nav-item[data-view]").forEach(n => n.classList.remove("active"));
   markCallSeen(id);          // opening it is what clears the "new" mark, like unread mail
   renderCallList();
@@ -1792,6 +1797,7 @@ function viewShell(title, sub, bodyHtml) {
     <div class="detail-header"><div class="dh-top"><div>
       <div class="dh-name">${title}</div><div class="dh-meta">${sub}</div>
     </div></div></div><div class="view-body">${bodyHtml}</div>`;
+  veraTrack();
 }
 
 async function renderInsights() {
@@ -2311,22 +2317,121 @@ const ASK_STARTERS = [
   "Which objection comes up most, and how have I handled it?",
 ];
 
-// The panel is a conversation, not a query box, and the difference is mostly in what happens
-// before you type. She opens by naming the weakest thing she found -- computed in SQL, so the
-// number on screen at rest is arithmetic -- and the openers are built from the same figures.
+// ---------------------------------------------------------------- Vera, floating (TASK-129)
 //
-// Ivan's brief was "personable, think Samantha from Her". The two decisions that came from it:
-// she gets a name in the header rather than being "Closer", and the waiting state says she is
-// reading rather than showing a spinner, because the honest thing happening in that second is
-// that something is going through sixty calls.
-async function renderAsk() {
+// Ivan, on the first version: "I dont like where you placed Vera as a list option. I would
+// rather her be in the lower right corner, like a chatbot, always available and easy to reach...
+// When you click on her, she should automatically suggest prompts or questions based on the
+// context of the current visible window."
+//
+// So she is not a view any more. The orb is fixed to the lower right of every screen, the panel
+// opens over whatever is there, and the page behind stays live. The part that makes this more
+// than a relocated query box is screenContext(): the panel reads what is actually on screen --
+// the open call, the selected rep, the list filter, the settings page -- and the suggestions
+// and the request are built from it. "What went wrong on this call" means the call you are
+// looking at, because the server is told which one that is.
+
+// What is on screen right now, derived rather than tracked. Deriving it from the DOM and the
+// existing state means there is no fifth place to update when a view changes; the active nav
+// item and state.currentCallId are already the truth.
+function screenContext() {
+  const activeView = state.currentView || document.querySelector(".nav-item[data-view].active")?.dataset.view || null;
+  const callId = state.currentCallId || null;
+  const call = callId ? (state.calls || []).find(c => c.id === callId) : null;
+  return {
+    view: callId ? "call" : (activeView || "calls"),
+    callId,
+    client: call?.client_name || null,
+    rep: activeView === "people" && state.peopleRep ? state.peopleRep : null,
+    filter: !activeView && !callId ? (state.filter || "all") : null,
+    window: state.askView || "month",
+  };
+}
+
+// The suggestions. Context first, then the account's own numbers from the server, then the
+// questions anyone running a sales floor wants answered. Capped at four -- a row of eight chips
+// is a menu, and a menu is what the nav item was.
+const LEADER_QUESTIONS = [
+  "Who on the team needs coaching first, and on what?",
+  "Which objection is costing us the most right now?",
+  "Who closed on the call this week, and what did they do?",
+  "What changed in the last two weeks?",
+];
+const REP_QUESTIONS = [
+  "Where am I losing these calls?",
+  "What is the one thing I should work on this week?",
+  "Which objection comes up most, and how have I handled it?",
+  "What changed in the last two weeks?",
+];
+function suggestionsFor(ctx, scope) {
+  const admin = isAdmin();
+  const out = [];
+  const push = q => { if (q && !out.includes(q)) out.push(q); };
+  switch (ctx.view) {
+    case "call": {
+      const who = ctx.client ? `the ${ctx.client} call` : "this call";
+      push(`What went wrong on ${who}?`);
+      push(`Where did ${who} turn?`);
+      push(admin ? `How does this compare with the rep's other calls?` : `What should I have said differently here?`);
+      break;
+    }
+    case "people":
+      if (ctx.rep) { push(`What should I coach ${ctx.rep} on this week?`); push(`Is ${ctx.rep} improving or slipping?`); }
+      else { push("Who is improving, and who is slipping?"); push("Who should I sit in with this week?"); }
+      break;
+    case "insights":
+      push("What is the one pattern here I should act on?");
+      push("Which dimension would move revenue most if it improved?");
+      break;
+    case "suggestions":
+      push("Which of these suggestions is worth doing first?");
+      break;
+    case "calls":
+      if (ctx.filter === "followup") { push("Which of these follow-ups is most at risk?"); push("Which should I chase today?"); }
+      else if (ctx.filter === "closed") { push("What did the calls that closed have in common?"); }
+      else if (ctx.filter === "archived") { /* nothing special */ }
+      break;
+    default: break;   // settings pages get the standard questions
+  }
+  (scope?.starters || []).forEach(push);
+  (admin ? LEADER_QUESTIONS : REP_QUESTIONS).forEach(push);
+  return out.slice(0, 4);
+}
+
+// She follows you. The panel is non-modal, so the screen can change while she is open -- a call
+// gets clicked, People gets opened -- and her header and suggestions must change with it, or
+// "what went wrong on this call" quietly means the previous call. Called from the three places
+// the screen changes: viewShell, openCall, showCallsView.
+function veraTrack() { if (veraIsOpen()) renderVera(); }
+
+const veraFab = () => $("#veraFab");
+const veraPanel = () => $("#veraPanel");
+function veraIsOpen() { return !veraPanel()?.classList.contains("hidden"); }
+
+function openVera() {
+  const p = veraPanel(); if (!p) return;
+  p.classList.remove("hidden");
+  veraFab()?.setAttribute("aria-expanded", "true");
+  renderVera().then(() => $("#askInput")?.focus());
+}
+function closeVera() {
+  const p = veraPanel(); if (!p) return;
+  p.classList.add("hidden");
+  veraFab()?.setAttribute("aria-expanded", "false");
+  veraFab()?.focus();
+}
+function toggleVera() { veraIsOpen() ? closeVera() : openVera(); }
+
+async function renderVera() {
+  const p = veraPanel(); if (!p) return;
   const view = state.askView || "month";
   state.askLog = state.askLog || [];
 
   let scope = null;
   try { scope = await api.get(`/ask/scope?view=${encodeURIComponent(view)}`); } catch { /* shown below */ }
   const name = scope?.name || ASSISTANT_NAME;
-  const chips = (scope?.starters?.length ? scope.starters : ASK_STARTERS);
+  const ctx = screenContext();
+  const chips = suggestionsFor(ctx, scope);
 
   const bubbles = state.askLog.map(m => `<div class="ask-msg ask-${m.role}">
        <div class="ask-who">${m.role === "user" ? "You" : esc(name)}</div>
@@ -2335,66 +2440,75 @@ async function renderAsk() {
                    : (m.role === "user" ? esc(m.text) : mdish(m.text))}</div>
      </div>`).join("");
 
-  // Her opening line is rendered as HER MESSAGE, not as empty-state furniture. It is the first
-  // turn of the conversation and it stays at the top of the log once the conversation starts.
+  // Her opening line, computed server-side from real numbers, rendered as her first message.
   const opener = scope?.greeting
     ? `<div class="ask-msg ask-assistant"><div class="ask-who">${esc(name)}</div>
          <div class="ask-body">${esc(scope.greeting)}</div></div>`
     : "";
 
-  viewShell(name,
-    `${name} has read every call you can see. Ask her anything about them; she cites the call and the timestamp so you can go and watch it.`,
-    `<div class="ct-picker" style="margin-bottom:10px;">
-       ${ASK_WINDOWS.map(([v, l]) => `<button class="ct-chip ${view === v ? "active" : ""}" data-askview="${v}">${l}</button>`).join("")}
-     </div>
-     <div class="ask-log" id="askLog">
-       ${opener}
-       ${bubbles}
-       ${state.askLog.length ? "" : `<div class="ask-starters">${chips.map(q =>
-           `<button class="chip ask-starter" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>`}
-     </div>
-     <div class="ask-compose">
-       <textarea id="askInput" rows="2" placeholder="Ask ${esc(name)} about your calls..."></textarea>
-       <button class="primary-btn" id="askSend">Ask</button>
-     </div>
-     <div class="ask-scope">${scope
-        ? `Reading <strong>${scope.callCount} call${scope.callCount === 1 ? "" : "s"}</strong> — ${esc(scope.scope)}.${
-            scope.truncated ? ` Capped at the ${scope.max} most recent.` : ""}`
+  // Where she thinks you are, in words, so a wrong read is visible rather than silent.
+  const where = ctx.view === "call" && ctx.client ? `Looking at ${esc(ctx.client)}`
+    : ctx.view === "people" && ctx.rep ? `Looking at ${esc(ctx.rep)}`
+    : ctx.view === "people" ? "On the People page"
+    : ctx.view === "insights" ? "On Insights"
+    : ctx.filter === "followup" ? "Calls needing follow-up"
+    : ctx.filter === "closed" ? "Closed calls"
+    : "";
+
+  p.innerHTML = `
+    <div class="vera-head">
+      <span class="vera-orb" aria-hidden="true"><span class="vera-orb-glow"></span><span class="vera-orb-core"></span></span>
+      <div><div class="vera-title">${esc(name)}</div>
+        <div class="vera-sub">${scope ? `${scope.callCount} call${scope.callCount === 1 ? "" : "s"} in the last ${esc(ASK_WINDOWS.find(([v]) => v === view)?.[1]?.toLowerCase() || view)}${where ? ` · ${where}` : ""}` : "&nbsp;"}</div></div>
+      <button class="vera-close" id="veraClose" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="vera-body" id="askLog"><div class="ask-log">${opener}${bubbles}</div></div>
+    <div class="vera-foot">
+      <div class="vera-chips">${chips.map(q => `<button class="chip ask-starter" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>
+      <div class="ask-compose">
+        <textarea id="askInput" rows="1" placeholder="Ask ${esc(name)}..."></textarea>
+        <button class="primary-btn" id="askSend" type="button">Ask</button>
+      </div>
+      <div class="vera-scope">${scope
+        ? `Reading ${esc(scope.scope)}${scope.truncated ? `, capped at the ${scope.max} most recent` : ""}. Runs on this account's own key.`
         : `Could not work out what you have access to.`}</div>
-     <div class="insight-note">Runs on this account's own Claude key, so the cost is yours and nothing is pooled. She reads a compressed index of your calls — scores, outcomes and key moments — never the full transcripts.</div>`);
+    </div>`;
 
   const send = async q => {
     const el = $("#askInput");
-    const text = (q ?? el.value).trim();
+    const text = (q ?? el?.value ?? "").trim();
     if (!text) return;
-    el.value = "";
+    if (el) el.value = "";
     state.askLog.push({ role: "user", text });
     state.askLog.push({ role: "assistant", text: "", pending: true });
-    renderAsk();
+    veraFab()?.classList.add("busy");
+    await renderVera();
     try {
       const r = await api.post("/ask", { message: text, view,
-        history: state.askLog.slice(0, -2).slice(-12) });
+        history: state.askLog.slice(0, -2).slice(-12),
+        context: screenContext() });
       state.askLog[state.askLog.length - 1] = { role: "assistant", text: r.answer || "(no answer)" };
     } catch (e) {
-      // Stored RAW. mdish() escapes at render time like it does for every other message here;
-      // escaping again at this point put literal &quot; on the screen the first time a key was
-      // rejected. One escape, at the boundary where the string becomes HTML.
+      // Stored RAW; mdish() escapes once at render. Escaping here too put literal &quot; on
+      // screen the first time a key was rejected.
       state.askLog[state.askLog.length - 1] = { role: "assistant", text: `**${e.message || "That failed."}**`, error: true };
     }
-    renderAsk();
-    const lg = $("#askLog"); if (lg) lg.scrollTop = lg.scrollHeight;
+    veraFab()?.classList.remove("busy");
+    await renderVera();
   };
 
+  $("#veraClose")?.addEventListener("click", closeVera);
   $("#askSend")?.addEventListener("click", () => send());
   $("#askInput")?.addEventListener("keydown", e => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   });
-  document.querySelectorAll(".ask-starter").forEach(b => b.addEventListener("click", () => send(b.dataset.q)));
-  document.querySelectorAll("[data-askview]").forEach(b => b.addEventListener("click", () => {
-    state.askView = b.dataset.askview; renderAsk();
-  }));
+  p.querySelectorAll(".ask-starter").forEach(b => b.addEventListener("click", () => send(b.dataset.q)));
   const lg = $("#askLog"); if (lg) lg.scrollTop = lg.scrollHeight;
 }
+
+// Wired once, at module scope, like the nav. The button exists in the markup from first paint.
+veraFab()?.addEventListener("click", toggleVera);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && veraIsOpen()) closeVera(); });
 
 // The model answers in light markdown. This renders the three things it actually uses and escapes
 // everything else -- a full markdown parser here would be a script-injection surface fed by model

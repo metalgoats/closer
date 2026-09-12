@@ -57,7 +57,7 @@ export const HISTORY_TURNS = 12;
 export const MIN_PATTERN_CALLS = 3;
 
 // Build the pack. `user` decides what is visible; nothing else does.
-export async function buildContext(env, { user, view = "month", accountId = null }) {
+export async function buildContext(env, { user, view = "month", accountId = null, focusCallId = null }) {
   const isAdmin = user?.role === "admin";
   const since = windowStart(view);
 
@@ -89,7 +89,7 @@ export async function buildContext(env, { user, view = "month", accountId = null
       LIMIT ${MAX_CONTEXT_CALLS}`
   ).bind(...binds).all();
 
-  const lines = calls.map(c => {
+  const lineFor = c => {
     let sc = [];
     try { sc = JSON.parse(c.scorecard || "[]"); } catch { /* leave empty */ }
     let mo = [];
@@ -107,7 +107,45 @@ export async function buildContext(env, { user, view = "month", accountId = null
       + `  scores: ${scores}\n`
       + (diag ? `  read: ${diag}\n` : "")
       + (key ? `  moments: ${key}\n` : "");
-  });
+  };
+  const lines = calls.map(lineFor);
+
+  // THE CALL ON SCREEN. She floats over every page now, so when the reader has a call open and
+  // says "this call", she has to know which one -- even if it is older than the window or past
+  // the sixty-call cap.
+  //
+  // It is fetched with the SAME `where` and the SAME binds as the index, plus the id. That is the
+  // whole security story: a member who edits the request to focus a colleague's call id gets
+  // nothing back, because the rep_email filter is still in the query. The client is trusted to
+  // say what is on screen; it is never trusted to say what the reader may see.
+  let focus = null;
+  const fid = Number(focusCallId);
+  if (Number.isInteger(fid) && fid > 0) {
+    // Built from the parts, NOT by filtering `where` and `binds` in parallel: `where[0]` is
+    // "archived_at IS NULL" and carries no bind, so the two arrays are misaligned and an
+    // index-based filter binds the window's date to account_id. That version made every focus
+    // query match nothing -- which a member-side test then passed, for the wrong reason. The
+    // admin-side test caught it.
+    const fwhere = ["c.archived_at IS NULL"];   // the window deliberately does not apply
+    const fbinds = [];
+    if (accountId) { fwhere.push("c.account_id = ?"); fbinds.push(accountId); }
+    if (!isAdmin)  { fwhere.push("c.rep_email = ?");  fbinds.push(user?.email || MATCHES_NOTHING); }
+    const f = await env.DB.prepare(
+      `SELECT c.id, c.client_name, date(c.occurred_at) AS on_date, c.duration_min, c.outcome,
+              c.rep_email, COALESCE(ct.name, 'Unlabelled') AS call_type,
+              json_extract(c.debrief_json,'$.diagnosis')  AS diagnosis,
+              json_extract(c.debrief_json,'$.scorecard')  AS scorecard,
+              json_extract(c.debrief_json,'$.keyMoments') AS moments
+         FROM calls c LEFT JOIN call_types ct ON ct.id = c.call_type_id
+        WHERE ${fwhere.join(" AND ")} AND c.id = ?`
+    ).bind(...fbinds, fid).first();
+    if (f) {
+      focus = { id: f.id, client: f.client_name, on: f.on_date };
+      const idx = calls.findIndex(c => c.id === f.id);
+      if (idx >= 0) lines.splice(idx, 1);
+      lines.unshift("[ON SCREEN NOW] " + lineFor(f));
+    }
+  }
 
   // PRECOMPUTED AGGREGATES, from SQL.
   //
@@ -139,6 +177,7 @@ export async function buildContext(env, { user, view = "month", accountId = null
     // line is the one thing said before the model is ever called, so it must come from SQL.
     // Weakest dimension first -- the query orders by average ascending.
     dims: dims.map(d => ({ dim: d.dim, avg: d.avg, n: d.n })),
+    focus,
     recent: calls.slice(0, 3).map(c => ({ id: c.id, client: c.client_name, on: c.on_date })),
     scope: isAdmin ? "every rep on this account" : `only ${user?.email}'s own calls`,
     window: view,
@@ -175,6 +214,10 @@ you are the only one here who has actually sat through all of them.
 WHAT YOU CAN SEE: an index of ${ctx.callCount} call${ctx.callCount === 1 ? "" : "s"} covering ${ctx.scope}, from the last ${ctx.window}.
 Each entry has the date, client, call type, outcome, per-dimension scores out of 10, a one-line
 read of the call, and the timestamped moments that decided it.
+${ctx.focus ? `
+ON SCREEN RIGHT NOW: call #${ctx.focus.id}, ${ctx.focus.client}, ${ctx.focus.on}. It is the first entry in the
+index, marked [ON SCREEN NOW]. When they say "this call", "this one" or "here", they mean it.` : ""}${ctx.screen && !ctx.focus ? `
+ON SCREEN RIGHT NOW: ${ctx.screen}. Questions like "this page" or "these" refer to it.` : ""}
 
 === THE RULES THAT DO NOT BEND ===
 
@@ -281,14 +324,37 @@ export function starters(ctx) {
   return out.slice(0, 4);
 }
 
-export async function ask(env, { user, account, message, view = "month", history = [] }) {
+// What the client says is on screen, turned into one plain sentence for the prompt. The client
+// is trusted to describe the screen; it is never trusted to widen access -- see buildContext.
+export function describeScreen(context, isAdmin) {
+  const c = context || {};
+  switch (c.view) {
+    case "people":       return c.rep ? `the People page, looking at ${c.rep}` : "the People page, the whole roster";
+    case "insights":     return "the Coaching Insights page";
+    case "suggestions":  return "the Suggestions page";
+    case "integrations": return "the Integrations settings";
+    case "billing":      return "the Billing settings";
+    case "spend":        return "the Spend page";
+    case "access":       return "the Access settings";
+    case "calls":
+    default: {
+      if (c.filter === "followup") return "the list of calls that still need a follow-up";
+      if (c.filter === "closed")   return "the list of calls that closed";
+      if (c.filter === "archived") return "the archived calls";
+      return isAdmin ? "the inbox of all calls" : "the inbox of their own calls";
+    }
+  }
+}
+
+export async function ask(env, { user, account, message, view = "month", history = [], context = null }) {
   const provider = account.llm_provider || "anthropic";
   const model = account.llm_model || DEFAULT_MODEL;
   const key = await resolveKey(env, account.id, provider);
   if (!key) throw new Error("No API key is connected for this account. Open Settings > Integrations and paste your Anthropic key.");
 
-  const ctx = await buildContext(env, { user, view, accountId: account.id });
-  if (!ctx.callCount) {
+  const ctx = await buildContext(env, { user, view, accountId: account.id, focusCallId: context?.callId ?? null });
+  ctx.screen = describeScreen(context, ctx.isAdmin);
+  if (!ctx.callCount && !ctx.focus) {
     return { answer: greeting(ctx), callCount: 0, scope: ctx.scope, model };
   }
 

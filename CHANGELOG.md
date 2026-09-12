@@ -1,7 +1,75 @@
 # Changelog
 
 One entry per working session, newest first. The *why* matters more than the diff — the diff
-already records the what.
+already records the what.## 2026-09-12 — Vera floats, and knows what you are looking at
+
+Ivan, on the first version: *"I dont like where you placed Vera as a list option. I would rather
+her be in the lower right corner, like a chatbot, always available and easy to reach, an icon that
+is inspired by the latest version of Siri but one that fits with our colors and design. When you
+click on her, she should automatically suggest prompts or questions based on the context of the
+current visible window."*
+
+**She is not a page any more.** The nav item is gone. A pure-CSS orb sits fixed in the lower right
+of every screen — a slowly turning conic gradient in the app's own blue, violet and pink, a blurred
+copy of itself behind for the glow, a dark core so it reads as a ring of light. No image asset, so
+it is theme-correct for free. It turns quickly while she is reading, because that is the honest
+state of that second; it stops under `prefers-reduced-motion`. Clicking it opens a **non-modal**
+panel above it: the page behind stays live, which is the point of a floating assistant. On a phone
+the panel is the screen and the orb steps aside.
+
+### She knows what is on screen
+
+The part that makes this more than a relocated query box. `screenContext()` reads what is actually
+in front of you — the open call, the selected rep on People, the inbox filter, the settings page —
+and two things are built from it:
+
+- **The suggestions.** Context first, then the account's own numbers, then the questions anyone
+  running a floor wants answered. With Jeffrey R. open: *"What went wrong on the Jeffrey R.
+  call?"* On People with a rep selected: *"What should I coach gabriel@x.com on this week?"* On
+  the follow-up list: *"Which of these follow-ups is most at risk?"* Capped at four — a row of
+  eight chips is a menu, and a menu is what the nav item was.
+- **The request.** The client tells the server which call is open. The server fetches that call
+  and puts it first in her index marked `[ON SCREEN NOW]`, and the prompt says what "this call"
+  means. It resolves even if the call is older than the window or past the sixty-call cap.
+
+> [!danger] The client says what is on screen; it never says what the reader may see
+> The focused call is fetched under **the same role scope as everything else** — a member's
+> focus query still carries `rep_email = ?`. A member who edits the request to focus a
+> colleague's call id gets nothing back, no error, no leak. That is tested from both sides, and
+> a malformed id (`7.5`, `-3`, a string) never reaches SQL at all.
+
+**She follows you.** Because the panel is non-modal the screen can change while she is open. Her
+header and chips re-render from the three places the screen changes, so "this call" never
+quietly means the previous one. Verified live: open on Jeffrey R., open People underneath, and
+the header reads *"On the People page"* with the first chip changed to match.
+
+### Three things found by testing rather than by reading
+
+**1. The focus query bound the date to `account_id`.** I built its `where`/`binds` by filtering
+the index query's two arrays by position — but `where[0]` is `archived_at IS NULL` and has no
+bind, so the arrays are misaligned. Every focus query would have matched nothing in production,
+silently, and "this call" would never have resolved. **The member-side test passed for the wrong
+reason** (nothing came back, which is also what a correctly-scoped query returns for a
+colleague's call). The admin-side test caught it. The binds are now built from parts and
+asserted to be exactly `[1, 99]`.
+
+**2. People, Billing, Integrations and Spend never light a nav item** — they open from the
+settings menu — so reading `.nav-item.active` alone called the People page "the inbox". The view
+key is now recorded at the one place every view is entered, the `VIEWS` boundary. Found by the
+harness, which mirrors the real markup and crashed on the assumption.
+
+**3. A test that could not fail.** The malformed-id guard was first tested with
+`"7; DROP TABLE calls"` — which `Number()` already turns into `NaN`, so removing the integer
+check changed nothing and the assertion stayed green. `7.5` is the honest input. Fourth instance
+of *an assertion can pass because there is nothing to assert on*.
+
+Also verified by looking: the orb clears the per-call **Send** button by 22px (the detail column
+carries room at the bottom), zero horizontal overflow at 375px, the light-mode orb.
+
+**891 assertions.** Twelve inversions proven red, including dropping the rep filter from the
+focus query, regressing to the misaligned binds, offering a rep the team questions, and putting
+her back in the nav.
+
 ## 2026-09-12 — Vera
 
 Ivan: *"Create the chatbot. Make it personable. Think of it like Samantha from the movie Her."*

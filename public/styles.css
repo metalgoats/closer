@@ -242,7 +242,7 @@ body.sb-collapsed .resizer[data-resize="sidebar"]{ display:none; }
 .fail-banner b{ color:var(--pink-500); }
 
 /* ---------- detail ---------- */
-.detail{ display:flex; flex-direction:column; min-height:0; background:var(--paper-0); overflow-y:auto; }
+.detail{ display:flex; flex-direction:column; min-height:0; background:var(--paper-0); overflow-y:auto; padding-bottom:84px; }
 .detail-header{ padding:14px 22px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:12px; flex-shrink:0; }
 .dh-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
 .dh-name{ font-family:var(--font-display); font-size:24px; font-weight:600; letter-spacing:0.009em; }
@@ -1222,3 +1222,92 @@ body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; 
 .ask-starters{ display:flex; flex-wrap:wrap; gap:7px; margin-top:2px; }
 .ask-starter{ cursor:pointer; text-align:left; }
 .ask-scope{ margin-top:10px; font-size:15px; color:var(--ink-400); }
+
+
+/* ---------------------------------------------------------------- Vera, floating (TASK-129)
+   Ivan: "I would rather her be in the lower right corner, like a chatbot, always available and
+   easy to reach, an icon that is inspired by the latest version of Siri but one that fits with
+   our colors and design."
+
+   The orb is CSS only: a slowly turning conic gradient in the app's own blue, violet and pink,
+   a blurred copy of itself behind for the glow, and a dark core so it reads as a ring of light
+   rather than a flat disc. No image asset, so it is theme-correct for free and costs nothing to
+   recolour. It turns faster while she is reading, which is the honest state of that second. */
+.vera-fab{
+  position:fixed; right:20px; bottom:20px; z-index:100;
+  width:56px; height:56px; padding:0; border:0; border-radius:50%; cursor:pointer;
+  background:transparent; -webkit-tap-highlight-color:transparent;
+  transition:transform .18s ease;
+}
+.vera-fab:hover{ transform:translateY(-1px) scale(1.04); }
+.vera-fab:active{ transform:scale(.97); }
+.vera-fab:focus-visible{ outline:2px solid var(--focus); outline-offset:4px; }
+.vera-orb{ position:relative; display:block; width:56px; height:56px; border-radius:50%; }
+.vera-orb-glow, .vera-orb-core{ position:absolute; inset:0; border-radius:50%; }
+.vera-orb-glow{
+  background:conic-gradient(from var(--vera-a, 0deg), var(--blue-500), var(--violet-500), var(--pink-500), var(--blue-600), var(--blue-500));
+  filter:blur(9px); opacity:.55; transform:scale(1.08);
+  animation:vera-turn 9s linear infinite;
+}
+.vera-orb-core{
+  background:conic-gradient(from var(--vera-a, 0deg), var(--blue-500), var(--violet-500), var(--pink-500), var(--blue-600), var(--blue-500));
+  animation:vera-turn 9s linear infinite;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);
+}
+/* The dark centre that turns a disc into a ring of light. */
+.vera-orb-core::after{
+  content:""; position:absolute; inset:7px; border-radius:50%;
+  background:radial-gradient(circle at 38% 35%, rgba(255,255,255,.14), transparent 55%), var(--paper-50);
+}
+[data-theme="light"] .vera-orb-core::after{ background:radial-gradient(circle at 38% 35%, rgba(255,255,255,.9), transparent 55%), #fff; }
+/* Reading: the ring turns quickly and the glow breathes. Idle: slow. Open: slow but brighter. */
+.vera-fab.busy .vera-orb-glow, .vera-fab.busy .vera-orb-core{ animation-duration:1.6s; }
+.vera-fab.busy .vera-orb-glow{ animation:vera-turn 1.6s linear infinite, vera-breathe 1.6s ease-in-out infinite; }
+.vera-fab[aria-expanded="true"] .vera-orb-glow{ opacity:.8; }
+@property --vera-a { syntax:"<angle>"; inherits:false; initial-value:0deg; }
+@keyframes vera-turn{ to{ --vera-a:360deg; } }
+@keyframes vera-breathe{ 0%,100%{ transform:scale(1.08); } 50%{ transform:scale(1.22); } }
+@media (prefers-reduced-motion: reduce){
+  .vera-orb-glow, .vera-orb-core{ animation:none !important; }
+  .vera-fab.busy .vera-orb-glow{ opacity:.85; }
+}
+
+/* The panel: a card that opens above the orb. Non-modal -- the page behind stays live. */
+.vera-panel{
+  position:fixed; right:20px; bottom:88px; z-index:110;
+  width:min(420px, calc(100vw - 40px)); height:min(640px, calc(100vh - 112px));
+  display:flex; flex-direction:column; min-height:0;
+  background:var(--paper-100); border:1px solid var(--line-strong); border-radius:16px;
+  box-shadow:var(--shadow); overflow:hidden;
+  transform-origin:bottom right;
+  animation:vera-open .16s ease-out;
+}
+@keyframes vera-open{ from{ opacity:0; transform:translateY(8px) scale(.98); } to{ opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce){ .vera-panel{ animation:none; } }
+.vera-head{ display:flex; align-items:center; gap:10px; padding:12px 12px 12px 14px; border-bottom:1px solid var(--line); }
+.vera-head .vera-orb{ width:26px; height:26px; flex:none; }
+.vera-head .vera-orb-core::after{ inset:4px; }
+.vera-head .vera-orb-glow{ filter:blur(5px); }
+.vera-title{ font-family:var(--font-display); font-size:17px; font-weight:600; letter-spacing:-0.022em; }
+.vera-sub{ font-size:12px; color:var(--ink-400); letter-spacing:.02em; }
+.vera-close{ margin-left:auto; width:32px; height:32px; border-radius:8px; border:1px solid transparent; background:transparent; color:var(--ink-600); font-size:18px; line-height:1; cursor:pointer; }
+.vera-close:hover{ background:var(--paper-200); color:var(--ink-950); }
+.vera-close:focus-visible{ outline:2px solid var(--focus); }
+.vera-body{ flex:1 1 auto; min-height:0; overflow-y:auto; padding:14px; }
+.vera-body .ask-log{ gap:12px; }
+.vera-foot{ flex:none; border-top:1px solid var(--line); padding:10px 12px 12px; display:flex; flex-direction:column; gap:8px; }
+.vera-chips{ display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; }
+.vera-chips::-webkit-scrollbar{ display:none; }
+.vera-chips .chip{ flex:none; white-space:nowrap; cursor:pointer; }
+.vera-panel .ask-compose{ display:flex; gap:8px; align-items:flex-end; }
+.vera-panel .ask-compose textarea{ flex:1 1 auto; min-width:0; resize:none; }
+.vera-scope{ font-size:12px; color:var(--ink-400); letter-spacing:.02em; }
+
+/* Phone: the panel is the screen, and the orb stays clear of the thumb-side edge. */
+@media (max-width:640px){
+  .vera-fab{ right:14px; bottom:14px; width:52px; height:52px; }
+  .vera-orb{ width:52px; height:52px; }
+  .vera-panel{ inset:0; width:auto; height:auto; border-radius:0; border:0; }
+  .vera-fab[aria-expanded="true"]{ display:none; }   /* the panel has its own close */
+  .detail{ padding-bottom:78px; }
+}

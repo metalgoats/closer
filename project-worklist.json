@@ -3380,6 +3380,30 @@
       "test_results": [
         "838 across the suite; 9 inversions proven red"
       ]
+    },
+    {
+      "id": "TASK-129",
+      "status": "completed",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "title": "Vera floats: a lower-right orb on every screen, with suggestions built from what is on it",
+      "source": "Ivan, 2026-09-12",
+      "dependencies": [
+        "TASK-128"
+      ],
+      "description": "Ivan: 'I dont like where you placed Vera as a list option. I would rather her be in the lower right corner, like a chatbot, always available... an icon inspired by the latest Siri but in our colors... When you click on her, she should automatically suggest prompts based on the context of the current visible window.' The nav item is gone; a CSS-only orb (conic gradient in the app's tokens, blurred glow, dark core, reduced-motion aware) opens a non-modal panel. screenContext() derives the open call / selected rep / inbox filter / settings page; suggestions are built from it, capped at four, and the request carries it so the server puts the on-screen call first in her index under the SAME role scope (a member cannot focus a colleague's call). She re-renders when the screen changes under her. Three bugs found by testing: focus binds misaligned (date bound to account_id), settings-menu views never lighting a nav item, and a malformed-id test that could not fail.",
+      "acceptance_criteria": [],
+      "testing_criteria": [],
+      "files_expected_to_change": [
+        "closer-app/src/assistant.js",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js",
+        "closer-app/public/index.html",
+        "closer-app/public/styles.css"
+      ],
+      "test_results": [
+        "891 across the suite; 12 inversions proven red"
+      ]
     }
   ],
   "progress_percentage": 90,

@@ -167,6 +167,10 @@ const ROUTES = [
                               models: { "claude-opus-5": { label: "Opus 5", tier: "Flagship", inPerM: 5, outPerM: 25, note: "n", thinking: "optional-capped" },
                                         "claude-fable-5": { label: "Fable 5", tier: "Most capable", inPerM: 10, outPerM: 50, note: "n", thinking: "always-on" } } })],
   [/^\/suggestions/, () => ({ suggestions: [] })],
+  [/^\/ask\/scope/,   () => ({ role: "admin", scope: "every rep on this account", callCount: 6, truncated: false, max: 60,
+                              name: "Vera", greeting: "I've read 6 calls across the team. Discovery is the lowest at 4.2, across 5 scored calls - that's the one I'd start with.",
+                              starters: ["Why is discovery sitting at 4.2?", "What went wrong on the Marcus call?"] })],
+  [/^\/ask/,          () => ({ answer: "Discovery is 4.2 across 5 calls. See #1, 2026-07-19." })],
   [/^\/insights/,    () => ({ scored: 1, calls: 1, averages: [["rapport", 8, 3]], hurt: ["x"], lessons: ["y"], types: [] })],
   [/^\/billing/, () => ({
     billing: { account_id: 1, stripe_customer_id: "cus_1", stripe_subscription_id: "sub_1",
@@ -204,7 +208,7 @@ globalThis.fetch = async (url) => {
 
 let bootErr = null;
 try {
-  (0, eval)(src + `\n;globalThis.__t = { VIEWS, applySidebar, settingsMenu, openSettingsFrom, state, renderProcessed, defaultOutputTab, OUTPUT_TABS, setPane, PANES, loadPanes, savePanes, RELEASES, releaseSig, unseenFrom };`);
+  (0, eval)(src + `\n;globalThis.__t = { VIEWS, applySidebar, settingsMenu, openSettingsFrom, state, renderProcessed, defaultOutputTab, OUTPUT_TABS, setPane, PANES, loadPanes, savePanes, RELEASES, releaseSig, unseenFrom, suggestionsFor, screenContext, renderVera, openVera, closeVera, veraIsOpen };`);
 } catch (e) { bootErr = e; }
 
 console.log("\n== app.js loads ==");
@@ -859,6 +863,102 @@ console.log("\n== People renders, and keeps the two decisions that could quietly
   T.state.peopleRep = undefined;
 }
 
+
+console.log("\n== Vera floats, and her suggestions follow the screen (TASK-129) ==");
+{
+  // Ivan: "When you click on her, she should automatically suggest prompts or questions based on
+  // the context of the current visible window." These CALL suggestionsFor with real state rather
+  // than grepping the source, so a suggestion that names the wrong thing fails here.
+  const S = T.state;
+  // People and Integrations open from the SETTINGS menu, not the nav, so there is no nav item to
+  // light. The app records the view at the VIEWS boundary instead; these go through it.
+  const clearNav = () => { navViews.forEach(n => n.classList.remove("active")); S.currentView = null; };
+  const scope = { starters: ["Why is discovery sitting at 4.2?"] };
+
+  S.user = { email: "boss@x.com", role: "admin" };
+  // Full list-row shape: viewShell re-renders the call list, which formats occurred_at.
+  S.calls = [{ id: 1, client_name: "Marcus", account_name: "OSA", occurred_at: "2026-07-19T10:00:00Z",
+               outcome: "followup", processed_at: "2026-07-19T10:05:00Z", processing_status: null, archived_at: null }];
+
+  // A call is open.
+  clearNav(); S.currentCallId = 1;
+  let ctx = T.screenContext();
+  check("with a call open, the screen context is that call", ctx.view === "call" && ctx.callId === 1 && ctx.client === "Marcus");
+  let sugg = T.suggestionsFor(ctx, scope);
+  check("...and the first suggestion is about THAT call, by name", /Marcus/.test(sugg[0]), sugg.join(" | "));
+  check("...never more than four chips", sugg.length <= 4, String(sugg.length));
+  check("...and the account's own starter is still offered", sugg.includes("Why is discovery sitting at 4.2?"));
+
+  // The People page, one rep selected.
+  S.currentCallId = null; clearNav(); await T.VIEWS.people(); S.peopleRep = "gabriel@x.com";
+  check("entering People through VIEWS records it as the current view", S.currentView === "people",
+    "People opens from the settings menu and lights no nav item; without this she thinks you are in the inbox");
+  ctx = T.screenContext();
+  check("on People with a rep selected, the context carries the rep", ctx.view === "people" && ctx.rep === "gabriel@x.com");
+  sugg = T.suggestionsFor(ctx, scope);
+  check("...and a suggestion names that rep", sugg.some(q => /gabriel@x\.com/.test(q)), sugg.join(" | "));
+  S.peopleRep = undefined;
+  sugg = T.suggestionsFor(T.screenContext(), scope);
+  check("on People with nobody selected, it asks about the roster", sugg.some(q => /improving|sit in/.test(q)));
+
+  // The follow-up list.
+  clearNav(); S.filter = "followup";
+  ctx = T.screenContext();
+  check("the inbox filter is part of the context", ctx.view === "calls" && ctx.filter === "followup");
+  sugg = T.suggestionsFor(ctx, scope);
+  check("...and the suggestions are about follow-ups", sugg.some(q => /follow-up/.test(q)), sugg.join(" | "));
+  S.filter = "all";
+
+  // A settings page gets the standard leader questions, nothing clever.
+  clearNav(); await T.VIEWS.integrations();
+  sugg = T.suggestionsFor(T.screenContext(), scope);
+  check("a settings page falls back to the questions a team lead asks", sugg.some(q => /coaching first/.test(q)));
+  clearNav();
+
+  // The member boundary, on the client side too.
+  S.user = { email: "rep@x.com", role: "member" };
+  S.currentCallId = 1;
+  sugg = T.suggestionsFor(T.screenContext(), { starters: [] });
+  check("a REP is never offered a question about the team", !sugg.some(q => /team|coach .* on this week|rep's other/i.test(q)), sugg.join(" | "));
+  check("...and is offered their own", sugg.some(q => /should I have said|losing these calls/.test(q)));
+  S.currentCallId = null; S.user = { email: "boss@x.com", role: "admin" };
+
+  // No scope answer at all must not blank the chips.
+  sugg = T.suggestionsFor(T.screenContext(), null);
+  check("with no scope answer there are still suggestions", sugg.length > 0);
+
+  // The panel itself runs, opens and closes.
+  let err = null;
+  try { await T.renderVera(); } catch (e) { err = e; }
+  check("renderVera() runs against the harness", !err, err ? `${err.name}: ${err.message}` : "");
+  const panelHtml = (reg.get("#veraPanel") || {})._html || "";
+  check("...renders her greeting as her first message", /ask-msg ask-assistant/.test(panelHtml) && /Discovery is the lowest at 4\.2/.test(panelHtml));
+  check("...renders the suggestion chips", /class="chip ask-starter"/.test(panelHtml));
+  check("...and the composer", /id="askInput"/.test(panelHtml) && /id="askSend"/.test(panelHtml));
+  check("...and the scope footnote says whose key it runs on", /own key/.test(panelHtml));
+  T.openVera();
+  check("openVera flips aria-expanded on the orb", get("#veraFab").getAttribute("aria-expanded") === "true");
+  check("...and shows the panel", !get("#veraPanel").classList.contains("hidden"));
+  T.closeVera();
+  check("closeVera hides it and resets the orb", get("#veraPanel").classList.contains("hidden") && get("#veraFab").getAttribute("aria-expanded") === "false");
+  check("VIEWS no longer has an 'ask' entry", !("ask" in T.VIEWS));
+
+  // She is non-modal, so the screen can change under her. Her suggestions must change with it,
+  // or "this call" silently means the previous one.
+  S.currentCallId = 1; clearNav();
+  T.openVera(); await new Promise(r => setTimeout(r, 0));
+  // The FIRST chip is the context chip; the stub scope route also offers a Marcus starter, so
+  // its mere presence proves nothing.
+  const firstChip = () => (/class="chip ask-starter" data-q="([^"]*)"/.exec(get("#veraPanel")._html) || [])[1];
+  const sub = () => (/class="vera-sub">([^<]*)</.exec(get("#veraPanel")._html) || [])[1] || "";
+  check("open on a call, the first chip is about that call", firstChip() === "What went wrong on the Marcus call?", firstChip());
+  check("...and the header says she is looking at it", /Looking at Marcus/.test(sub()), sub());
+  await T.VIEWS.people(); await new Promise(r => setTimeout(r, 0));
+  check("navigating to People while she is open re-renders her for People",
+    firstChip() === "Who is improving, and who is slipping?" && /People/.test(sub()),
+    `first chip: ${firstChip()} | sub: ${sub()}`);
+  T.closeVera(); clearNav();
+}
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

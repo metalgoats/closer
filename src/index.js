@@ -693,13 +693,17 @@ async function route(request, env, url, ctx) {
   // their own calls. Putting this behind ADMIN_ONLY would have been the lazy way to be safe and
   // would have removed half the product.
   if (path === "/api/ask" && method === "POST") {
-    const { message, view, history } = await request.json().catch(() => ({}));
+    const { message, view, history, context } = await request.json().catch(() => ({}));
     if (!message || !String(message).trim()) return json({ error: "Ask a question first." }, 400);
     const account = await env.DB.prepare("SELECT * FROM accounts ORDER BY id LIMIT 1").first();
     if (!account) return json({ error: "No account configured." }, 400);
     try {
+      // `context` is what the client says is on screen (view, open call id, selected rep,
+      // filter). It shapes the prompt; it cannot widen what the reader may see -- the focused
+      // call is fetched under the same role scope as everything else.
       const r = await assistantAsk(env, { user, account, message: String(message).slice(0, 2000),
-                                          view: view || "month", history: Array.isArray(history) ? history : [] });
+                                          view: view || "month", history: Array.isArray(history) ? history : [],
+                                          context: context && typeof context === "object" ? context : null });
       await logEvent(env, { kind: "assistant.asked", account_id: account.id, model: r.model,
         detail: `${user.email} (${user.role}) - ${r.callCount} calls in scope - "${String(message).slice(0, 80)}"`,
         usage: r.usage || undefined });
