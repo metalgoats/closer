@@ -3,6 +3,55 @@
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
 
+## 2026-09-12 — The pricing report, as a page you can send
+
+Ivan: *"Take that report and make it a hidden page in CloserAI. I want to send Gabriel a link so
+he can read it."* `Pricing v2` is now a live page at `/r/<token>`.
+
+**The URL is the credential, and that is a deliberate choice.** It is not behind `requireUser`:
+Gabriel has no login, and making him get one to read a document he asked for is friction standing
+in for security. So the token does the work — 128 bits of hex, compared in **constant time**
+(a plain `===` short-circuits at the first wrong character and hands out the token one character
+at a time), and a wrong token returns `null` rather than a 403, so the page falls through to the
+SPA instead of confirming that something exists at that path.
+
+Served `noindex` twice over, header and meta tag, plus `no-store` and `no-referrer` — the last so
+the secret URL does not travel in the `Referer` header of every link the reader clicks.
+
+> [!warning] It is a Worker route, not a file in `public/`
+> Everything under `public/` is served by `env.ASSETS` at its own path, and the assets root is
+> public. That is how therowan.studio once published its `.git`. A document that quotes Gabriel
+> from a recorded call, names OSA's monthly revenue and states what we intend to charge does not
+> belong at a path anyone can walk to.
+>
+> The route must also sit **above** the `env.ASSETS` fallthrough. Every non-`/api/` path below
+> that line is answered by the SPA, so a route registered any lower is dead code that looks like
+> a caching problem for an hour. There is a test on the ordering.
+
+### Two calculators, because the argument is arithmetic
+
+Seats, businesses and the per-seat rate are live; so are the admin hours. Verified against the
+printed tables in the browser rather than in my head: 3/6/10/20 seats give
+$21,464 / $32,156 / $46,412 / $82,052, six seats across five businesses gives $11,940 a month,
+and the $397 alternative gives $13,440. All match `Pricing v2` exactly.
+
+The 10% admin-conversion assumption is the **default**, and the 100% option is labelled
+*"do not ship this"* in the control itself. Whichever is default is the one that gets
+screenshotted.
+
+### What rendering it caught
+
+**The comparison bars were drawn in our own favour.** Hand-set widths had Gong at 100% and us at
+88% — while we cost **$32,156 against Gong's $28,000**. A chart arguing for us against its own
+numbers, in the one document whose entire case rests on not doing that. The tests were green and
+the markup was fine; only looking at it found this.
+
+Widths are now computed from the values, the "Us" row follows the calculator so it stays true at
+any seat count, and the page says out loud that we sit above Gong on price. Guard proven red by
+restoring the hand-set width.
+
+801 assertions across ten files.
+
 ## 2026-09-11 (late) — The assistant, and the no-shows it found on its first run
 
 **V1 of the assistant is live** (TASK-126). Ivan asked for it by name: *"I want to see a V1 of the

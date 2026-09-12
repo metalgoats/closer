@@ -11,6 +11,7 @@ import { runBackup } from "./backup.js";
 import { chatTurn, analyseEdits } from "./llm.js";
 import { logEvent } from "./log.js";
 import { spendReport, importUsage, reconcile } from "./spend.js";
+import { reportResponse } from "./pricingreport.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
 export { GenerateWorkflow } from "./workflow.js";
@@ -21,6 +22,14 @@ const json = (data, status = 200, headers = {}) =>
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    // The hidden pricing report (TASK-128). This MUST sit above the ASSETS fallthrough: every
+    // non-/api/ path below goes straight to static assets, so a route registered any lower is
+    // unreachable. Returns null for a wrong or missing token, and a wrong token then falls
+    // through to the SPA rather than announcing that a report exists at all.
+    if (url.pathname.startsWith("/r/")) {
+      const report = reportResponse(url.pathname);
+      if (report) return report;
+    }
     if (!url.pathname.startsWith("/api/")) {
       return env.ASSETS.fetch(request); // static UI
     }

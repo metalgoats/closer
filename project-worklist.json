@@ -1,6 +1,6 @@
 {
   "project": "Closer \u2014 post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
-  "last_updated": "2026-09-11",
+  "last_updated": "2026-09-12",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) \u2014 now the sole template, so it affects 100% of calls.",
   "completion_percentage": 90,
   "tasks": [
@@ -3336,6 +3336,26 @@
       ],
       "test_results": [
         "full suite 758/758"
+      ]
+    },
+    {
+      "id": "TASK-128",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "title": "The pricing report as a sendable hidden page",
+      "source": "Ivan, 2026-09-12",
+      "dependencies": [],
+      "files_expected_to_change": [
+        "closer-app/src/pricingreport.js",
+        "closer-app/src/index.js"
+      ],
+      "description": "Pricing v2 served at /r/<128-bit token>, unlisted and noindex, so Gabriel can read it from a link without a login. The token is the credential: constant-time compare, and a wrong token falls through to the SPA rather than returning a 403 that would confirm the page exists. A Worker route rather than a file in public/, because the assets root is public. Two live calculators (seats/businesses/rate, and admin hours returned) verified in a browser against the printed tables. Rendering it caught the comparison bars being hand-set with us drawn shorter than Gong while costing more than Gong; widths are now computed from the values and the Us row tracks the calculator.",
+      "acceptance_criteria": [],
+      "testing_criteria": [],
+      "test_results": [
+        "full suite 801/801",
+        "6 guards proven red"
       ]
     }
   ],
