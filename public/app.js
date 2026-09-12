@@ -392,7 +392,11 @@ document.querySelectorAll(".nav-item[data-view]").forEach(el => {
   el.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
     el.classList.add("active");
-    VIEWS[el.dataset.view]();
+    // Optional call, deliberately. Between a deploy and the edge cache catching up, a user can
+    // hold OLD markup with NEW code (seen 2026-09-12: the retired 'Ask' nav item was served for
+    // ~a minute after VIEWS.ask was gone). A missing view must be a no-op, not a TypeError that
+    // takes the click handler down.
+    VIEWS[el.dataset.view]?.();
     showDetailMobile(el.textContent.trim());
   });
 });
@@ -471,7 +475,11 @@ document.querySelectorAll(".settings-item[data-view]").forEach(el => {
     // These are not call filters, so clear the call-nav highlight rather than leaving a
     // filter looking active while a workspace view is open.
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
-    VIEWS[el.dataset.view]();
+    // Optional call, deliberately. Between a deploy and the edge cache catching up, a user can
+    // hold OLD markup with NEW code (seen 2026-09-12: the retired 'Ask' nav item was served for
+    // ~a minute after VIEWS.ask was gone). A missing view must be a no-op, not a TypeError that
+    // takes the click handler down.
+    VIEWS[el.dataset.view]?.();
     showDetailMobile(el.textContent.trim());
   });
 });

@@ -66,6 +66,12 @@ of *an assertion can pass because there is nothing to assert on*.
 Also verified by looking: the orb clears the per-call **Send** button by 22px (the detail column
 carries room at the bottom), zero horizontal overflow at 375px, the light-mode orb.
 
+**A fourth, found on the deploy itself.** For about a minute after the push, the edge served the
+*old* `index.html` with the *new* `app.js` — the retired "Ask" nav item was on screen while
+`VIEWS.ask` no longer existed, so clicking it would have thrown. Both nav click paths now call
+`VIEWS[key]?.()`: a view the bundle no longer has is a no-op, never a TypeError that takes the
+handler down. HTML/JS skew is a property of every deploy, not of this one.
+
 **891 assertions.** Twelve inversions proven red, including dropping the rep filter from the
 focus query, regressing to the misaligned binds, offering a rep the team questions, and putting
 her back in the nav.

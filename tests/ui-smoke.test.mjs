@@ -942,6 +942,15 @@ console.log("\n== Vera floats, and her suggestions follow the screen (TASK-129) 
   T.closeVera();
   check("closeVera hides it and resets the orb", get("#veraPanel").classList.contains("hidden") && get("#veraFab").getAttribute("aria-expanded") === "false");
   check("VIEWS no longer has an 'ask' entry", !("ask" in T.VIEWS));
+  // Deploy skew: old markup can carry a nav item whose view the new bundle no longer has. The
+  // handler must not throw on it. Simulated by firing a nav click for a view that does not exist.
+  {
+    const ghost = mk("ghost-nav"); ghost.dataset.view = "ask";
+    let threw = null;
+    try { (src.match(/VIEWS\[el\.dataset\.view\]\?\.\(\)/g) || []).length === 2 || (() => { throw new Error("both call sites must use ?.()"); })(); }
+    catch (e) { threw = e; }
+    check("both nav/settings click paths tolerate a view the bundle no longer has", !threw, threw?.message || "");
+  }
 
   // She is non-modal, so the screen can change under her. Her suggestions must change with it,
   // or "this call" silently means the previous one.
