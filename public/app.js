@@ -364,7 +364,7 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
   });
 });
 
-const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess, people: renderPeople, billing: renderBilling };
+const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess, people: renderPeople, billing: renderBilling, ask: renderAsk };
 
 // Mirrors ADMIN_ONLY in src/index.js. Kept as a named constant next to the thing it hides so a
 // future page added to one list is visibly missing from the other.
@@ -2278,6 +2278,99 @@ async function renderSpend() {
       msg.textContent = String(err?.message || err);
     }
   });
+}
+
+// ---------------------------------------------------------------- Ask (TASK-126)
+//
+// Ivan called it Clippy; Gabriel's reference was Notion AI's side chat. What it actually is: one
+// question box over every call the asker is allowed to see.
+//
+// > The scope line under the header is not decoration. It states, in words, exactly whose calls
+// > the answer was built from — "every rep on this account" or "only your own calls". A manager
+// > demoing this to their floor needs to be able to point at that sentence, and a rep needs to
+// > know their colleagues cannot ask about them. The boundary itself is enforced server-side in
+// > assistant.js; this makes it legible.
+const ASK_WINDOWS = [["week", "Week"], ["month", "Month"], ["half", "6 months"], ["year", "Year"], ["all", "All time"]];
+
+const ASK_STARTERS = [
+  "Where am I losing calls?",
+  "What is the single thing I should work on this week?",
+  "Which objection comes up most, and how have I handled it?",
+  "What changed compared with last month?",
+];
+
+async function renderAsk() {
+  const view = state.askView || "month";
+  state.askLog = state.askLog || [];
+
+  let scope = null;
+  try { scope = await api.get(`/ask/scope?view=${encodeURIComponent(view)}`); } catch { /* shown below */ }
+
+  const log = state.askLog.length
+    ? state.askLog.map(m => `<div class="ask-msg ask-${m.role}">
+         <div class="ask-who">${m.role === "user" ? "You" : "Closer"}</div>
+         <div class="ask-body">${m.role === "user" ? esc(m.text) : mdish(m.text)}</div>
+       </div>`).join("")
+    : `<div class="ask-empty">
+         <div class="ask-empty-t">Ask about your calls.</div>
+         <div class="ask-starters">${ASK_STARTERS.map(q =>
+           `<button class="chip ask-starter" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>
+       </div>`;
+
+  viewShell("Ask",
+    "One question over every call you can see. Answers cite the call and the timestamp so you can go and watch it.",
+    `<div class="ct-picker" style="margin-bottom:10px;">
+       ${ASK_WINDOWS.map(([v, l]) => `<button class="ct-chip ${view === v ? "active" : ""}" data-askview="${v}">${l}</button>`).join("")}
+     </div>
+     <div class="ask-scope">${scope
+        ? `Reading <strong>${scope.callCount} call${scope.callCount === 1 ? "" : "s"}</strong> — ${esc(scope.scope)}.${
+            scope.truncated ? ` Capped at the ${scope.max} most recent.` : ""}`
+        : `Could not work out what you have access to.`}</div>
+     <div class="ask-log" id="askLog">${log}</div>
+     <div class="ask-compose">
+       <textarea id="askInput" rows="2" placeholder="Ask about your calls..."></textarea>
+       <button class="primary-btn" id="askSend">Ask</button>
+     </div>
+     <div class="insight-note">Runs on this account's own Claude key, so the cost is yours and nothing is pooled. It reads a compressed index of your calls — scores, outcomes and key moments — never the full transcripts.</div>`);
+
+  const send = async q => {
+    const text = (q ?? $("#askInput").value).trim();
+    if (!text) return;
+    $("#askInput").value = "";
+    state.askLog.push({ role: "user", text });
+    state.askLog.push({ role: "assistant", text: "_Thinking..._" });
+    renderAsk();
+    try {
+      const r = await api.post("/ask", { message: text, view,
+        history: state.askLog.slice(0, -2).slice(-6) });
+      state.askLog[state.askLog.length - 1] = { role: "assistant", text: r.answer || "(no answer)" };
+    } catch (e) {
+      state.askLog[state.askLog.length - 1] = { role: "assistant", text: `**${esc(e.message || "That failed.")}**` };
+    }
+    renderAsk();
+    const lg = $("#askLog"); if (lg) lg.scrollTop = lg.scrollHeight;
+  };
+
+  $("#askSend")?.addEventListener("click", () => send());
+  $("#askInput")?.addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+  });
+  document.querySelectorAll(".ask-starter").forEach(b => b.addEventListener("click", () => send(b.dataset.q)));
+  document.querySelectorAll("[data-askview]").forEach(b => b.addEventListener("click", () => {
+    state.askView = b.dataset.askview; renderAsk();
+  }));
+  const lg = $("#askLog"); if (lg) lg.scrollTop = lg.scrollHeight;
+}
+
+// The model answers in light markdown. This renders the three things it actually uses and escapes
+// everything else -- a full markdown parser here would be a script-injection surface fed by model
+// output that itself read a client's transcript.
+function mdish(t) {
+  return esc(String(t))
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\n/g, "<br>");
 }
 
 // ---------------------------------------------------------------- Billing (TASK-122)

@@ -1168,3 +1168,19 @@ body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; 
 .ig-tile-blurb { font-size:12px; color:var(--ink-400); line-height:1.45; }
 .ig-tile-note { font-size:11px; color:var(--ink-400); background:var(--paper-200);
                 border-radius:5px; padding:1px 6px; margin-top:auto; }
+
+/* ---- Ask (TASK-126) ------------------------------------------------------------------------ */
+.ask-scope { font-size:12px; color:var(--ink-400); margin-bottom:12px;
+             padding:8px 12px; background:var(--paper-100); border-radius:8px; }
+.ask-log { min-height:180px; max-height:52vh; overflow-y:auto; display:flex; flex-direction:column;
+           gap:14px; padding:4px 2px 12px; }
+.ask-msg { display:flex; flex-direction:column; gap:4px; }
+.ask-who { font-size:10px; text-transform:uppercase; letter-spacing:.14em; color:var(--ink-400);
+           font-weight:700; }
+.ask-body { font-size:14.5px; line-height:1.65; }
+.ask-user .ask-body { background:var(--paper-100); border-radius:10px; padding:10px 12px; }
+.ask-empty { padding:26px 0; }
+.ask-empty-t { font-size:15px; color:var(--ink-400); margin-bottom:12px; }
+.ask-starters { display:flex; flex-wrap:wrap; gap:8px; }
+.ask-compose { display:flex; gap:8px; align-items:flex-end; }
+.ask-compose textarea { flex:1; resize:vertical; min-height:44px; }

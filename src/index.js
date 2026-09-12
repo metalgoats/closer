@@ -3,6 +3,7 @@ import { roster, person, WINDOWS } from "./people.js";
 import { weeklyReport, renderWeeklyEmail, weekBounds } from "./report.js";
 import { verifyStripeSignature, createCheckoutSession, createPortalSession, accessFromEvent, HANDLED_EVENTS } from "./billing.js";
 import { testGhl } from "./ghl.js";
+import { ask as assistantAsk, buildContext, MAX_CONTEXT_CALLS } from "./assistant.js";
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
 import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
@@ -673,6 +674,42 @@ async function route(request, env, url, ctx) {
         error: "No email provider is connected yet. The report generates and can be previewed, but sending needs an email service (Resend or Postmark) and a verified sending domain." }, 501);
     }
     return json({ ok: false, error: "Provider configured but the send adapter is not written yet." }, 501);
+  }
+
+  // ---- the assistant (TASK-126) ----
+  //
+  // NOT admin-gated, and that is deliberate: a rep asking "where am I losing deals" is the whole
+  // point of the feature. What protects it is that `buildContext` scopes the data to the caller
+  // BEFORE the model ever sees it, so a member's question is answered from a pack containing only
+  // their own calls. Putting this behind ADMIN_ONLY would have been the lazy way to be safe and
+  // would have removed half the product.
+  if (path === "/api/ask" && method === "POST") {
+    const { message, view, history } = await request.json().catch(() => ({}));
+    if (!message || !String(message).trim()) return json({ error: "Ask a question first." }, 400);
+    const account = await env.DB.prepare("SELECT * FROM accounts ORDER BY id LIMIT 1").first();
+    if (!account) return json({ error: "No account configured." }, 400);
+    try {
+      const r = await assistantAsk(env, { user, account, message: String(message).slice(0, 2000),
+                                          view: view || "month", history: Array.isArray(history) ? history : [] });
+      await logEvent(env, { kind: "assistant.asked", account_id: account.id, model: r.model,
+        detail: `${user.email} (${user.role}) - ${r.callCount} calls in scope - "${String(message).slice(0, 80)}"`,
+        usage: r.usage || undefined });
+      return json(r);
+    } catch (err) {
+      await logEvent(env, { level: "warn", kind: "assistant.failed", account_id: account.id,
+        detail: String(err?.message || err).slice(0, 300) });
+      return json({ error: String(err?.message || err) }, 400);
+    }
+  }
+
+  // Read-only: what WOULD this user's question be answered from? Exists so the scoping can be
+  // inspected without spending a model call, and so a test can assert the boundary directly.
+  if (path === "/api/ask/scope" && method === "GET") {
+    const account = await env.DB.prepare("SELECT * FROM accounts ORDER BY id LIMIT 1").first();
+    const ctx = await buildContext(env, { user, view: url.searchParams.get("view") || "month",
+                                          accountId: account?.id ?? null });
+    return json({ role: user.role, scope: ctx.scope, callCount: ctx.callCount,
+                  truncated: ctx.truncated, max: MAX_CONTEXT_CALLS });
   }
 
   // ---- people: the manager tier (TASK-118) ----
