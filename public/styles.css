@@ -1184,3 +1184,41 @@ body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; 
 .ask-starters { display:flex; flex-wrap:wrap; gap:8px; }
 .ask-compose { display:flex; gap:8px; align-items:flex-end; }
 .ask-compose textarea { flex:1; resize:vertical; min-height:44px; }
+
+
+/* ---------------------------------------------------------------- Vera (TASK-128)
+   The assistant got a name and a voice, so the panel had to stop looking like a query box with
+   a log under it. Three changes carry it: her opening line renders as a message rather than
+   empty-state furniture, the waiting state says what is actually happening instead of showing a
+   spinner, and the scope disclosure moved BELOW the composer -- it is a footnote about billing
+   and access, not the first thing to read on a page that now opens with a sentence from her. */
+.ask-log{ display:flex; flex-direction:column; gap:14px; }
+.ask-msg{ display:flex; flex-direction:column; gap:3px; }
+.ask-who{ font-size:12px; letter-spacing:0.02em; color:var(--ink-400); text-transform:uppercase; }
+.ask-assistant .ask-who{ color:var(--violet-600); }
+.ask-assistant .ask-body{ font-size:17px; line-height:1.5; }
+/* A raw API error is one long unbroken token. Without this it does not wrap, the column grows to
+   fit it, and the composer and the send button leave the screen -- which is precisely the moment
+   the reader most needs the composer, because something just failed. Found by looking at a 401. */
+.ask-body{ overflow-wrap:anywhere; min-width:0; }
+.ask-msg{ min-width:0; }
+.ask-user .ask-body{ color:var(--ink-800); }
+
+/* "Vera is reading" beats a spinner because it is true: in that second something is going
+   through up to sixty calls. A spinner says the app is busy; this says who is doing what. */
+.ask-pending{ color:var(--ink-600); font-style:italic; }
+.ask-dots{ display:inline-flex; gap:3px; margin-left:5px; vertical-align:baseline; }
+.ask-dots i{ width:3px; height:3px; border-radius:50%; background:var(--violet-600);
+  animation:ask-blink 1.25s infinite ease-in-out; }
+.ask-dots i:nth-child(2){ animation-delay:0.18s; }
+.ask-dots i:nth-child(3){ animation-delay:0.36s; }
+@keyframes ask-blink{ 0%,80%,100%{ opacity:0.22; } 40%{ opacity:1; } }
+/* Respect the setting. An idling animation is exactly the kind that triggers vestibular
+   symptoms, and it carries no information a static state cannot. */
+@media (prefers-reduced-motion: reduce){
+  .ask-dots i{ animation:none; opacity:0.55; }
+}
+
+.ask-starters{ display:flex; flex-wrap:wrap; gap:7px; margin-top:2px; }
+.ask-starter{ cursor:pointer; text-align:left; }
+.ask-scope{ margin-top:10px; font-size:15px; color:var(--ink-400); }

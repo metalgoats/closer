@@ -364,6 +364,12 @@ document.querySelectorAll(".nav-item[data-filter]").forEach(el => {
   });
 });
 
+// Mirrors ASSISTANT_NAME in src/assistant.js, which is the source of truth. Same pattern as
+// ADMIN_VIEWS below: duplicated deliberately and named identically, so a rename that misses one
+// is visible rather than silent. The server's value wins wherever a response carries it; this is
+// what the nav and the first paint use before /ask/scope has answered.
+const ASSISTANT_NAME = "Vera";
+
 const VIEWS = { insights: renderInsights, suggestions: renderSuggestions, templates: renderTemplates, integrations: renderIntegrations, activity: renderActivity, spend: renderSpend, access: renderAccess, people: renderPeople, billing: renderBilling, ask: renderAsk };
 
 // Mirrors ADMIN_ONLY in src/index.js. Kept as a named constant next to the thing it hides so a
@@ -375,6 +381,10 @@ function applyRoleVisibility() {
     if (ADMIN_VIEWS.includes(el.dataset.view)) el.classList.toggle("hidden", !isAdmin());
   });
 }
+// Her name in the nav, from the constant rather than the markup, so renaming her is one edit.
+const navAsk = document.querySelector('.nav-item[data-view="ask"]');
+if (navAsk) navAsk.textContent = ASSISTANT_NAME;
+
 document.querySelectorAll(".nav-item[data-view]").forEach(el => {
   el.addEventListener("click", () => {
     document.querySelectorAll(".nav-item[data-filter], .nav-item[data-view]").forEach(n => n.classList.remove("active"));
@@ -2292,60 +2302,84 @@ async function renderSpend() {
 // > assistant.js; this makes it legible.
 const ASK_WINDOWS = [["week", "Week"], ["month", "Month"], ["half", "6 months"], ["year", "Year"], ["all", "All time"]];
 
+// The openers now come from /ask/scope, built from THIS account's own numbers -- "Why is
+// discovery sitting at 4.2" rather than "Where am I losing calls". These are the fallback for
+// the moment the scope call has not landed or failed.
 const ASK_STARTERS = [
   "Where am I losing calls?",
   "What is the single thing I should work on this week?",
   "Which objection comes up most, and how have I handled it?",
-  "What changed compared with last month?",
 ];
 
+// The panel is a conversation, not a query box, and the difference is mostly in what happens
+// before you type. She opens by naming the weakest thing she found -- computed in SQL, so the
+// number on screen at rest is arithmetic -- and the openers are built from the same figures.
+//
+// Ivan's brief was "personable, think Samantha from Her". The two decisions that came from it:
+// she gets a name in the header rather than being "Closer", and the waiting state says she is
+// reading rather than showing a spinner, because the honest thing happening in that second is
+// that something is going through sixty calls.
 async function renderAsk() {
   const view = state.askView || "month";
   state.askLog = state.askLog || [];
 
   let scope = null;
   try { scope = await api.get(`/ask/scope?view=${encodeURIComponent(view)}`); } catch { /* shown below */ }
+  const name = scope?.name || ASSISTANT_NAME;
+  const chips = (scope?.starters?.length ? scope.starters : ASK_STARTERS);
 
-  const log = state.askLog.length
-    ? state.askLog.map(m => `<div class="ask-msg ask-${m.role}">
-         <div class="ask-who">${m.role === "user" ? "You" : "Closer"}</div>
-         <div class="ask-body">${m.role === "user" ? esc(m.text) : mdish(m.text)}</div>
-       </div>`).join("")
-    : `<div class="ask-empty">
-         <div class="ask-empty-t">Ask about your calls.</div>
-         <div class="ask-starters">${ASK_STARTERS.map(q =>
-           `<button class="chip ask-starter" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>
-       </div>`;
+  const bubbles = state.askLog.map(m => `<div class="ask-msg ask-${m.role}">
+       <div class="ask-who">${m.role === "user" ? "You" : esc(name)}</div>
+       <div class="ask-body${m.pending ? " ask-pending" : ""}">${
+         m.pending ? `${esc(name)} is reading<span class="ask-dots"><i></i><i></i><i></i></span>`
+                   : (m.role === "user" ? esc(m.text) : mdish(m.text))}</div>
+     </div>`).join("");
 
-  viewShell("Ask",
-    "One question over every call you can see. Answers cite the call and the timestamp so you can go and watch it.",
+  // Her opening line is rendered as HER MESSAGE, not as empty-state furniture. It is the first
+  // turn of the conversation and it stays at the top of the log once the conversation starts.
+  const opener = scope?.greeting
+    ? `<div class="ask-msg ask-assistant"><div class="ask-who">${esc(name)}</div>
+         <div class="ask-body">${esc(scope.greeting)}</div></div>`
+    : "";
+
+  viewShell(name,
+    `${name} has read every call you can see. Ask her anything about them; she cites the call and the timestamp so you can go and watch it.`,
     `<div class="ct-picker" style="margin-bottom:10px;">
        ${ASK_WINDOWS.map(([v, l]) => `<button class="ct-chip ${view === v ? "active" : ""}" data-askview="${v}">${l}</button>`).join("")}
+     </div>
+     <div class="ask-log" id="askLog">
+       ${opener}
+       ${bubbles}
+       ${state.askLog.length ? "" : `<div class="ask-starters">${chips.map(q =>
+           `<button class="chip ask-starter" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div>`}
+     </div>
+     <div class="ask-compose">
+       <textarea id="askInput" rows="2" placeholder="Ask ${esc(name)} about your calls..."></textarea>
+       <button class="primary-btn" id="askSend">Ask</button>
      </div>
      <div class="ask-scope">${scope
         ? `Reading <strong>${scope.callCount} call${scope.callCount === 1 ? "" : "s"}</strong> — ${esc(scope.scope)}.${
             scope.truncated ? ` Capped at the ${scope.max} most recent.` : ""}`
         : `Could not work out what you have access to.`}</div>
-     <div class="ask-log" id="askLog">${log}</div>
-     <div class="ask-compose">
-       <textarea id="askInput" rows="2" placeholder="Ask about your calls..."></textarea>
-       <button class="primary-btn" id="askSend">Ask</button>
-     </div>
-     <div class="insight-note">Runs on this account's own Claude key, so the cost is yours and nothing is pooled. It reads a compressed index of your calls — scores, outcomes and key moments — never the full transcripts.</div>`);
+     <div class="insight-note">Runs on this account's own Claude key, so the cost is yours and nothing is pooled. She reads a compressed index of your calls — scores, outcomes and key moments — never the full transcripts.</div>`);
 
   const send = async q => {
-    const text = (q ?? $("#askInput").value).trim();
+    const el = $("#askInput");
+    const text = (q ?? el.value).trim();
     if (!text) return;
-    $("#askInput").value = "";
+    el.value = "";
     state.askLog.push({ role: "user", text });
-    state.askLog.push({ role: "assistant", text: "_Thinking..._" });
+    state.askLog.push({ role: "assistant", text: "", pending: true });
     renderAsk();
     try {
       const r = await api.post("/ask", { message: text, view,
-        history: state.askLog.slice(0, -2).slice(-6) });
+        history: state.askLog.slice(0, -2).slice(-12) });
       state.askLog[state.askLog.length - 1] = { role: "assistant", text: r.answer || "(no answer)" };
     } catch (e) {
-      state.askLog[state.askLog.length - 1] = { role: "assistant", text: `**${esc(e.message || "That failed.")}**` };
+      // Stored RAW. mdish() escapes at render time like it does for every other message here;
+      // escaping again at this point put literal &quot; on the screen the first time a key was
+      // rejected. One escape, at the boundary where the string becomes HTML.
+      state.askLog[state.askLog.length - 1] = { role: "assistant", text: `**${e.message || "That failed."}**`, error: true };
     }
     renderAsk();
     const lg = $("#askLog"); if (lg) lg.scrollTop = lg.scrollHeight;

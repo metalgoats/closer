@@ -2,6 +2,73 @@
 
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
+## 2026-09-12 — Vera
+
+Ivan: *"Create the chatbot. Make it personable. Think of it like Samantha from the movie Her."*
+
+The assistant had a working brain and no face. It answered well and read like a query box, and
+it was called "Closer" in its own message labels, which is like a colleague introducing
+themselves as the building.
+
+**She is called Vera.** From *verus*, true — the one rule she may never break is that everything
+she says traces to a row you can open. One exported constant, mirrored once on the client, so
+renaming her is a two-line change.
+
+### The engineering problem in "make it personable"
+
+**Voice and accuracy pull against each other inside a single prompt.** A model told to be warm
+gets agreeable; an agreeable model softens a bad number; and a coaching tool that softens bad
+numbers is worse than no tool, because somebody acts on it.
+
+So the prompt is ordered deliberately and there is a test that fails if the order changes: the
+rules that do not bend come first, the voice comes second, and the voice section says in as many
+words that it governs *how true things are said* and never *which things are true*. `accuracy
+wins and it is not close` is a literal line in the prompt and a literal assertion in the suite.
+
+> [!danger] The guard that matters most, given what this product is
+> This scores employees out of ten, and the reps did not choose to be here. A warm model drifts
+> from *"you moved to price before they agreed there was a problem"* to *"you seem
+> underconfident"* without noticing, and the second one is a verdict on a person from something
+> that has never met them.
+>
+> `COMMENT ON WHAT PEOPLE DID, NOT ON WHO THEY ARE` is in the prompt in capitals and has its own
+> test. It is the line that makes a warm coach safe to point at somebody's work.
+
+Also banned by name: "Great question", "I'd be happy to", emoji, exclamation marks, and apology
+theatre. She is told to be short and told *why* — warmth is not word count.
+
+### She opens by noticing something, and it is arithmetic
+
+The greeting is the one thing said **before the model is ever called**, so nothing downstream can
+catch it being wrong. It is therefore not written by a model at all: the weakest dimension, its
+average and its sample count come from the same SQL that feeds an answer. The openers underneath
+it are built the same way — *"Why is Pain Amplification sitting at 4.6?"* rather than a static
+*"Where am I losing calls?"*.
+
+### Three bugs that only looking found
+
+**1. She called a one-sample dimension the weak one.** Her first line against real data was
+*"objection buildup is the lowest at 1, across 1 scored call"* — one call outranking a dimension
+averaging 4.6 across five. **The prompt tells her three calls is not a pattern, and the greeting
+was breaking that rule before the model was consulted.** `MIN_PATTERN_CALLS = 3`; below it she
+says there is not enough scored yet rather than naming the thinnest number she can find.
+
+**2. `const` is not hoisted.** The nav label reads `ASSISTANT_NAME` at module scope, and the
+constant was declared beside the Ask view eight hundred lines below it. Temporal dead zone, thrown
+on load, **the entire app blank** — not just this panel. Every assertion I wrote passed; `ui-smoke`
+caught it, because it is the only test that actually executes the file.
+
+**3. An error was escaped twice** and put literal `&quot;` on screen, and being one long unbroken
+token it grew the column until the composer and the send button left the viewport — at exactly
+the moment the reader needs the composer, because something just failed. Both found by triggering
+a real 401 and looking at it.
+
+Verified at 375px (zero horizontal overflow, composer on screen) and in light mode, where her
+name label measures **6.97:1**.
+
+**838 assertions.** Nine inversions proven red, including moving the voice above the accuracy
+rules, letting the greeting state a score it was not given, and reverting the openers to a static
+list.
 
 ## 2026-09-12 — The pricing report, as a page you can send
 

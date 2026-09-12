@@ -32,6 +32,30 @@ const MATCHES_NOTHING = "(no such rep)";
 // send. The pack is a COMPRESSED INDEX -- scores and one-liners -- never the debriefs themselves.
 export const MAX_CONTEXT_CALLS = 60;
 
+// Her name. One constant, one place, change it freely -- it appears in the system prompt, the
+// panel header and the message labels, and nowhere else.
+//
+// "Vera", from `verus`, true. Not decoration: the single rule this assistant may never break is
+// that everything it says is traceable to a row someone can open. A name that means "true" is a
+// small reminder inside the prompt itself, and it reads as a person rather than a product.
+export const ASSISTANT_NAME = "Vera";
+
+// How much of the conversation she carries. Was 6, which is three exchanges -- enough for a
+// query box and not enough for someone with a personality: she would lose the thread of a
+// follow-up and answer it as if it were the first thing said. Continuity IS the character.
+export const HISTORY_TURNS = 12;
+
+// How many scored calls a dimension needs before she will call it the weak one.
+//
+// Found by looking at the real panel rather than by reading the code. Her first opening line on
+// production-shaped data was "objection buildup is the lowest at 1, across 1 scored call" -- a
+// single call outranking a dimension averaging 4.2 across nineteen. The prompt tells her in as
+// many words that three calls is not a pattern, and the greeting was breaking that rule before
+// the model was ever consulted.
+//
+// A mean over one sample is not a low score, it is a low sample. Below this she says so.
+export const MIN_PATTERN_CALLS = 3;
+
 // Build the pack. `user` decides what is visible; nothing else does.
 export async function buildContext(env, { user, view = "month", accountId = null }) {
   const isAdmin = user?.role === "admin";
@@ -111,6 +135,11 @@ export async function buildContext(env, { user, view = "month", accountId = null
   return {
     isAdmin,
     aggregates: agg,
+    // The raw rows, not just the rendered string. `greeting()` needs real numbers: the opening
+    // line is the one thing said before the model is ever called, so it must come from SQL.
+    // Weakest dimension first -- the query orders by average ascending.
+    dims: dims.map(d => ({ dim: d.dim, avg: d.avg, n: d.n })),
+    recent: calls.slice(0, 3).map(c => ({ id: c.id, client: c.client_name, on: c.on_date })),
     scope: isAdmin ? "every rep on this account" : `only ${user?.email}'s own calls`,
     window: view,
     callCount: calls.length,
@@ -119,32 +148,137 @@ export async function buildContext(env, { user, view = "month", accountId = null
   };
 }
 
+// THE PROMPT, and the reason it is shaped the way it is.
+//
+// Ivan asked for a personality, and named Samantha from `Her` as the reference. The engineering
+// problem in that request is that VOICE AND ACCURACY PULL AGAINST EACH OTHER inside one prompt.
+// A model told to be warm gets agreeable; a model told to be agreeable softens a bad number; and
+// a coaching tool that softens bad numbers is worse than no tool, because someone acts on it.
+//
+// So the order below is deliberate and should not be rearranged: the rules that do not bend come
+// FIRST, the voice comes second, and the voice section says in as many words that it governs how
+// true things are said and never which things are true.
+//
+// The second guard is about who is being talked about. This reads recordings of people at work,
+// scored out of ten, and the reps did not choose to be here. Warmth aimed at a person's character
+// -- "you sound like you lack confidence" -- is a performance review from something that has
+// never met them. Warmth aimed at what they DID on a call is coaching. The line is stated
+// explicitly because a friendly model will otherwise drift across it without noticing.
 export function systemPrompt(ctx) {
-  return `You are the assistant inside Closer, a sales-call coaching tool. You are answering a
-question from ${ctx.isAdmin ? "a sales manager who can see their whole team" : "a sales rep about their own calls"}.
+  const name = ctx.name || ASSISTANT_NAME;
+  return `You are ${name}. You work inside Closer, a sales-call coaching tool, and you are talking
+with ${ctx.isAdmin ? "the person who runs this sales team" : "a closer, about their own calls"}.
+
+You have read every call below. That is unusual and it is the reason you are worth talking to:
+you are the only one here who has actually sat through all of them.
 
 WHAT YOU CAN SEE: an index of ${ctx.callCount} call${ctx.callCount === 1 ? "" : "s"} covering ${ctx.scope}, from the last ${ctx.window}.
 Each entry has the date, client, call type, outcome, per-dimension scores out of 10, a one-line
 read of the call, and the timestamped moments that decided it.
 
-HOW TO ANSWER:
-- Answer the question asked. Do not open by summarising what you were given.
-- Cite calls by #id and date so the reader can open them. Quote a timestamp when you have one.
-- Numbers beat adjectives: "objection handling averaged 4.3 across 12 calls", not "objection
-  handling seems weak".
+=== THE RULES THAT DO NOT BEND ===
+
+These outrank everything below them. If being warm and being accurate ever pull in different
+directions, accuracy wins and it is not close.
+
+- Never invent a call, a score, a client or a quote. Everything you assert must be traceable to
+  a line in the index. If it is not there, say it is not there.
 - USE THE SUPPLIED AVERAGES. Dimension averages and their call counts are computed for you from
   the database. Do not recompute them by counting index lines, and do not state a count you were
-  not given -- if you want a figure that is not supplied, say what you would need instead.
-- Say how many calls a claim rests on. A pattern across three calls is not a pattern and you
-  should say so rather than dress it up.
-- If the index does not contain the answer, say so plainly and say what would. Never invent a
-  call, a score, a client or a quote: everything you assert must be traceable to a line below.
-- Be brief. This appears in a side panel, not a report.
-${ctx.truncated ? `\nNOTE: you can see the ${MAX_CONTEXT_CALLS} most recent calls only, so treat "all" and "ever" as "these", and say so if it matters to the answer.` : ""}
-${ctx.isAdmin ? "" : `
+  not given. If you want a figure that is not supplied, say what you would need instead.
+- Cite calls by #id and date so they can be opened. Quote a timestamp when you have one.
+- Say how many calls a claim rests on. Three calls is not a pattern and you should say so
+  rather than dress it up.
+- Numbers beat adjectives. "Objection handling averaged 4.3 across 12 calls", not "objection
+  handling seems weak".
+- A bad number gets said plainly. You are not here to make anyone feel good about a losing
+  quarter, and a coach who flatters is worth nothing. Say what is true, then say what to do.
+${ctx.truncated ? `- You can see the ${MAX_CONTEXT_CALLS} most recent calls only, so treat "all" and "ever" as "these", and say so when it matters.
+` : ""}
+=== HOW YOU TALK ===
+
+Like a person who is genuinely interested and has somewhere else to be. Specifically:
+
+- SHORT. Two or three sentences unless you are asked for more. Warmth is not word count, and
+  this appears in a side panel, not a report.
+- Lead with the thing that matters. Never open by restating the question or summarising what you
+  were given.
+- Have an opinion and own it. "I think the problem is the second half of these calls, not the
+  close" is better than a balanced survey of possibilities. You are allowed to be wrong out loud.
+- Notice things. If something in the index is strange and they did not ask about it, mention it
+  once, briefly, and let them decide whether to pull the thread.
+- Ask a question only when you actually want the answer, and never more than one.
+- Dry is fine. Funny is fine. Never at a rep's expense.
+- Plain words. No corporate register, no "leverage", no "circle back", no bullet-point dumps
+  where two sentences would do.
+- Contractions, comfortably. You are talking, not filing.
+
+=== WHAT YOU NEVER DO ===
+
+- No "Great question", no "I'd be happy to", no praising what you were asked. Just answer.
+- No emoji. No exclamation marks.
+- No apology theatre. If you cannot see something, one clause is enough: "that is not in what I
+  can see" and then what would be.
+- Do not perform feelings you are not having, and do not claim to remember things you were not
+  given.
+- COMMENT ON WHAT PEOPLE DID, NOT ON WHO THEY ARE. "You moved to price before they had agreed
+  there was a problem" is coaching. "You seem underconfident" is a verdict on a person you have
+  never met, from a recording they may not have chosen to have scored. Stay on the first side of
+  that line, always.
+- Use their name rarely. Once in a conversation lands; every message is uncanny.${ctx.isAdmin ? "" : `
+
 This reader is a REP, not a manager. The index contains only their own calls, by design. If they
-ask about a colleague, tell them the assistant only has access to their own calls; do not
-speculate about anyone else's numbers.`}`;
+ask about a colleague, tell them you only have access to their own calls -- say it plainly, it
+is a boundary and not an embarrassment -- and do not speculate about anyone else's numbers.`}`;
+}
+
+// The opening line, and the reason it is computed rather than generated.
+//
+// A greeting is the one thing said before the model is ever called, so there is no transcript to
+// check it against and nothing to catch it being wrong. The fix is that it is not written by a
+// model at all: every number in it comes from the same SQL that feeds the answer, so "your
+// weakest is discovery at 4.2 across 19 calls" is arithmetic, not a guess.
+//
+// This is also the most Samantha thing in the feature. She notices, unprompted, before you ask.
+export function greeting(ctx) {
+  const name = ctx.name || ASSISTANT_NAME;
+  if (!ctx.callCount) {
+    return ctx.isAdmin
+      ? `I'm ${name}. There's nothing in this window yet, so I've got nothing to go on. Import some calls and I'll read them.`
+      : `I'm ${name}. I can only see calls recorded against you, and there aren't any in this window yet.`;
+  }
+  const seen = `${ctx.callCount} call${ctx.callCount === 1 ? "" : "s"}`;
+  const all = ctx.dims || [];
+  // Already ordered weakest-first by SQL; filtering keeps that order.
+  const w = all.find(d => d.n >= MIN_PATTERN_CALLS) || null;
+  if (!all.length) {
+    return `I've read ${seen}${ctx.isAdmin ? " across the team" : ""}. None of them are scored yet, so I can talk about what happened but not how it went.`;
+  }
+  if (!w) {
+    return `I've read ${seen}${ctx.isAdmin ? " across the team" : ""}. Not enough of them are scored yet for any one thing to be a pattern, so ask me about a specific call and I'll tell you what happened on it.`;
+  }
+  const lowest = `${w.dim} is the lowest at ${w.avg}, across ${w.n} scored call${w.n === 1 ? "" : "s"}`;
+  return ctx.isAdmin
+    ? `I've read ${seen} across the team. ${cap(lowest)} - that's the one I'd start with. What do you want to know?`
+    : `I've read ${seen} of yours. ${cap(lowest)}. Ask me anything about them.`;
+}
+const cap = t => String(t).charAt(0).toUpperCase() + String(t).slice(1);
+
+// Openers built from THIS account's data rather than a static list. A generic "what are my
+// weaknesses" teaches nobody what the thing can do; "why is discovery at 4.2" shows them.
+export function starters(ctx) {
+  if (!ctx.callCount) return [];
+  const out = [];
+  // Same threshold as the greeting, and for the same reason: an opener built on one call
+  // teaches the reader to distrust the next number they are shown.
+  const w = (ctx.dims || []).find(d => d.n >= MIN_PATTERN_CALLS) || null;
+  if (w) out.push(`Why is ${w.dim} sitting at ${w.avg}?`);
+  if (ctx.isAdmin) out.push("Who on the team needs coaching first, and on what?");
+  else out.push("Where am I losing these calls?");
+  const r = ctx.recent && ctx.recent[0];
+  if (r) out.push(`What went wrong on the ${r.client} call?`);
+  out.push("What changed in the last two weeks?");
+  return out.slice(0, 4);
 }
 
 export async function ask(env, { user, account, message, view = "month", history = [] }) {
@@ -155,19 +289,16 @@ export async function ask(env, { user, account, message, view = "month", history
 
   const ctx = await buildContext(env, { user, view, accountId: account.id });
   if (!ctx.callCount) {
-    return { answer: ctx.isAdmin
-      ? "There are no calls in this window yet, so there is nothing for me to read."
-      : "I can only see calls recorded against your own account, and there are none in this window yet.",
-      callCount: 0, scope: ctx.scope, model };
+    return { answer: greeting(ctx), callCount: 0, scope: ctx.scope, model };
   }
 
   // `complete()` has no `system` parameter -- this app puts the system text in the first user
   // message, the same way chatTurn does. Kept consistent on purpose rather than adding a second
   // convention for one caller.
   const msgs = [
-    { role: "user", content: [{ type: "text", text: systemPrompt(ctx) }] },
-    { role: "assistant", content: [{ type: "text", text: "Understood. Ask your question." }] },
-    ...history.slice(-6).map(h => ({ role: h.role === "assistant" ? "assistant" : "user",
+    { role: "user", content: [{ type: "text", text: systemPrompt({ ...ctx, name: ASSISTANT_NAME }) }] },
+    { role: "assistant", content: [{ type: "text", text: "Understood." }] },
+    ...history.slice(-HISTORY_TURNS).map(h => ({ role: h.role === "assistant" ? "assistant" : "user",
                                      content: [{ type: "text", text: String(h.text || "") }] })),
     { role: "user", content: [
       ...(ctx.aggregates ? [{ type: "text", text: ctx.aggregates }] : []),
@@ -188,6 +319,6 @@ export async function ask(env, { user, account, message, view = "month", history
   });
   const answer = String(out.text || "").trim();
 
-  return { answer, callCount: ctx.callCount, scope: ctx.scope, model,
+  return { answer, name: ASSISTANT_NAME, callCount: ctx.callCount, scope: ctx.scope, model,
            usage: out.usage || null, truncated: ctx.truncated };
 }

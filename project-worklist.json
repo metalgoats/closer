@@ -3357,6 +3357,29 @@
         "full suite 801/801",
         "6 guards proven red"
       ]
+    },
+    {
+      "id": "TASK-128",
+      "status": "completed",
+      "priority": "medium",
+      "estimated_complexity": "medium",
+      "title": "Vera \u2014 the assistant gets a name, a voice, and a greeting made of arithmetic",
+      "source": "Ivan, 2026-09-12",
+      "dependencies": [
+        "TASK-126"
+      ],
+      "description": "Ivan: 'Create the chatbot. Make it personable. Think of it like Samantha from the movie Her.' The prompt is ordered so the accuracy rules precede and explicitly outrank the voice, because a model told to be warm gets agreeable and an agreeable model softens a bad number. Added the guard that she comments on what people DID and never on who they are -- this product scores employees and a warm model drifts into character judgements. The opening line and the suggested questions are computed in SQL, not generated, since the greeting is said before any model call and nothing downstream could catch it being wrong. MIN_PATTERN_CALLS=3 after the first real run opened with a dimension averaged over one call.",
+      "acceptance_criteria": [],
+      "testing_criteria": [],
+      "files_expected_to_change": [
+        "closer-app/src/assistant.js",
+        "closer-app/src/index.js",
+        "closer-app/public/app.js",
+        "closer-app/public/styles.css"
+      ],
+      "test_results": [
+        "838 across the suite; 9 inversions proven red"
+      ]
     }
   ],
   "progress_percentage": 90,

@@ -3,7 +3,7 @@ import { roster, person, WINDOWS } from "./people.js";
 import { weeklyReport, renderWeeklyEmail, weekBounds } from "./report.js";
 import { verifyStripeSignature, createCheckoutSession, createPortalSession, accessFromEvent, HANDLED_EVENTS } from "./billing.js";
 import { testGhl } from "./ghl.js";
-import { ask as assistantAsk, buildContext, MAX_CONTEXT_CALLS } from "./assistant.js";
+import { ask as assistantAsk, buildContext, greeting, starters, ASSISTANT_NAME, MAX_CONTEXT_CALLS } from "./assistant.js";
 import { deriveClientName, deriveAttendeeName, isGenericTitle } from "./naming.js";
 import { resolveKey, keyForRow, debriefLine } from "./llm.js";
 import { MODELS, DEFAULT_MODEL, EFFORTS, DEFAULT_EFFORT } from "./models.js";
@@ -717,8 +717,12 @@ async function route(request, env, url, ctx) {
     const account = await env.DB.prepare("SELECT * FROM accounts ORDER BY id LIMIT 1").first();
     const ctx = await buildContext(env, { user, view: url.searchParams.get("view") || "month",
                                           accountId: account?.id ?? null });
+    // Also carries how she opens. The greeting and the openers are COMPUTED from the same SQL
+    // that feeds an answer -- no model call, so the panel is populated the instant it is opened
+    // and every number on it is arithmetic rather than a guess.
     return json({ role: user.role, scope: ctx.scope, callCount: ctx.callCount,
-                  truncated: ctx.truncated, max: MAX_CONTEXT_CALLS });
+                  truncated: ctx.truncated, max: MAX_CONTEXT_CALLS,
+                  name: ASSISTANT_NAME, greeting: greeting(ctx), starters: starters(ctx) });
   }
 
   // ---- people: the manager tier (TASK-118) ----

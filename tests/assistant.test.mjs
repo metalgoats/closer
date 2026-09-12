@@ -8,7 +8,7 @@
 // The scoping is enforced when the CONTEXT IS BUILT, not by asking the model to be discreet. That
 // distinction is the whole design: a prompt is a request, a WHERE clause is a boundary. These
 // tests therefore inspect the SQL and its bindings, because that is where the guarantee lives.
-import { buildContext, systemPrompt, MAX_CONTEXT_CALLS } from "../src/assistant.js";
+import { buildContext, systemPrompt, greeting, starters, ASSISTANT_NAME, HISTORY_TURNS, MIN_PATTERN_CALLS, MAX_CONTEXT_CALLS } from "../src/assistant.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -80,14 +80,16 @@ console.log("\nAssistant — what the two roles are told");
 {
   const admin = systemPrompt({ isAdmin: true, callCount: 40, scope: "every rep on this account", window: "month", truncated: false });
   const member = systemPrompt({ isAdmin: false, callCount: 12, scope: "only r@x.com's own calls", window: "month", truncated: false });
+  const flat = t => String(t).replace(/\s+/g, " ");
   check("a member is told to refuse questions about colleagues",
-    /only has access to their own calls/.test(member) && /do not\s*\n?speculate/.test(member));
+    /only have access to their own calls/.test(flat(member))
+      && /do not speculate about anyone else's numbers/.test(flat(member)));
   check("an admin gets no such restriction", !/This reader is a REP/.test(admin));
   check("both are told the exact scope in words",
     /every rep on this account/.test(admin) && /only r@x\.com's own calls/.test(member),
     "the model should state its own limits accurately if asked");
   check("truncation is disclosed when it happens",
-    /you can see the 60 most recent calls only/.test(
+    /You can see the 60 most recent calls only/.test(
       systemPrompt({ isAdmin: true, callCount: 60, scope: "x", window: "all", truncated: true })));
   check("the model is told never to invent a call, score or quote",
     /Never invent a\s*\n?call, a score, a client or a quote/.test(member));
@@ -166,12 +168,147 @@ check("asks are logged with who asked and how much they could see",
 console.log("\nAssistant — rendering model output");
 
 const app = readFileSync(join(here, "..", "public", "app.js"), "utf8");
+const css = readFileSync(join(here, "..", "public", "styles.css"), "utf8");
 check("model output is escaped before any markdown is applied",
   /return esc\(String\(t\)\)\s*\n?\s*\.replace/.test(app),
   "this text was produced by a model that just read a client's transcript");
 check("...and only a tiny markdown subset is honoured",
   !/innerHTML = .*marked|markdown-it|DOMPurify/.test(app)
     && /a full markdown parser here would be a script-injection surface/.test(app));
+
+console.log("\nVera — a personality that cannot overrule the arithmetic (TASK-128)");
+
+{
+  const flat = t => String(t).replace(/\s+/g, " ");
+  const m = systemPrompt({ isAdmin: false, callCount: 12, scope: "only r@x.com's own calls", window: "month", truncated: false });
+
+  // THE ORDER IS THE GUARANTEE. A model told to be warm gets agreeable, and an agreeable model
+  // softens a bad number. The accuracy block is placed above the voice block and says in words
+  // that it wins; if a future edit moves the voice first, that ranking is gone and nothing else
+  // in the file would notice.
+  check("the rules that do not bend are stated BEFORE the voice",
+    m.indexOf("THE RULES THAT DO NOT BEND") < m.indexOf("HOW YOU TALK"),
+    "voice above accuracy is how a coaching tool starts flattering");
+  check("...and accuracy is declared the winner when they conflict",
+    /accuracy wins and it is not close/.test(flat(m)));
+  check("a bad number must still be said plainly",
+    /a coach who flatters is worth nothing/.test(flat(m)));
+
+  // The guard that matters most for a tool that scores employees.
+  check("she is told to judge the behaviour, not the person",
+    /COMMENT ON WHAT PEOPLE DID, NOT ON WHO THEY ARE/.test(m)
+      && /a person you have never met/.test(flat(m)),
+    "a warm model will drift from 'you moved to price early' to 'you seem underconfident'");
+
+  check("the sycophancy openers are banned by name",
+    /No "Great question"/.test(m) && /No emoji/.test(m));
+  check("she is told to be short, and told why",
+    /Warmth is not word count/.test(flat(m)));
+  check("she is allowed an opinion", /Have an opinion and own it/.test(flat(m)));
+
+  // Personality without memory reads as a bad personality, not a short one.
+  check("she carries more than three exchanges", HISTORY_TURNS >= 10);
+  check("...and the slice actually uses the constant",
+    /history\.slice\(-HISTORY_TURNS\)/.test(a),
+    "a hardcoded -6 next to a HISTORY_TURNS of 12 is a lie in the source");
+
+  check("she has a name and it reaches the prompt", ASSISTANT_NAME.length > 0
+    && new RegExp(`You are ${ASSISTANT_NAME}`).test(systemPrompt({ isAdmin: true, callCount: 1, scope: "x", window: "month", name: ASSISTANT_NAME })));
+}
+
+console.log("\nVera — the opening line is arithmetic, not a guess");
+
+{
+  const base = { isAdmin: true, callCount: 30, scope: "every rep", window: "month" };
+
+  // The greeting is the ONLY thing said before the model is ever called, so nothing downstream
+  // can catch it being wrong. It is therefore computed from the same SQL rows that feed an
+  // answer, and these assertions are what stop it drifting back into prose.
+  const g = greeting({ ...base, dims: [{ dim: "discovery", avg: 4.2, n: 19 }, { dim: "rapport", avg: 8.1, n: 19 }] });
+  check("she opens with the weakest dimension, by name and number",
+    /discovery is the lowest at 4\.2/i.test(g) && /19 scored calls/.test(g));
+  check("...and the number is the one she was given, not one she picked",
+    !/8\.1/.test(g), "the lowest is dims[0]; the query orders ascending");
+  check("she says how many calls she read", /read 30 calls/.test(g));
+
+  // The failure that matters: no scores at all must not become an invented score.
+  const none = greeting({ ...base, dims: [] });
+  check("with nothing scored she says so instead of naming a figure",
+    /None of them are scored yet/.test(none) && !/[0-9]+\.[0-9]/.test(none),
+    "a greeting that invents a number is unverifiable by design");
+
+  const empty = greeting({ ...base, callCount: 0, dims: [] });
+  check("with no calls she does not claim to have read any", !/I've read/.test(empty));
+  const emptyMember = greeting({ ...base, isAdmin: false, callCount: 0, dims: [] });
+  check("...and a rep's empty state names the boundary, not a failure",
+    /only see calls recorded against you/.test(emptyMember));
+
+  const mg = greeting({ ...base, isAdmin: false, callCount: 7, dims: [{ dim: "close attempt", avg: 3.5, n: 7 }] });
+  check("a rep is never told anything about the team",
+    !/team/.test(mg) && /7 calls of yours/.test(mg));
+
+  // Singular/plural is the kind of thing nobody tests and everybody notices.
+  const one = greeting({ ...base, callCount: 1, dims: [{ dim: "discovery", avg: 5, n: 1 }] });
+  check("one call reads as '1 call', not '1 calls'", /read 1 call\b/.test(one) && !/1 calls/.test(one));
+  const three = greeting({ ...base, callCount: 3, dims: [{ dim: "discovery", avg: 5, n: 3 }] });
+  check("...and the scored count agrees with itself", /across 3 scored calls\b/.test(three));
+
+  // Found by opening the panel, not by reading the code: on real data her first line was
+  // "objection buildup is the lowest at 1, across 1 scored call". One call is not a low score,
+  // it is a low sample, and naming it contradicts the rule the prompt itself states.
+  const thin = greeting({ ...base, dims: [{ dim: "objection buildup", avg: 1, n: 1 }, { dim: "discovery", avg: 4.2, n: 19 }] });
+  check("a one-call dimension does NOT get called the weak one",
+    !/objection buildup/.test(thin),
+    "a mean over one sample outranking a mean over nineteen is how a dashboard loses trust");
+  check("...the well-sampled one is named instead", /discovery is the lowest at 4\.2/i.test(thin));
+  const allThin = greeting({ ...base, dims: [{ dim: "rapport", avg: 2, n: 1 }] });
+  check("when NOTHING clears the threshold she says so rather than picking the thinnest",
+    /Not enough of them are scored yet/.test(allThin) && !/rapport/.test(allThin));
+  check("the threshold is a named constant, not a literal", MIN_PATTERN_CALLS >= 3);
+}
+
+console.log("\nVera — the openers come from the data");
+
+{
+  const st = starters({ isAdmin: true, callCount: 30,
+    dims: [{ dim: "discovery", avg: 4.2, n: 19 }],
+    recent: [{ id: 9, client: "Northwind", on: "2026-09-01" }] });
+  check("an opener names the real weak dimension and its real average",
+    st.some(q => /discovery/.test(q) && /4\.2/.test(q)),
+    "a static 'where am I losing calls' teaches nobody what this can do");
+  check("...and another names a real client from the index",
+    st.some(q => /Northwind/.test(q)));
+  check("an admin is offered a team question", st.some(q => /team/i.test(q)));
+  check("a rep is not", !starters({ isAdmin: false, callCount: 5, dims: [], recent: [] }).some(q => /team/i.test(q)));
+  check("no calls means no openers to offer", starters({ callCount: 0 }).length === 0);
+}
+
+console.log("\nVera — the panel");
+
+{
+  check("the nav label comes from the constant, not the markup",
+    /navAsk\.textContent = ASSISTANT_NAME/.test(app));
+  check("the client name mirrors the server's and says so",
+    /Mirrors ASSISTANT_NAME in src\/assistant\.js/.test(app));
+  check("the greeting is rendered as her message, not empty-state furniture",
+    /scope\?\.greeting/.test(app) && /ask-msg ask-assistant/.test(app));
+  check("the greeting is ESCAPED like any other server string",
+    /esc\(scope\.greeting\)/.test(app),
+    "it is built from client names out of the database");
+  check("the waiting state names her and what she is doing",
+    /is reading/.test(app) && !/_Thinking\.\.\._/.test(app));
+  check("the idle animation respects prefers-reduced-motion",
+    /prefers-reduced-motion: reduce/.test(css) && /\.ask-dots i\{ animation:none/.test(css));
+  // Both found by opening the panel and triggering a real 401, not by reading the code.
+  check("an error message is escaped ONCE, not twice",
+    !/text: `\*\*\$\{esc\(e\.message/.test(app) && /mdish\(m\.text\)/.test(app),
+    "esc() here plus esc() in mdish() puts literal &quot; on the screen");
+  check("a long unbroken token cannot push the composer off-screen",
+    /\.ask-body\{ overflow-wrap:anywhere/.test(css),
+    "a raw API error is one long token; the column grew and took the send button with it");
+  check("the scope endpoint serves the greeting so the panel opens populated",
+    /greeting: greeting\(ctx\), starters: starters\(ctx\)/.test(idx));
+}
 
 console.log(`\n${fail ? "FAILED" : "ALL PASS"} — ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
