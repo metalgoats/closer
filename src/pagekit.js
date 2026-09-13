@@ -3,9 +3,10 @@
 // indicator"), so the proposal and the onboarding page are built from the same tokens rather
 // than each inventing its own. One rule family, one feature.
 //
-// Position is shown by one thing only: the line under the top bar that fills as you read. The
-// side rail that shipped first was removed at Ivan's request the same day, along with the
-// browser's own scrollbar, which said the same thing a third time.
+// Position is shown twice, by design: the line under the top bar that fills as you read, and
+// the section names on the right with the current one lit (borrowed from Jacob Patrick's
+// site, minus its hairline -- Ivan liked the words, not the line). The browser's own scrollbar
+// is hidden so nothing says it a third time.
 import { tokenMatches } from "./pricingreport.js";
 
 export { tokenMatches };
@@ -79,12 +80,18 @@ hr.rule{ height:1px; border:0; background:var(--line); margin:34px 0; }
 .theme:hover{ color:var(--ink-950); border-color:var(--line-strong); }
 .progress{ position:absolute; left:0; bottom:-1px; height:2px; background:var(--blue); width:0; transition:width .1s linear; }
 
-/* ---------- position: the line under the bar is the only indicator ----------
-   No side rail and no browser scrollbar: the horizontal progress line already says where you
-   are. Scrolling itself is untouched (wheel, keys, touch). This stylesheet is served to the
-   customer, so it carries no names. */
+/* ---------- position ----------
+   Two things say where you are: the line under the top bar that fills as you read, and the
+   section names on the right, the current one lit. The rail carries no line of its own and
+   the browser scrollbar is hidden, so nothing says it a third time. Scrolling itself is
+   untouched (wheel, keys, touch). This stylesheet is served to the customer; it carries no names. */
 html{ scrollbar-width:none; -ms-overflow-style:none; }
 html::-webkit-scrollbar{ width:0; height:0; display:none; }
+.rail{ position:fixed; right:22px; top:50%; z-index:40; transform:translateY(-50%); display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+.rail a{ font-size:12px; letter-spacing:.01em; color:var(--ink-400); text-decoration:none; transition:color .15s var(--ease); white-space:nowrap; }
+.rail a:hover{ color:var(--ink-800); text-decoration:none; }
+.rail a.on{ color:var(--ink-950); }
+@media (max-width:1100px){ .rail{ display:none; } }
 
 /* ---------- type ---------- */
 .hero{ padding:66px 0 40px; border-bottom:1px solid var(--line); }
@@ -224,10 +231,17 @@ export const PAGE_JS = `
   if (tbtn) tbtn.addEventListener("click", function(){ var n = isLight() ? "dark" : "light"; root.setAttribute("data-theme", n); try { localStorage.setItem(KEY, n); } catch(e){} paint(); });
 
   var html = document.documentElement, prog = $("prog"), ticking = false;
+  var rail = document.querySelector(".rail");
+  var marks = rail ? Array.prototype.slice.call(rail.querySelectorAll("a")) : [];
+  var secs = marks.map(function(m){ return document.querySelector(m.getAttribute("href")); });
   function update(){
     var max = html.scrollHeight - window.innerHeight;
     var f = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
     if (prog) prog.style.width = (f * 100) + "%";
+    var cur = 0;
+    secs.forEach(function(s, k){ if (s && s.getBoundingClientRect().top <= window.innerHeight * 0.45) cur = k; });
+    if (window.scrollY + window.innerHeight >= html.scrollHeight - 2) cur = marks.length - 1;
+    marks.forEach(function(m, k){ m.classList.toggle("on", k === cur); });
     ticking = false;
   }
   window.addEventListener("scroll", function(){ if (!ticking) { ticking = true; window.requestAnimationFrame(update); } }, { passive:true });
@@ -242,7 +256,7 @@ export const PAGE_JS = `
 })();
 `;
 
-export function shell({ title, crumb, body, extraJs = "" }) {
+export function shell({ title, crumb, nav = [], body, extraJs = "" }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -259,6 +273,7 @@ export function shell({ title, crumb, body, extraJs = "" }) {
   <div class="bar-cta"><button class="theme" id="theme" type="button" aria-label="Switch between light and dark">&#9788;</button></div>
   <div class="progress" id="prog"></div>
 </div></div>
+<aside class="rail" aria-label="Where you are">${nav.map(([id, label]) => `<a href="#${id}">${label}</a>`).join("")}</aside>
 <div class="wrap">
 ${body}
 </div>

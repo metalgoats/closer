@@ -72,7 +72,7 @@ for (const [what, re, where] of [
   ["manager-adjustable rubric/prompt", /rubric you write/i, pitch],
   ["setter and closer attribution", /setter who booked it comes across from your CRM/i, pitch],
   ["interactive hours calculator", /id="inClosers"/, pitch],
-  ["no side rail (removed 2026-09-12); the top line is the only indicator", !/class="rail"/.test(pitch) && !/class="rail"/.test(onboard) && /id="prog"/.test(pitch), pitch],
+  ["the text rail is back, and it has no line of its own", /class="rail"/.test(pitch) && /class="rail"/.test(onboard) && !/class="line"|class="fill"/.test(pitch) && /id="prog"/.test(pitch), pitch],
   ["three-step plan + 7 days", /Three steps, seven days/, pitch],
   ["onboarding: Fathom key on the call, never emailed", /never sent to us/i, onboard],
   ["onboarding: GHL admin login + Location ID", /administrator login to your GoHighLevel/i, onboard],
@@ -101,7 +101,7 @@ check("no id is used twice on the proposal (the calculator once read a SECTION a
   (() => { const ids = [...pitch.matchAll(/ id="([^"]+)"/g)].map(m => m[1]); return new Set(ids).size === ids.length; })(),
   "getElementById returns the first match, silently");
 check("the browser scrollbar is hidden on these pages, scrolling is not", /html\{ scrollbar-width:none;/.test(PAGE_CSS) && /html::-webkit-scrollbar\{ width:0; height:0; display:none; \}/.test(PAGE_CSS) && !/overflow:\s*hidden;?\s*\}/.test(PAGE_CSS.split("html{")[1].split("}")[0]));
-check("no rail rules remain in the kit", !/\.rail\b/.test(PAGE_CSS));
+check("the rail is words only: no .line or .fill rule, and it hides where there is no room", /\.rail a\.on\{/.test(PAGE_CSS) && !/\.rail \.line|\.rail \.fill/.test(PAGE_CSS) && /@media \(max-width:1100px\)\{ \.rail\{ display:none; \} \}/.test(PAGE_CSS));
 check("reduced motion is respected page-wide", /prefers-reduced-motion: reduce\)\{ html\{scroll-behavior:auto;\}/.test(PAGE_CSS));
 check("no horizontal scroll: body clips x and grids collapse on phones", /overflow-x:hidden/.test(PAGE_CSS) && /@media \(max-width:640px\)\{ \.grid2, \.grid3\{ grid-template-columns:1fr; \} \}/.test(PAGE_CSS));
 

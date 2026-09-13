@@ -41,6 +41,10 @@ export function pitchResponse(pathname, { onboardingPath = null } = {}) {
 }
 
 export function pitchHtml(o = OFFER) {
+  const nav = [
+    ["why", "Why"], ["closers", "Your closers"], ["you", "You"], ["training", "Training"],
+    ["time", "The hours"], ["connects", "Connects"], ["offer", "The offer"], ["next", "Next"], ["faq", "Questions"],
+  ];
   const payBtn = o.payUrl
     ? `<a class="btn primary" href="${o.payUrl}" rel="noopener">Start Closer</a>`
     : `<span class="btn primary" aria-disabled="true">Start Closer</span><span class="cta-note">Your payment link arrives with this proposal.</span>`;
@@ -205,5 +209,5 @@ export function pitchHtml(o = OFFER) {
     calc();
   })();`;
 
-  return shell({ title: `Closer, for ${o.client}`, crumb: `proposal for ${o.client}`, body, extraJs });
+  return shell({ title: `Closer, for ${o.client}`, crumb: `proposal for ${o.client}`, nav, body, extraJs });
 }
