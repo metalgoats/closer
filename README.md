@@ -72,6 +72,31 @@ Stack: Cloudflare Workers (UI + API in one Worker) · Cloudflare D1 (SQLite) · 
 > `INTEGRATION_META.icon` is an empty slot for a real logo SVG; it renders in the row and the
 > picker from one place.
 
+## Email (Resend)
+
+Two things send email: the **onboarding-form notification** (the moment a customer submits the
+form on the onboarding page) and the **weekly report**. Both go through one adapter
+(`src/mail.js`) and one provider, Resend. Without a key, nothing sends and nothing breaks: the
+form is still stored and shows on Account & Access, and Activity records `intake.notify_skipped`.
+
+**To switch it on (once, ~10 minutes):**
+
+1. Create a Resend account at resend.com and make an API key (Full access is not needed; *Sending
+   access* is enough).
+2. In the GitHub repo `metalgoats/closer` → Settings → Secrets and variables → Actions:
+   - **Secret** `EMAIL_API_KEY` = the Resend key. The deploy pushes it to the Worker on every run.
+   - **Variables** `INTAKE_TO` and `REPORT_TO` = the addresses that should receive each, comma-
+     separated. `INTAKE_TO` falls back to `REPORT_TO` if unset. Optional `EMAIL_FROM`.
+3. Push to `main` (or re-run the last Deploy workflow). The next form submission emails you.
+
+**Resend's one rule:** until you verify a sending domain in Resend (DNS records it shows you),
+it delivers only to the account owner's own address, from `onboarding@resend.dev`. So the first
+test is "send to yourself". To email Gabriel too, verify a domain and set `EMAIL_FROM` to an
+address on it.
+
+Outcomes are always in Activity: `intake.notified`, `intake.notify_skipped` (no key or no
+recipient), `intake.notify_failed` (Resend refused; the reason is in the detail).
+
 ## Pages
 
 Where everything lives. The link-only pages are private to their URL (an unguessable token, served

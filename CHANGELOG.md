@@ -142,6 +142,39 @@ tracking sections; the calculator recomputing; the form submitted end to end int
 with the IP stored as a hint. **953 assertions.** Six inversions proven red, including an internal
 cost figure appearing on the proposal, a "pushed" note, an intake endpoint without its token, and
 an invented per-seat price.
+## 2026-09-12 — Mail: the onboarding form now tells a person, and the weekly report can send
+
+Ivan: *"Set up the Resend key and build the notification."*
+
+The notification is built and wired; the key is yours to make (a Resend account and an API key
+are credentials I will not create on your behalf). Until it exists the app degrades cleanly:
+the form is stored, listed on Account & Access, and Activity says `intake.notify_skipped`.
+
+**One adapter** (`src/mail.js`) for the two things that send — the intake notification and the
+weekly report, which was a 501 stub reading *"send adapter is not written yet"* and now sends.
+
+> [!danger] Mail never decides the customer's response
+> The intake row is stored and its event logged **before** the notification is attempted; the
+> attempt sits in a `try/catch` that ends in the same `200` either way. A missing key, a
+> refused domain, a network failure — each becomes one of three distinct Activity events
+> (`intake.notified`, `intake.notify_skipped`, `intake.notify_failed`) and nothing else. The
+> adapter itself never throws: no key → skipped without touching the network; non-2xx → the
+> status and Resend's reason; a thrown fetch → the message.
+
+**The key travels through the deploy, not the dashboard.** Production lives in an account Ivan
+cannot open, so `EMAIL_API_KEY` is a GitHub Actions *secret* that `deploy.yml` pushes to the
+Worker with `wrangler secret put` on every run — only when set. Recipients (`INTAKE_TO`,
+`REPORT_TO`, `EMAIL_FROM`) are repository *variables*, passed with `--var`: addresses, not
+credentials. First draft of that step tested `env.EMAIL_API_KEY` in its `if:`, which is
+evaluated before a step's own `env` exists and would never have run; it tests the secret.
+
+The email itself reads like something to act on from a phone: who, how many closers, when they
+want the call, then every answer, reply-to set to the customer. It never carries a key even if
+one were smuggled into the data. Resend's caveat is documented in the README: until a domain is
+verified, it delivers only to the account owner.
+
+Verified locally with a deliberately invalid key: the full path runs, Resend refuses, Activity
+records `intake.notify_failed` with the reason, and the customer still gets their `200`.
 
 ## 2026-09-12 — The launcher, twice over; and a pass across the whole site
 

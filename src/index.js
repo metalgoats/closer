@@ -15,6 +15,7 @@ import { reportResponse } from "./pricingreport.js";
 import { pitchResponse, OFFER } from "./pitch.js";
 import { onboardResponse, ONBOARD_TOKEN, INTAKE_MAX_BYTES, sanitizeIntake } from "./onboard.js";
 import { tokenMatches } from "./pagekit.js";
+import { sendEmail, intakeEmail, mailConfig, recipients } from "./mail.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
 export { GenerateWorkflow } from "./workflow.js";
@@ -126,6 +127,20 @@ async function route(request, env, url, ctx) {
             ip ? (ip.includes(":") ? ip.split(":").slice(0, 3).join(":") + "::x" : ip.replace(/\.\d+$/, ".x")) : null).run();
     await logEvent(env, { kind: "intake.received", account_id: 1,
       detail: `${data.company} - ${data.contact_name} - ${(data.closers.match(/\S+@\S+/g) || []).length} closer emails` });
+    // Tell a person. The row is already stored, so whatever happens here changes nothing for
+    // the customer: they get their 200 either way, and the outcome is an event either way.
+    // INTAKE_TO falls back to REPORT_TO so one address serves both until someone wants two.
+    try {
+      const mail = intakeEmail(data, { appUrl: url.origin });
+      const r = await sendEmail(env, { to: env.INTAKE_TO || env.REPORT_TO, ...mail, replyTo: data.contact_email });
+      await logEvent(env, {
+        level: r.sent ? "info" : "warn", account_id: 1,
+        kind: r.sent ? "intake.notified" : (r.skipped ? "intake.notify_skipped" : "intake.notify_failed"),
+        detail: r.sent ? `to ${r.to.join(", ")}` : (r.reason || `${r.status || ""} ${r.error || ""}`.trim()),
+      });
+    } catch (err) {
+      await logEvent(env, { level: "warn", kind: "intake.notify_failed", account_id: 1, detail: String(err?.message || err).slice(0, 300) });
+    }
     return json({ ok: true });
   }
 
@@ -699,7 +714,7 @@ async function route(request, env, url, ctx) {
       return new Response(renderWeeklyEmail(r, { appUrl: url.origin }),
         { headers: { "content-type": "text/html; charset=utf-8" } });
     }
-    return json({ ...r, canSend: Boolean(env.EMAIL_API_KEY && env.REPORT_TO) });
+    return json({ ...r, canSend: mailConfig(env).configured && recipients(env.REPORT_TO).length > 0 });
   }
 
   // Sending is NOT implemented and this says so out loud rather than returning ok.
@@ -712,13 +727,20 @@ async function route(request, env, url, ctx) {
   // that quietly does nothing is indistinguishable from one that works, right up until someone
   // asks why the report never arrived.
   if (path === "/api/report/weekly/send" && method === "POST") {
-    if (!env.EMAIL_API_KEY || !env.REPORT_TO) {
+    if (!mailConfig(env).configured || !recipients(env.REPORT_TO).length) {
       await logEvent(env, { level: "warn", kind: "report.send_skipped",
-        detail: "No email provider configured — set EMAIL_API_KEY and REPORT_TO. The report was generated but not sent." });
+        detail: "No email provider configured — set EMAIL_API_KEY (secret) and REPORT_TO (var). The report was generated but not sent." });
       return json({ ok: false, generated: true, sent: false,
-        error: "No email provider is connected yet. The report generates and can be previewed, but sending needs an email service (Resend or Postmark) and a verified sending domain." }, 501);
+        error: "No email provider is connected yet. The report generates and can be previewed; sending needs the Resend key and a recipient." }, 501);
     }
-    return json({ ok: false, error: "Provider configured but the send adapter is not written yet." }, 501);
+    const r = await weeklyReport(env);
+    const html = renderWeeklyEmail(r, { appUrl: url.origin });
+    const subject = `Closer weekly: ${r.label || r.week || "this week"}`;
+    const text = `Your weekly Closer report is attached as HTML. Open it in a mail client that renders HTML, or view it in the app: ${url.origin}`;
+    const out = await sendEmail(env, { to: env.REPORT_TO, subject, text, html });
+    await logEvent(env, { level: out.sent ? "info" : "warn", kind: out.sent ? "report.sent" : "report.send_failed",
+      detail: out.sent ? `to ${out.to.join(", ")}` : `${out.status || ""} ${out.error || out.reason || ""}`.trim() });
+    return json({ ok: out.sent, sent: out.sent, generated: true, ...(out.sent ? { id: out.id } : { error: out.error || out.reason }) }, out.sent ? 200 : 502);
   }
 
   // ---- the assistant (TASK-126) ----

@@ -49,6 +49,9 @@ crons = ["*/5 * * * *", "0 17 * * SUN", "0 9 * * *"]
 #   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET   (billing — TASK-122)
 #   STRIPE_PRICE_SEAT, STRIPE_PRICE_ACTIVATION (Stripe Price IDs, NOT amounts — the price is
 #                                               still undecided, so it must not live in code)
-#   EMAIL_API_KEY, REPORT_TO                   (weekly report — TASK-120, not yet configured)
+#   EMAIL_API_KEY                              (secret; Resend. Pushed by deploy.yml from the GitHub secret of the same name)
+#   INTAKE_TO, REPORT_TO, EMAIL_FROM           (vars; set as GitHub repository VARIABLES, passed with --var on deploy.
+#                                               INTAKE_TO falls back to REPORT_TO. EMAIL_FROM defaults to Closer <onboarding@resend.dev>,
+#                                               which Resend only delivers to the account owner until a domain is verified.)
 #
 # Setup guide: "../2026-09-09 Nathan round/Stripe setup — what to click.md" 

@@ -3455,6 +3455,31 @@
       "test_results": [
         "956 across the suite; 6 inversions proven red"
       ]
+    },
+    {
+      "id": "TASK-132",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "title": "Outbound mail through Resend: onboarding-form notification, weekly report send, key via the deploy",
+      "source": "Ivan, 2026-09-12",
+      "dependencies": [
+        "TASK-131",
+        "TASK-120"
+      ],
+      "description": "One adapter (src/mail.js) for the intake notification and the weekly report. Never throws; no key = skipped without network; non-2xx = status + reason. The intake route stores and logs before it notifies, inside a try/catch that returns the same 200 either way; three distinct Activity events. EMAIL_API_KEY is a GitHub secret pushed to the Worker by deploy.yml when set (production is in an account Ivan cannot open); recipients are repo variables passed with --var. README documents the ten-minute setup and Resend's owner-only delivery until a domain is verified. The key itself is Ivan's to create.",
+      "acceptance_criteria": [],
+      "testing_criteria": [],
+      "files_expected_to_change": [
+        "closer-app/src/mail.js",
+        "closer-app/src/index.js",
+        "closer-app/.github/workflows/deploy.yml",
+        "closer-app/wrangler.toml",
+        "closer-app/README.md"
+      ],
+      "test_results": [
+        "24 in tests/mail.test.mjs; suite green"
+      ]
     }
   ],
   "progress_percentage": 90,

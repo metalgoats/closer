@@ -114,10 +114,10 @@ check("there is an HTML preview, because an email can only be checked by looking
 // Workers cannot open SMTP. Returning ok:true with nothing sent is the failure mode where
 // "why did the report never arrive" takes a week to notice.
 check("sending FAILS CLOSED when no provider is configured",
-  /if \(!env\.EMAIL_API_KEY \|\| !env\.REPORT_TO\)/.test(idx) && /}, 501\)/.test(idx),
+  /if \(!mailConfig\(env\)\.configured \|\| !recipients\(env\.REPORT_TO\)\.length\)/.test(idx) && /}, 501\)/.test(idx),
   "a send that silently does nothing is indistinguishable from one that works");
 check("...and the refusal names what is missing",
-  /EMAIL_API_KEY and REPORT_TO/.test(idx));
+  /EMAIL_API_KEY \(secret\) and REPORT_TO \(var\)/.test(idx));
 check("...and leaves evidence in the event log",
   /kind: "report\.send_skipped"/.test(idx));
 check("the send route never claims ok:true", !/report\/weekly\/send[\s\S]{0,600}ok: true/.test(idx));
