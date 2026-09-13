@@ -44,10 +44,14 @@ check("the proposal does not promise the weekly email, which has no sender confi
 console.log("\nPages — the commercial terms live in ONE place");
 check("price, seats and links come from the OFFER constant", pitch.includes("$1,997") && pitch.includes("$197") && /3 closers and 1 administrator/.test(pitch)
   && /export const OFFER = Object\.freeze/.test(readFileSync(join(here, "..", "src", "pitch.js"), "utf8")));
-check("an unset extra-seat price says 'ask us' rather than inventing a number", OFFER.extraSeat === null && /Additional closers: ask us/.test(pitch));
+check("an unset extra-seat price says 'ask us' rather than inventing a number", /Additional closers: ask us/.test(pitchHtml({ ...OFFER, extraSeat: null })));
+check("the decided extra-seat price renders on the live page", OFFER.extraSeat === 150 && /\$150 per additional closer, per month/.test(pitch));
 check("an unset payment link degrades to honest copy, with the button disabled", OFFER.payUrl === null && /aria-disabled="true">Start Closer/.test(pitch) && /payment link arrives/.test(pitch));
 check("a set payment link becomes a real button", /href="https:\/\/pay\.example"/.test(pitchHtml({ ...OFFER, payUrl: "https://pay.example" })));
-check("an unset trial length omits the trial line instead of guessing", OFFER.trialDays === null && !/-day trial/.test(pitch) && /14-day trial/.test(pitchHtml({ ...OFFER, trialDays: 14 })));
+check("an unset trial length omits the trial line instead of guessing", !/-day trial/.test(pitchHtml({ ...OFFER, trialDays: null })));
+check("the decided trial renders on the live page", OFFER.trialDays === 7 && /7-day trial/.test(pitch));
+check("the H1 names the customer's outcome, not our mechanism (StoryBrand)", /<h1>Coach every closer like you sat in on every call\.<\/h1>/.test(pitch)
+  && /Say yes today; your first scored week starts in seven days\./.test(pitch), "the header must pass the grunt test: what, how life gets better, what to do");
 check("the proposal links to the onboarding page when given its path", /href="\/r\/x"/.test(pitch));
 
 console.log("\nPages — what Gabriel asked for is on them");

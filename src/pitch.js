@@ -25,8 +25,8 @@ export const OFFER = Object.freeze({
   monthly: 197,
   includedSeats: 3,
   includedAdmins: 1,
-  extraSeat: null,         // per additional closer, per month -- UNSET, see note above
-  trialDays: null,         // a time-boxed trial on the client's own key was agreed; length UNSET
+  extraSeat: 150,          // per additional closer, per month (Ivan, 2026-09-12)
+  trialDays: 7,            // on the client's own key (Ivan, 2026-09-12)
   payUrl: null,            // Gabriel's card-payment link, added when he sends it
   bookUrl: null,           // 30-minute onboarding call; a scheduling link, when one exists
   onboardingPath: null,    // filled by index.js from the onboarding page's token
@@ -58,8 +58,8 @@ export function pitchHtml(o = OFFER) {
   const body = `
   <header class="hero">
     <p class="eyebrow">Prepared for ${o.client}</p>
-    <h1>Every call your closers take, read and scored before they have closed the tab.</h1>
-    <p class="standfirst">You cannot sit in on every call. Closer does, so the follow-up is written, the CRM note is done, and you can see who is winning and who is stuck, from one page.</p>
+    <h1>Coach every closer like you sat in on every call.</h1>
+    <p class="standfirst">Closer reads and scores every recorded call, writes the follow-up and the CRM note, and shows you who is winning and who is stuck, on one page. Say yes today; your first scored week starts in seven days.</p>
     <div class="meta"><span class="tag">Runs on your recordings</span><span class="tag">Your CRM, connected</span><span class="tag">Live in seven days</span><span class="tag">Monthly, no contract</span></div>
   </header>
 
