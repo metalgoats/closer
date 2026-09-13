@@ -1304,3 +1304,19 @@ body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; 
   .vera-panel{ inset:0; width:auto; height:auto; border-radius:0; border:0; transform-origin:calc(100% - 38px) calc(100% - 38px); }
   .detail{ padding-bottom:78px; }
 }
+
+
+/* ---- Onboarding intake, on Account & Access (TASK-131) ---- */
+.in-count{ font-family:var(--font-mono); font-size:12px; color:var(--blue-600); background:var(--blue-100); border-radius:100px; padding:2px 8px; margin-left:6px; vertical-align:middle; }
+.in-empty{ font-size:15px; color:var(--ink-400); padding:10px 0 4px; }
+.in-row{ border:1px solid var(--line); border-radius:10px; background:var(--paper-50); margin:8px 0; }
+.in-row summary{ list-style:none; cursor:pointer; display:flex; flex-wrap:wrap; align-items:baseline; gap:10px; padding:10px 12px; font-size:15px; }
+.in-row summary::-webkit-details-marker{ display:none; }
+.in-when{ font-family:var(--font-mono); font-size:12px; color:var(--ink-400); }
+.in-contact{ color:var(--ink-600); }
+.in-n{ margin-left:auto; font-size:12px; color:var(--ink-400); }
+.in-body{ border-top:1px solid var(--line); padding:6px 12px 10px; display:grid; gap:6px; }
+.in-kv{ display:grid; grid-template-columns:150px 1fr; gap:10px; font-size:14px; }
+.in-k{ color:var(--ink-400); text-transform:capitalize; }
+.in-v{ color:var(--ink-800); white-space:pre-wrap; overflow-wrap:anywhere; }
+@media (max-width:640px){ .in-kv{ grid-template-columns:1fr; gap:2px; } }

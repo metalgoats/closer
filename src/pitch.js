@@ -27,8 +27,8 @@ export const OFFER = Object.freeze({
   includedAdmins: 1,
   extraSeat: 150,          // per additional closer, per month (Ivan, 2026-09-12)
   trialDays: 7,            // on the client's own key (Ivan, 2026-09-12)
-  payUrl: null,            // Gabriel's card-payment link, added when he sends it
-  bookUrl: null,           // 30-minute onboarding call; a scheduling link, when one exists
+  payUrl: "https://collectcheckout.com/r/mf1hanjol0xg7bghwayjn7audrulq0",   // Gabriel's card-payment link (2026-09-12)
+  bookUrl: "https://calendly.com/ivanlizarde/onboarding",                   // Ivan's Calendly (2026-09-12)
   onboardingPath: null,    // filled by index.js from the onboarding page's token
 });
 

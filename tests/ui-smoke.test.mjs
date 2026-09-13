@@ -167,6 +167,9 @@ const ROUTES = [
                               models: { "claude-opus-5": { label: "Opus 5", tier: "Flagship", inPerM: 5, outPerM: 25, note: "n", thinking: "optional-capped" },
                                         "claude-fable-5": { label: "Fable 5", tier: "Most capable", inPerM: 10, outPerM: 50, note: "n", thinking: "always-on" } } })],
   [/^\/suggestions/, () => ({ suggestions: [] })],
+  [/^\/users/,        () => ({ users: [{ id: 1, email: "a@b.c", role: "admin", created_at: "2026-07-01" }, { id: 2, email: "rep@x.com", role: "member", created_at: "2026-08-12" }] })],
+  [/^\/intake/,       () => ({ intake: [{ id: 1, received_at: "2026-09-12T20:11:00", company: "Test Floor LLC", contact: "Nate <n@x.com>",
+                              data: { company: "Test Floor LLC", closers: "Ana, ana@x.com\nLuis, luis@x.com", tags: "Closed Won", api_key: "" } }] })],
   [/^\/ask\/scope/,   () => ({ role: "admin", scope: "every rep on this account", callCount: 6, truncated: false, max: 60,
                               name: "Vera", greeting: "I've read 6 calls across the team. Discovery is the lowest at 4.2, across 5 scored calls - that's the one I'd start with.",
                               starters: ["Why is discovery sitting at 4.2?", "What went wrong on the Marcus call?"] })],
@@ -863,6 +866,21 @@ console.log("\n== People renders, and keeps the two decisions that could quietly
   T.state.peopleRep = undefined;
 }
 
+
+console.log("\n== Onboarding intake reaches the Account & Access page (TASK-131) ==");
+{
+  T.state.user = { email: "boss@x.com", role: "admin" };
+  await T.VIEWS.access();
+  const h = (reg.get("#detailPane") || {})._html || "";
+  check("an admin sees the forms received, with a count", /Onboarding forms received <span class="in-count">1<\/span>/.test(h));
+  check("...each row names the business, the contact and how many closers", /Test Floor LLC/.test(h) && /Nate &lt;n@x\.com&gt;/.test(h) && /2 closers/.test(h));
+  check("...and the detail is escaped like everything else", !/<n@x\.com>/.test(h));
+  check("...with a blank key field never shown as a row", !/api key/.test(h));
+  T.state.user = { email: "rep@x.com", role: "member" };
+  await T.VIEWS.access();
+  check("a member is shown no intake at all", !/Onboarding forms received/.test((reg.get("#detailPane") || {})._html || ""));
+  T.state.user = { email: "boss@x.com", role: "admin" };
+}
 
 console.log("\n== Vera floats, and her suggestions follow the screen (TASK-129) ==");
 {

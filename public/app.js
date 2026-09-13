@@ -2859,6 +2859,23 @@ async function renderAccess() {
   const admin = isAdmin();
   let users = [];
   if (admin) { try { users = (await api.get("/users")).users; } catch { users = []; } }
+  // Onboarding intake (TASK-131). Who has filled in the form on the onboarding page. It lands
+  // here, on the page an admin already opens to add logins, because that is the next thing they
+  // do with it: every closer on a submission becomes a login.
+  let intake = [];
+  if (admin) { try { intake = (await api.get("/intake")).intake || []; } catch { intake = []; } }
+  const intakeRows = intake.map(r => {
+    const d = r.data || {};
+    const closers = (String(d.closers || "").match(/\S+@\S+/g) || []).length;
+    const detail = Object.entries(d).filter(([, v]) => String(v).trim()).map(([k, v]) =>
+      `<div class="in-kv"><span class="in-k">${esc(k.replace(/_/g, " "))}</span><span class="in-v">${esc(String(v))}</span></div>`).join("");
+    return `<details class="in-row"><summary>
+        <span class="in-when">${esc(String(r.received_at || "").slice(0, 16).replace("T", " "))}</span>
+        <strong>${esc(r.company || "")}</strong>
+        <span class="in-contact">${esc(r.contact || "")}</span>
+        <span class="in-n">${closers} closer${closers === 1 ? "" : "s"}</span>
+      </summary><div class="in-body">${detail || '<div class="in-kv"><span class="in-v">Nothing beyond the header.</span></div>'}</div></details>`;
+  }).join("");
 
   const rows = users.map(u => `<tr>
       <td>${esc(u.email)}${u.id === state.user.id ? ` <span class="sp-id">you</span>` : ""}</td>
@@ -2877,7 +2894,10 @@ async function renderAccess() {
        <span class="sp-msg" id="pwMsg"></span>
      </div>
 
-     ${admin ? `<h4>People with a login</h4>
+     ${admin ? `<h4>Onboarding forms received <span class="in-count">${intake.length}</span></h4>
+     <div class="insight-note">Submitted from the onboarding page. Each closer listed becomes a login below. Keys are never in here; they get pasted on the setup call.</div>
+     ${intakeRows || '<div class="in-empty">None yet. When a customer submits the onboarding form it appears here and in Activity.</div>'}
+     <h4>People with a login</h4>
      <div style="overflow-x:auto;"><table class="ev-table sp-table"><thead><tr>
         <th>Email</th><th>Role</th><th class="sp-num">Added</th>
      </tr></thead><tbody>${rows || `<tr><td colspan="3" style="color:var(--ink-400); padding:14px;">Just you.</td></tr>`}</tbody></table></div>
