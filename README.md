@@ -72,6 +72,29 @@ Stack: Cloudflare Workers (UI + API in one Worker) · Cloudflare D1 (SQLite) · 
 > `INTEGRATION_META.icon` is an empty slot for a real logo SVG; it renders in the row and the
 > picker from one place.
 
+## Pages
+
+Where everything lives. The link-only pages are private to their URL (an unguessable token, served
+`noindex`, never in `public/`); a wrong token 404s like any other unknown path.
+
+| Page | URL | Who it is for |
+|---|---|---|
+| The app | `https://closer.gabriel-galindo.workers.dev/` | Ivan, Gabriel, and every seat (login) |
+| Pricing report, "The offer, valued rather than costed" | `/r/fbc0408f814e23f35887951dcd02e992` | Gabriel |
+| **Proposal for Nathan** | `/r/3abd3a2c0ec5861ba624a58f00d10900` | Nathan (customer-facing; nothing internal) |
+| **Onboarding** — the seven days, what we need, the intake form | `/r/40d5c3ae0881bde825c74f33dd1793c0` | Any new customer |
+
+Inside the app: **All Calls / Needs Follow-up / Closed / Archived** (the inbox), **Insights** and
+**Suggestions** (Coaching), and behind the account menu: **People**, **Integrations**, **Billing**,
+**Spend**, **Activity**, **Prompt Library**, **Account & Access**. **Vera** is the ring in the
+lower-right corner of every screen.
+
+The commercial terms on the proposal live in one place, `OFFER` in `src/pitch.js`: activation,
+monthly, included seats, the per-extra-seat price (unset until decided, the page says "ask us"),
+trial length (unset), the payment link and the booking link (both unset; the page degrades to
+honest copy). Intake submissions land in the `intake` table and as `intake.received` in Activity;
+admins can read them at `GET /api/intake`.
+
 ## Local development (no Cloudflare account needed)
 
 ```bash

@@ -12,6 +12,9 @@ import { chatTurn, analyseEdits } from "./llm.js";
 import { logEvent } from "./log.js";
 import { spendReport, importUsage, reconcile } from "./spend.js";
 import { reportResponse } from "./pricingreport.js";
+import { pitchResponse, OFFER } from "./pitch.js";
+import { onboardResponse, ONBOARD_TOKEN, INTAKE_MAX_BYTES, sanitizeIntake } from "./onboard.js";
+import { tokenMatches } from "./pagekit.js";
 
 // The Workflow class must be exported from the Worker entrypoint for the binding to resolve.
 export { GenerateWorkflow } from "./workflow.js";
@@ -27,8 +30,14 @@ export default {
     // unreachable. Returns null for a wrong or missing token, and a wrong token then falls
     // through to the SPA rather than announcing that a report exists at all.
     if (url.pathname.startsWith("/r/")) {
-      const report = reportResponse(url.pathname);
-      if (report) return report;
+      // Three link-only pages, each behind its own token. A wrong token falls through to the SPA
+      // rather than announcing that anything lives here. The proposal links to the onboarding
+      // page by its token, so a customer who says yes can go straight to what happens next.
+      const onboardingPath = `/r/${ONBOARD_TOKEN}`;
+      const page = reportResponse(url.pathname)
+        || pitchResponse(url.pathname, { onboardingPath })
+        || onboardResponse(url.pathname, { payUrl: OFFER.payUrl, bookUrl: OFFER.bookUrl });
+      if (page) return page;
     }
     if (!url.pathname.startsWith("/api/")) {
       return env.ASSETS.fetch(request); // static UI
@@ -92,6 +101,33 @@ async function route(request, env, url, ctx) {
   if (path === "/api/setup" && method === "POST") return setup(request, env);
   if (path === "/api/login" && method === "POST") return login(request, env);
   if (path === "/api/logout" && method === "POST") return logout(request, env);
+
+  // ---- Onboarding intake (TASK-131) ----
+  //
+  // UNAUTHENTICATED, like the webhook, and the URL-token is the only thing standing between it
+  // and the internet. Three defences, all cheap: the body must carry the onboarding page's token
+  // (compared in constant time), the body is capped so nobody can fill the table with novels,
+  // and every field the form does not declare is dropped before anything is stored. It also
+  // never accepts a key: the form has no field for one, and sanitizeIntake would drop it anyway.
+  if (path === "/api/intake" && method === "POST") {
+    const raw = await request.text();
+    if (raw.length > INTAKE_MAX_BYTES) return json({ error: "That is more than the form can take." }, 413);
+    let b = {};
+    try { b = JSON.parse(raw); } catch { return json({ error: "Malformed." }, 400); }
+    if (!tokenMatches(b.token, ONBOARD_TOKEN)) return json({ error: "Not found." }, 404);
+    const data = sanitizeIntake(b.data);
+    if (!data.company || !data.contact_name || !data.contact_email || !data.closers) {
+      return json({ error: "Business, your name, your email and your closers are required." }, 400);
+    }
+    const ip = request.headers.get("cf-connecting-ip") || null;
+    await env.DB.prepare("INSERT INTO intake (company, contact, data_json, ip_hint) VALUES (?, ?, ?, ?)")
+      .bind(data.company, `${data.contact_name} <${data.contact_email}>`, JSON.stringify(data),
+            // A hint, never the address: last IPv4 octet dropped, IPv6 cut after three groups.
+            ip ? (ip.includes(":") ? ip.split(":").slice(0, 3).join(":") + "::x" : ip.replace(/\.\d+$/, ".x")) : null).run();
+    await logEvent(env, { kind: "intake.received", account_id: 1,
+      detail: `${data.company} - ${data.contact_name} - ${(data.closers.match(/\S+@\S+/g) || []).length} closer emails` });
+    return json({ ok: true });
+  }
 
   // ---- Stripe webhook (TASK-122) ----
   //
@@ -727,6 +763,15 @@ async function route(request, env, url, ctx) {
     return json({ role: user.role, scope: ctx.scope, callCount: ctx.callCount,
                   truncated: ctx.truncated, max: MAX_CONTEXT_CALLS,
                   name: ASSISTANT_NAME, greeting: greeting(ctx), starters: starters(ctx) });
+  }
+
+  // Who has filled in the onboarding form. Admin only, enforced here rather than by prefix list
+  // because the POST half of this path is deliberately public.
+  if (path === "/api/intake" && method === "GET") {
+    if (user.role !== "admin") return json({ error: "forbidden" }, 403);
+    const { results } = await env.DB.prepare(
+      "SELECT id, received_at, company, contact, data_json FROM intake ORDER BY id DESC LIMIT 100").all();
+    return json({ intake: results.map(r => ({ ...r, data: JSON.parse(r.data_json || "{}"), data_json: undefined })) });
   }
 
   // ---- people: the manager tier (TASK-118) ----

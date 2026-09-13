@@ -3428,6 +3428,33 @@
       "test_results": [
         "905 across the suite; 8 inversions proven red"
       ]
+    },
+    {
+      "id": "TASK-131",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "high",
+      "title": "The proposal for Nathan and the onboarding page, on a shared page kit; and the audit of Gabriel's claims",
+      "source": "Ivan, 2026-09-12 (after Gabriel's voice note)",
+      "dependencies": [
+        "TASK-128",
+        "TASK-130"
+      ],
+      "description": "Audit: every feature in Gabriel's voice note checked against the deployed code; two overclaims found (CRM notes do not push into GHL, they are pasted; setter attribution is not built and needs the onboarding workflow) and one stale release note corrected. Built src/pagekit.js (tokens, bar, rail after Jacob Patrick's site, components, base script), src/pitch.js (StoryBrand spine, Hormozi close, hours calculator, OFFER constant with honest holes for undecided terms) and src/onboard.js (seven days, six needs, setup-call agenda, consent sentences, intake form). POST /api/intake is public, token-checked in constant time, 20KB-capped, sanitised to declared fields; GET /api/intake admin-only. Migration 0023_intake. Vera gained a training-prep opener.",
+      "acceptance_criteria": [],
+      "testing_criteria": [],
+      "files_expected_to_change": [
+        "closer-app/src/pagekit.js",
+        "closer-app/src/pitch.js",
+        "closer-app/src/onboard.js",
+        "closer-app/src/index.js",
+        "closer-app/migrations/0023_intake.sql",
+        "closer-app/public/app.js",
+        "closer-app/README.md"
+      ],
+      "test_results": [
+        "956 across the suite; 6 inversions proven red"
+      ]
     }
   ],
   "progress_percentage": 90,

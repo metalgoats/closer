@@ -169,7 +169,7 @@ const RELEASES = [
       "Meet Vera. The ring in the lower-right corner of every screen. She has read every call you can see, and she opens with the weakest thing she found — a real number from your calls, not a guess. Her suggestions change with what is on your screen: open a call and she asks about that call; open People and she asks about the team.",
       "People: every rep on one page — calls, scored, average, hours, last call — and one click into any person's dimensions and how they have moved week by week. Every call now knows who ran it.",
       "Every key moment in a debrief is timestamped and links straight into the Fathom recording at that second. Click the moment the call turned and watch it.",
-      "GoHighLevel connects with a Private Integration Token — paste it in Integrations and press Test. Nothing to register, nothing to wait for. CRM notes push, and the setter's name is on its way.",
+      "GoHighLevel connects with a Private Integration Token — paste it in Integrations and press Test. Nothing to register, nothing to wait for. The CRM note is ready to paste after every call, and the setter's name is on its way.",
       "Integrations is a full page now, with a + to add a second Fathom or a second key for another business. Real logos, a Test button on each, and a 'where do I find this?' under every field.",
       "A weekly email report is built and waiting on a sending address. Billing runs through Stripe's own pages — no card detail ever touches this app.",
       "Calls with almost no transcript — no-shows, dead lines — are no longer scored. They were sitting inside your averages as 1s.",
@@ -2375,6 +2375,7 @@ function screenContext() {
 // is a menu, and a menu is what the nav item was.
 const LEADER_QUESTIONS = [
   "Who on the team needs coaching first, and on what?",
+  "Which three moments should I bring to training this week?",
   "Which objection is costing us the most right now?",
   "Who closed on the call this week, and what did they do?",
   "What changed in the last two weeks?",

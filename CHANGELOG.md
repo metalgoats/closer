@@ -74,7 +74,75 @@ handler down. HTML/JS skew is a property of every deploy, not of this one.
 
 **891 assertions.** Twelve inversions proven red, including dropping the rep filter from the
 focus query, regressing to the misaligned binds, offering a rep the team questions, and putting
-her back in the nav.
+her back in the nav.## 2026-09-12 — The proposal, the onboarding page, and an audit of what Gabriel is promising
+
+Ivan: *"Make sure that all of the features Gabriel is describing do, in fact, work on our current
+version of Closer... make this like the page that we sent Gabriel... this page will be shared
+externally, so don't share any of our secrets with Nathan... Learn from Alex Hormozi and Donald
+Miller... borrow the custom rail indicator from Jacob Patrick's site... Make a separate page for
+onboarding."*
+
+### The audit, honestly
+
+Gabriel's voice note describes the product at two levels. Against the code as deployed:
+
+| He is promising | State |
+|---|---|
+| Scorecard per call, patterns across a rep's calls | **Works.** Per call type, on a rubric he can edit. |
+| Text, email and CRM note written from the transcript, copy-paste ready | **Works.** Copy buttons and Mark-sent on each. |
+| CRM notes "pushed" into GoHighLevel | **Does not exist.** The GHL integration *tests* a connection; nothing POSTs a note. The note is pasted. The in-app release note I wrote yesterday claimed "CRM notes push" — corrected, and the proposal says *ready to paste*. |
+| Team on one page, per-person dimensions and week-by-week trend | **Works** (People). |
+| Per-call summary with timestamps that open the recording at that second | **Works.** |
+| "Whether reps stick to the script or the process" | **Works as a rubric, not as a separate adherence score.** Phrased that way. |
+| AI suggests calls and moments for training | **Works through Vera** — she has every timestamped moment. A new opener makes it one click: *"Which three moments should I bring to training this week?"* |
+| Manager-adjustable prompt | **Works** (Prompt Library). |
+| Closer attribution | **Works.** Setter attribution: **not built** — needs the custom-field workflow at onboarding. The proposal says it "comes across from your CRM", the onboarding page books the fifteen minutes to make that true. |
+| Weekly email report | Built, **no sender configured**. Left off the proposal. |
+| 1–2 h/day per rep, 5–10 h/week per manager | Estimates. On the page as an **adjustable calculator labelled as an estimate**, never a promise, and never converted to dollars. |
+
+### Two pages, one kit
+
+`src/pagekit.js` carries the tokens, the bar, the components and the base script the pricing report
+established, so the proposal and the onboarding page read as one family with it. **The rail** on the
+right — one mark per section, a hairline that fills as you read — is Jacob Patrick's, hidden below
+1100px where the top progress line does the same job.
+
+**The proposal** (`src/pitch.js`) has a StoryBrand spine — Nathan is the hero, the problem is
+volume not discipline, three steps, seven days — and a Hormozi close: what each closer gets, what
+he gets, the training-day before/after, an hours calculator built from *his* inputs, how it
+connects, the value stack, the price, risk reversal (monthly, cancel, keep your data), the
+objections answered in advance.
+
+> [!danger] A customer reads this page
+> The test file greps it for everything that has appeared in an internal document: infrastructure
+> cost, margin, the 85 KB, partner names, the pricing-report figures, competitor names, task ids,
+> "only technician", the Fathom share links. Any of them on either page fails the build.
+
+**The commercial terms live in one constant**, `OFFER`. It currently carries Gabriel's proposal —
+$1,997 to start, $197 a month, three closers and one administrator — and **three deliberate holes
+that render as honest copy rather than invented numbers**: no price for a fourth seat ("ask us"),
+no trial length (line omitted), no payment or booking link (button disabled, sentence says it is
+coming). Filling any of them is a one-line edit.
+
+**The onboarding page** (`src/onboard.js`) is the SOP with the internal notes removed: the seven
+days, the six things we need and where each comes from, the setup call minute by minute, the two
+sentences to say to reps before the first scorecard lands, and the intake form.
+
+> [!warning] The form has no field for a key, on purpose
+> Fathom, Claude and GoHighLevel keys are pasted by the customer into Integrations on the setup
+> call, with the Test button pressed while someone who can fix a bad one is on the line. The form
+> collects the roster, the CRM admin, who books calls, tags — the things that take three days to
+> chase by text. `POST /api/intake` is public like the Stripe webhook, and defended the same way:
+> the page's token in constant time, a 20 KB cap read before parsing, every undeclared field
+> dropped. Admins read submissions at `GET /api/intake`; each one is also an `intake.received`
+> event in Activity.
+
+Verified by looking: both pages at 1280, 800 and 375 with zero horizontal overflow; the rail
+tracking sections; the calculator recomputing; the form submitted end to end into the local table
+with the IP stored as a hint. **953 assertions.** Six inversions proven red, including an internal
+cost figure appearing on the proposal, a "pushed" note, an intake endpoint without its token, and
+an invented per-seat price.
+
 ## 2026-09-12 — The launcher, twice over; and a pass across the whole site
 
 Ivan: *"Make her a little smaller until clicked. Can you animate movement and refine the icon and
