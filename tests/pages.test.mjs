@@ -72,7 +72,7 @@ for (const [what, re, where] of [
   ["manager-adjustable rubric/prompt", /rubric you write/i, pitch],
   ["setter and closer attribution", /setter who booked it comes across from your CRM/i, pitch],
   ["interactive hours calculator", /id="inClosers"/, pitch],
-  ["the rail indicator", /class="rail"/, pitch],
+  ["no side rail (removed 2026-09-12); the top line is the only indicator", !/class="rail"/.test(pitch) && !/class="rail"/.test(onboard) && /id="prog"/.test(pitch), pitch],
   ["three-step plan + 7 days", /Three steps, seven days/, pitch],
   ["onboarding: Fathom key on the call, never emailed", /never sent to us/i, onboard],
   ["onboarding: GHL admin login + Location ID", /administrator login to your GoHighLevel/i, onboard],
@@ -100,7 +100,8 @@ check("light palette defined on :root, dark tokens never their only definition",
 check("no id is used twice on the proposal (the calculator once read a SECTION and showed NaN)",
   (() => { const ids = [...pitch.matchAll(/ id="([^"]+)"/g)].map(m => m[1]); return new Set(ids).size === ids.length; })(),
   "getElementById returns the first match, silently");
-check("the rail hides where there is no room", /@media \(max-width:1100px\)\{ \.rail\{ display:none; \} \}/.test(PAGE_CSS));
+check("the browser scrollbar is hidden on these pages, scrolling is not", /html\{ scrollbar-width:none;/.test(PAGE_CSS) && /html::-webkit-scrollbar\{ width:0; height:0; display:none; \}/.test(PAGE_CSS) && !/overflow:\s*hidden;?\s*\}/.test(PAGE_CSS.split("html{")[1].split("}")[0]));
+check("no rail rules remain in the kit", !/\.rail\b/.test(PAGE_CSS));
 check("reduced motion is respected page-wide", /prefers-reduced-motion: reduce\)\{ html\{scroll-behavior:auto;\}/.test(PAGE_CSS));
 check("no horizontal scroll: body clips x and grids collapse on phones", /overflow-x:hidden/.test(PAGE_CSS) && /@media \(max-width:640px\)\{ \.grid2, \.grid3\{ grid-template-columns:1fr; \} \}/.test(PAGE_CSS));
 

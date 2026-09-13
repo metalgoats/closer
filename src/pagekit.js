@@ -3,9 +3,9 @@
 // indicator"), so the proposal and the onboarding page are built from the same tokens rather
 // than each inventing its own. One rule family, one feature.
 //
-// The rail on the right is borrowed from Jacob Patrick's site at Ivan's request: one mark per
-// section and a hairline that fills as you read. It hides on phones, where the top progress
-// line does the same job in less room.
+// Position is shown by one thing only: the line under the top bar that fills as you read. The
+// side rail that shipped first was removed at Ivan's request the same day, along with the
+// browser's own scrollbar, which said the same thing a third time.
 import { tokenMatches } from "./pricingreport.js";
 
 export { tokenMatches };
@@ -79,14 +79,12 @@ hr.rule{ height:1px; border:0; background:var(--line); margin:34px 0; }
 .theme:hover{ color:var(--ink-950); border-color:var(--line-strong); }
 .progress{ position:absolute; left:0; bottom:-1px; height:2px; background:var(--blue); width:0; transition:width .1s linear; }
 
-/* ---------- the rail (after Jacob Patrick's site) ---------- */
-.rail{ position:fixed; right:22px; top:50%; z-index:40; transform:translateY(-50%); display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
-.rail .line{ position:relative; width:1px; height:88px; background:var(--line-strong); margin:0 0 6px; }
-.rail .fill{ position:absolute; left:0; top:0; width:100%; height:100%; background:var(--blue); transform-origin:top; transform:scaleY(0); }
-.rail a{ font-size:12px; letter-spacing:.01em; color:var(--ink-400); text-decoration:none; transition:color .15s var(--ease); white-space:nowrap; }
-.rail a:hover{ color:var(--ink-800); text-decoration:none; }
-.rail a.on{ color:var(--ink-950); }
-@media (max-width:1100px){ .rail{ display:none; } }
+/* ---------- position: the line under the bar is the only indicator ----------
+   No side rail and no browser scrollbar: the horizontal progress line already says where you
+   are. Scrolling itself is untouched (wheel, keys, touch). This stylesheet is served to the
+   customer, so it carries no names. */
+html{ scrollbar-width:none; -ms-overflow-style:none; }
+html::-webkit-scrollbar{ width:0; height:0; display:none; }
 
 /* ---------- type ---------- */
 .hero{ padding:66px 0 40px; border-bottom:1px solid var(--line); }
@@ -225,21 +223,11 @@ export const PAGE_JS = `
   paint();
   if (tbtn) tbtn.addEventListener("click", function(){ var n = isLight() ? "dark" : "light"; root.setAttribute("data-theme", n); try { localStorage.setItem(KEY, n); } catch(e){} paint(); });
 
-  var html = document.documentElement, prog = $("prog");
-  var rail = document.querySelector(".rail");
-  var marks = rail ? Array.prototype.slice.call(rail.querySelectorAll("a")) : [];
-  var secs = marks.map(function(m){ return document.querySelector(m.getAttribute("href")); });
-  var fill = rail ? rail.querySelector(".fill") : null;
-  var ticking = false;
+  var html = document.documentElement, prog = $("prog"), ticking = false;
   function update(){
     var max = html.scrollHeight - window.innerHeight;
     var f = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
     if (prog) prog.style.width = (f * 100) + "%";
-    if (fill) fill.style.transform = "scaleY(" + f + ")";
-    var cur = 0;
-    secs.forEach(function(s, k){ if (s && s.getBoundingClientRect().top <= window.innerHeight * 0.45) cur = k; });
-    if (window.scrollY + window.innerHeight >= html.scrollHeight - 2) { cur = marks.length - 1; if (fill) fill.style.transform = "scaleY(1)"; }
-    marks.forEach(function(m, k){ m.classList.toggle("on", k === cur); });
     ticking = false;
   }
   window.addEventListener("scroll", function(){ if (!ticking) { ticking = true; window.requestAnimationFrame(update); } }, { passive:true });
@@ -254,7 +242,7 @@ export const PAGE_JS = `
 })();
 `;
 
-export function shell({ title, crumb, nav, body, extraJs = "" }) {
+export function shell({ title, crumb, body, extraJs = "" }) {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -271,7 +259,6 @@ export function shell({ title, crumb, nav, body, extraJs = "" }) {
   <div class="bar-cta"><button class="theme" id="theme" type="button" aria-label="Switch between light and dark">&#9788;</button></div>
   <div class="progress" id="prog"></div>
 </div></div>
-<aside class="rail" aria-label="Where you are"><span class="line"><span class="fill"></span></span>${nav.map(([id, label]) => `<a href="#${id}">${label}</a>`).join("")}</aside>
 <div class="wrap">
 ${body}
 </div>

@@ -38,7 +38,6 @@ export function sanitizeIntake(body) {
 }
 
 export function onboardHtml({ payUrl = null, bookUrl = null } = {}) {
-  const nav = [["plan","The week"],["need","What we need"],["form","Your details"],["call","Setup call"],["reps","Your reps"],["after","After"],["faq","Questions"]];
   const payBtn = payUrl ? `<a class="btn primary" href="${payUrl}" rel="noopener">Pay the activation</a>`
                         : `<span class="btn primary" aria-disabled="true">Pay the activation</span><span class="cta-note">Your payment link arrives with your proposal.</span>`;
   const bookBtn = bookUrl ? `<a class="btn ghost" href="${bookUrl}" rel="noopener">Book the setup call</a>`
@@ -174,5 +173,5 @@ export function onboardHtml({ payUrl = null, bookUrl = null } = {}) {
         .catch(function(){ btn.disabled = false; msg.className = "f-msg err"; msg.textContent = "No connection. Try again in a moment."; });
     });
   })();`;
-  return shell({ title: "Closer onboarding", crumb: "onboarding", nav, body, extraJs });
+  return shell({ title: "Closer onboarding", crumb: "onboarding", body, extraJs });
 }
