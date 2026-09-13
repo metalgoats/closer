@@ -2,7 +2,7 @@
 // call, and the intake form that captures the non-secret half of it. Same hidden-link mechanism
 // as the proposal. Read by the customer, so nothing internal appears here either.
 //
-// WHAT THE FORM DELIBERATELY DOES NOT COLLECT: API keys. Fathom and Claude keys are pasted by the
+// WHAT THE FORM DELIBERATELY DOES NOT COLLECT: API keys. Fathom, GoHighLevel and AI keys are pasted by the
 // customer into Integrations on the setup call, screen-shared, with the Test button pressed while
 // somebody who can fix a bad key is still on the line. A key typed into a web form and stored in
 // a table is a secret in a place secrets should not be. The form collects the roster, the CRM
@@ -38,30 +38,28 @@ export function sanitizeIntake(body) {
 }
 
 export function onboardHtml({ payUrl = null, bookUrl = null } = {}) {
-  const nav = [["plan","The week"],["need","What we need"],["form","Your details"],["call","Setup call"],["reps","Your reps"],["after","After"],["faq","Questions"]];
-  const payBtn = payUrl ? `<a class="btn primary" href="${payUrl}" rel="noopener">Pay the activation</a>`
+  const nav = [["plan","The steps"],["need","What we need"],["form","Your details"],["call","Setup call"],["after","After"],["faq","Questions"]];
+  const payBtn = payUrl ? `<a class="btn primary" href="${payUrl}" target="_blank" rel="noopener">Pay the activation</a>`
                         : `<span class="btn primary" aria-disabled="true">Pay the activation</span><span class="cta-note">Your payment link arrives with your proposal.</span>`;
   const bookBtn = bookUrl ? `<a class="btn ghost" href="${bookUrl}" rel="noopener">Book the setup call</a>`
                           : `<span class="cta-note">We send a booking link for the 30-minute setup call as soon as payment clears.</span>`;
   const body = `
   <header class="hero">
     <p class="eyebrow">Onboarding</p>
-    <h1>Seven days from yes to your first scored call.</h1>
-    <p class="standfirst">Most of the week is waiting, not working. Your part is about forty minutes: a short form today and one screen-share call on day three. Here is the whole thing, in order, with nothing hidden.</p>
-    <div class="meta"><span class="tag">~20 min form</span><span class="tag">30 min setup call</span><span class="tag">No keys sent by email</span></div>
+    <h1>Three steps from yes to your first scored call.</h1>
+    <p class="standfirst">Your part is a short form, one screen-share call, and having the right people on it. Here is the whole thing, in order, with nothing hidden.</p>
+    <div class="meta"><span class="tag">A short form</span><span class="tag">30 min setup call</span><span class="tag">No keys sent by email</span></div>
   </header>
 
   <section id="plan" class="reveal">
-    <p class="kicker">The week</p>
-    <h2>What happens on which day</h2>
+    <p class="kicker">The steps</p>
+    <h2>What happens, in order</h2>
     <ol class="steps">
-      <li><span class="when">Day 0</span><h4>Yes, and the form below</h4><p>Pay the activation, then give us twenty minutes on the form: who is on the floor, who runs your CRM, who books your calls. Everything downstream waits on this, which is why it is first.</p></li>
-      <li><span class="when">Day 1&ndash;2</span><h4>Your homework</h4><p>Make sure every closer has Fathom recording their calls, and that whoever administers your GoHighLevel can join the setup call. We will text once if the form has not come back within two days.</p></li>
-      <li><span class="when">Day 3</span><h4>The setup call, 30 minutes</h4><p>Screen-shared. Your recorder, your CRM and your Claude account are connected and tested live. Your rubric is written with you. Your team is invited.</p></li>
-      <li><span class="when">Day 4</span><h4>First import, checked by a person</h4><p>Your recent calls come in. We read the first outputs with our own eyes and confirm every call is on the right closer before anyone else sees a number.</p></li>
-      <li><span class="when">Day 5</span><h4>A twenty-minute walkthrough, recorded</h4><p>Sent to you rather than booked, so the people who were never going to attend can still watch it, twice.</p></li>
-      <li><span class="when">Day 7</span><h4>Your first scored week</h4><p>Your closers have had a scorecard and a written follow-up after every call, and you have the team page.</p></li>
+      <li><h4>Yes, and the form below</h4><p>Pay the activation, then give us a few minutes on the form: who is on the floor, who runs your CRM, who books your calls. Everything downstream waits on this, which is why it is first.</p></li>
+      <li><h4>Your homework, before the call</h4><p>Make sure every closer has Fathom recording their calls, that whoever administers your GoHighLevel can join the setup call, and that the person who can authorize access is in the room. We will text once if the form has not come back.</p></li>
+      <li><h4>The setup call, 30 minutes</h4><p>Screen-shared. Your recorder, your CRM and your AI account are connected and tested live. Your rubric is written with you. Your team is invited.</p></li>
     </ol>
+    <p>After the call, your recent calls come in and we read the first outputs with our own eyes, confirming every call is on the right closer before anyone else sees a number. A recorded walkthrough is sent to you rather than booked, so the people who were never going to attend can still watch it, twice. Then your closers are getting a scorecard and a written follow-up after every call, and you have the team page.</p>
   </section>
 
   <section id="need" class="reveal">
@@ -73,9 +71,9 @@ export function onboardHtml({ payUrl = null, bookUrl = null } = {}) {
       <li><strong>An administrator login to your GoHighLevel</strong> for us, plus your Location ID. <em>Where:</em> Settings &rarr; My Staff (add us as an admin user); the Location ID is in your sub-account URL. This is how the CRM connects and how setters get credited.</li>
       <li><strong>Who books your calls.</strong> If setters book for closers, we add a fifteen-minute workflow in your GoHighLevel on the setup call so every call knows who set it.</li>
       <li><strong>Your tags and pipeline names</strong>, as they are today, so CRM notes land where your team already looks.</li>
-      <li><strong>A Claude account</strong> at console.anthropic.com with a card on it. Ten minutes. <em>The key itself is pasted on the setup call, never sent to us.</em></li>
+      <li><strong>An AI account</strong> with a card on it: Claude at console.anthropic.com, or OpenAI at platform.openai.com. Ten minutes. <em>The key itself is pasted on the setup call, never sent to us.</em></li>
     </ul>
-    <div class="note warn"><div class="note-h">&#9679; Please do not email API keys</div><p>Not your Fathom key, not your Claude key, not a GoHighLevel token. On the setup call you paste each one into Closer yourself and press Test. We never need to see them.</p></div>
+    <div class="note warn"><div class="note-h">&#9679; Please do not email API keys</div><p>Not your Fathom key, not your AI key, not a GoHighLevel token. On the setup call you paste each one into CloserAI yourself and press Test. We never need to see them.</p></div>
   </section>
 
   <section id="form" class="reveal">
@@ -87,9 +85,9 @@ export function onboardHtml({ payUrl = null, bookUrl = null } = {}) {
         <div class="f wide"><label for="company">Business</label><input id="company" name="company" required placeholder="The business this account is for"></div>
         <div class="f"><label for="contact_name">Your name</label><input id="contact_name" name="contact_name" required></div>
         <div class="f"><label for="contact_email">Your email</label><input id="contact_email" name="contact_email" type="email" required></div>
-        <div class="f"><label for="contact_phone">Best number to text</label><input id="contact_phone" name="contact_phone" type="tel" placeholder="For the day-two nudge and the setup call"></div>
+        <div class="f"><label for="contact_phone">Best number to text</label><input id="contact_phone" name="contact_phone" type="tel" placeholder="For the nudge and the setup call"></div>
         <div class="f"><label for="start_date">When would you like the setup call?</label><input id="start_date" name="start_date" placeholder="e.g. Tuesday or Wednesday morning"></div>
-        <div class="f"><label for="admin_name">Who administers Closer for you?</label><input id="admin_name" name="admin_name" placeholder="Usually you or your sales manager"></div>
+        <div class="f"><label for="admin_name">Who administers CloserAI for you?</label><input id="admin_name" name="admin_name" placeholder="Usually you or your sales manager"></div>
         <div class="f"><label for="admin_email">Their email</label><input id="admin_email" name="admin_email" type="email"></div>
         <div class="f wide"><label for="closers">Your closers</label><textarea id="closers" name="closers" required placeholder="One per line: Name, email"></textarea><span class="hint">Each becomes a login that sees only their own calls.</span></div>
         <div class="f"><label for="recorder">How are calls recorded today?</label><select id="recorder" name="recorder"><option>Fathom on every closer</option><option>Fathom on some closers</option><option>Zoom cloud recording</option><option>Not recorded yet</option><option>Other</option></select></div>
@@ -107,32 +105,24 @@ export function onboardHtml({ payUrl = null, bookUrl = null } = {}) {
       </div>
       <div class="f-foot">
         <button class="btn primary" type="submit" id="submitBtn">Send</button>
-        <span class="f-msg" id="msg">Takes about twenty minutes. Nothing here is a password or a key.</span>
+        <span class="f-msg" id="msg">Takes a few minutes. Nothing here is a password or a key.</span>
       </div>
     </form>
   </section>
 
   <section id="call" class="reveal">
-    <p class="kicker">Day 3</p>
+    <p class="kicker">The setup call</p>
     <h2>The setup call, minute by minute</h2>
     <ol class="steps">
-      <li><span class="when">5 min</span><h4>Connect and test the three credentials</h4><p>You paste your Fathom key, your Claude key and your GoHighLevel token into Closer yourself. Each has a Test button; we press all three while everyone is still on the line.</p></li>
+      <li><span class="when">5 min</span><h4>Connect and test the three credentials</h4><p>You paste your Fathom key, your AI key and your GoHighLevel token into CloserAI yourself. Each has a Test button; we press all three while everyone is still on the line.</p></li>
       <li><span class="when">15 min</span><h4>Setter attribution and your rubric</h4><p>If setters book your calls, a small workflow in your CRM so every call knows who set it. Then your rubric: the dimensions each call is scored on, in your words.</p></li>
       <li><span class="when">5 min</span><h4>Invite the team</h4><p>Every seat gets a login with the right role. Closers see their own calls; managers see the floor.</p></li>
-      <li><span class="when">5 min</span><h4>The two sentences for your reps</h4><p>What to say on day one so a scorecard reads as coaching rather than surveillance. Below.</p></li>
     </ol>
     <div class="cta-row">${bookBtn}</div>
   </section>
 
-  <section id="reps" class="reveal">
-    <p class="kicker">Your reps</p>
-    <h2>Say this before the first scorecard lands</h2>
-    <div class="note key"><div class="note-h">&#9679; Two sentences that work</div><p>"Every call you take now comes back with a scorecard and the follow-up already written. The score is yours before it is mine; it is there so you can see your own game, and so our coaching is about specific moments instead of feelings."</p></div>
-    <p>Reps who hear that on day one treat the scorecard as theirs. Reps who discover it on day four treat it as yours. The product works either way; the relationship does not.</p>
-  </section>
-
   <section id="after" class="reveal">
-    <p class="kicker">After day 7</p>
+    <p class="kicker">After</p>
     <h2>What ongoing looks like</h2>
     <ul class="checks">
       <li><strong>Every call, automatically.</strong> New recordings arrive on their own and are scored within minutes.</li>
@@ -152,7 +142,7 @@ export function onboardHtml({ payUrl = null, bookUrl = null } = {}) {
     <details><summary>Can we start with some of the team?</summary><p>Yes. Many floors start with two or three closers and add the rest once the first scorecards have landed.</p></details>
   </section>
 
-  <footer>Closer &middot; Onboarding &middot; This page is private to its link.</footer>`;
+  <footer>CloserAI &middot; Onboarding &middot; This page is private to its link.</footer>`;
 
   const extraJs = `
   (function(){
@@ -174,5 +164,5 @@ export function onboardHtml({ payUrl = null, bookUrl = null } = {}) {
         .catch(function(){ btn.disabled = false; msg.className = "f-msg err"; msg.textContent = "No connection. Try again in a moment."; });
     });
   })();`;
-  return shell({ title: "Closer onboarding", crumb: "onboarding", nav, body, extraJs });
+  return shell({ title: "CloserAI onboarding", crumb: "onboarding", nav, body, extraJs });
 }

@@ -19,6 +19,15 @@ export const PITCH_TOKEN = "3abd3a2c0ec5861ba624a58f00d10900";
 // price for a fourth seat; until one is decided the page says "ask us" rather than inventing
 // one. PAY_URL and BOOK_URL are null until Gabriel sends the payment link and a booking link
 // exists; the page degrades to honest copy for each. CLIENT is a first name on purpose.
+//
+// 13 Sep call (transcript beside the recording on the Desktop): NO day counts anywhere on the
+// page, because a stated timeline becomes the client's weapon the day it slips ("but you told me
+// seven days"); the product is CloserAI, capital C capital AI, no space, no dash, a placeholder
+// until it has a name; the checkout opens in a new tab; "Will my reps feel watched" is gone so we
+// do not plant the fear ourselves; "held hostage" is gone; the cost FAQ names any frontier model
+// with API access and gives the MEASURED per-call range ($0.50-0.85, Pricing v2), never a monthly
+// guess. The 7-day trial stays; Gabriel's script says 30 days and that term is not decided.
+// tests/pages.test.mjs pins each of these so none can quietly return.
 export const OFFER = Object.freeze({
   client: "Nathan",
   activation: 1997,
@@ -46,8 +55,8 @@ export function pitchHtml(o = OFFER) {
     ["time", "The hours"], ["connects", "Connects"], ["offer", "The offer"], ["next", "Next"], ["faq", "Questions"],
   ];
   const payBtn = o.payUrl
-    ? `<a class="btn primary" href="${o.payUrl}" rel="noopener">Start Closer</a>`
-    : `<span class="btn primary" aria-disabled="true">Start Closer</span><span class="cta-note">Your payment link arrives with this proposal.</span>`;
+    ? `<a class="btn primary" href="${o.payUrl}" target="_blank" rel="noopener">Start CloserAI</a>`
+    : `<span class="btn primary" aria-disabled="true">Start CloserAI</span><span class="cta-note">Your payment link arrives with this proposal.</span>`;
   const bookBtn = o.bookUrl
     ? `<a class="btn ghost" href="${o.bookUrl}" rel="noopener">Book the 30-minute setup call</a>`
     : `<span class="cta-note">We send you a link to book your 30-minute setup call the moment payment clears.</span>`;
@@ -59,8 +68,8 @@ export function pitchHtml(o = OFFER) {
   <header class="hero">
     <p class="eyebrow">Prepared for ${o.client}</p>
     <h1>Coach every closer like you sat in on every call.</h1>
-    <p class="standfirst">Closer reads and scores every recorded call, writes the follow-up and the CRM note, and shows you who is winning and who is stuck, on one page. Say yes today; your first scored week starts in seven days.</p>
-    <div class="meta"><span class="tag">Runs on your recordings</span><span class="tag">Your CRM, connected</span><span class="tag">Live in seven days</span><span class="tag">Monthly, no contract</span></div>
+    <p class="standfirst">CloserAI reads and scores every recorded call, writes the follow-up and the CRM note, and shows you who is winning and who is stuck, on one page. Say yes, and the setup call does the rest.</p>
+    <div class="meta"><span class="tag">Runs on your recordings</span><span class="tag">Your CRM, connected</span><span class="tag">Set up on one call</span><span class="tag">Monthly, no contract</span></div>
   </header>
 
   <section id="why" class="reveal">
@@ -106,7 +115,7 @@ export function pitchHtml(o = OFFER) {
     <h2>The session starts with the moment, not the search for it</h2>
     <div class="ba">
       <div class="before"><div class="bh">Before</div><p>Pull up a recording. Scrub. Wrong one. Try another. Ask who wants to go first. Twenty minutes gone, and the example is whatever someone remembered.</p></div>
-      <div class="after"><div class="bh">With Closer</div><p>Open Vera. "Which three moments should I bring to training this week?" Each one links to its timestamp. The group watches the exact second, then the scorecard for it, then what the rep did next.</p></div>
+      <div class="after"><div class="bh">With CloserAI</div><p>Open Vera. "Which three moments should I bring to training this week?" Each one links to its timestamp. The group watches the exact second, then the scorecard for it, then what the rep did next.</p></div>
     </div>
     <p>The examples come from your floor, this week, with the numbers attached. Coaching stops being an opinion about a call and becomes a conversation about a moment.</p>
   </section>
@@ -136,17 +145,17 @@ export function pitchHtml(o = OFFER) {
     <h2>It connects to what you already run</h2>
     <div class="grid3">
       <div class="card"><div class="ch">Recordings</div><h4>Fathom</h4><p>Your Zoom, Meet and Teams calls arrive on their own, with the transcript. Nothing to upload.</p></div>
-      <div class="card"><div class="ch">CRM</div><h4>GoHighLevel</h4><p>Connected with a private integration token from your own account. No marketplace app, no approval wait. Closer and setter attribution flow from it.</p></div>
-      <div class="card"><div class="ch">Intelligence</div><h4>Your own Claude account</h4><p>The analysis runs on an API key you own. Your calls, your account, your control; you can revoke it any day.</p></div>
+      <div class="card"><div class="ch">CRM</div><h4>GoHighLevel</h4><p>Connected with a private integration token from your own account. No marketplace app, no approval wait. Which closer took the call and which setter booked it come across from it.</p></div>
+      <div class="card"><div class="ch">Intelligence</div><h4>Your own AI account</h4><p>The analysis runs on an API key you own, with Claude or OpenAI. Your calls, your account, your control; you can revoke it any day.</p></div>
     </div>
-    <div class="note good"><div class="note-h">&#9679; What that means for your data</div><p>Your recordings stay with your recorder. The analysis runs on an account you own. Card details go to Stripe's own pages and never touch Closer. And there is no annual contract holding any of it in place.</p></div>
+    <div class="note good"><div class="note-h">&#9679; What that means for your data</div><p>Your recordings stay with your recorder. The analysis runs on an account you own. Card details go to Stripe's own pages and never touch CloserAI. And there is no annual contract holding any of it in place.</p></div>
   </section>
 
   <section id="offer" class="reveal">
     <p class="kicker">The offer</p>
     <h2>Everything above, for your floor</h2>
     <div class="offer">
-      <div class="oh">Closer for ${o.client}</div>
+      <div class="oh">CloserAI for ${o.client}</div>
       <div class="price">
         <div><div class="l">To start</div><div class="p">${money(o.activation)}<small>one time</small></div></div>
         <div><div class="l">Then</div><div class="p">${money(o.monthly)}<small>per month</small></div></div>
@@ -161,34 +170,32 @@ export function pitchHtml(o = OFFER) {
       </ul>
       <p class="fine">${extraSeat} Each additional business you run gets its own account, its own CRM connection and its own invoice.</p>
     </div>
-    <div class="note"><div class="note-h">&#9679; For scale</div><p>Enterprise conversation-intelligence platforms charge five figures to switch on, bill annually, and take a month or more to implement. Closer is live in a week, billed monthly, and built for a floor of three to twenty closers rather than a call centre of three hundred.</p></div>
+    <div class="note"><div class="note-h">&#9679; For scale</div><p>Enterprise conversation-intelligence platforms charge five figures to switch on, bill annually, and take a month or more to implement. CloserAI turns on in one setup call, is billed monthly, and is built for a floor of three to twenty closers rather than a call centre of three hundred.</p></div>
   </section>
 
   <section id="next" class="reveal">
     <p class="kicker">Next</p>
-    <h2>Three steps, seven days</h2>
+    <h2>Three steps</h2>
     <ol class="steps">
-      <li><span class="when">Day 0</span><h4>Say yes</h4><p>Pay the activation through the link, and fill in a short form so we know your team, your CRM and who books your calls. Twenty minutes.</p></li>
-      <li><span class="when">Day 3</span><h4>The setup call</h4><p>Thirty minutes on screen with us. Your recordings and your CRM get connected and tested live, your rubric is written with you, your team is invited.</p></li>
-      <li><span class="when">Day 7</span><h4>Your first scored week</h4><p>Your closers are getting their scorecards and follow-ups after every call, and you are reading the team page.</p></li>
+      <li><h4>Say yes</h4><p>Pay the activation through the link, and fill in a short form so we know your team, your CRM and who books your calls.</p></li>
+      <li><h4>The setup call</h4><p>Thirty minutes on screen with us. Your recordings and your CRM get connected and tested live, your rubric is written with you, your team is invited.</p></li>
+      <li><h4>Scorecards start</h4><p>Your closers get a scorecard and a written follow-up after every call, and you read the team page.</p></li>
     </ol>
     <div class="cta-row">${payBtn}</div>
     <div class="cta-row">${bookBtn}</div>
-    <p>Everything we will need from you, and exactly when, is on ${onboardLink}.</p>
+    <p>Everything we will need from you is on ${onboardLink}.</p>
   </section>
 
   <section id="faq" class="reveal">
     <p class="kicker">Questions</p>
     <h2>The ones people ask</h2>
     <details><summary>Where do the recordings come from?</summary><p>From Fathom, on your team's Zoom, Google Meet or Teams calls. If your closers already record, nothing changes for them. If they do not, Fathom takes ten minutes to set up per person and we do it on the setup call.</p></details>
-    <details><summary>Who can see what?</summary><p>You see the whole floor. Each closer sees only their own calls, scorecards and drafts. That boundary is enforced by the system, not by asking anyone to be discreet.</p></details>
-    <details><summary>Will my reps feel watched?</summary><p>Some will, at first. What changes it is the scorecard being theirs: they see their number after every call, before you do, and the follow-up is written for them. We give you the two sentences to say on day one, and the framing that works is coaching, not surveillance.</p></details>
-    <details><summary>Can I change how calls are scored?</summary><p>Yes. The rubric and the prompt behind it are yours to edit, per call type. Change them and every call from then on is scored the new way.</p></details>
-    <details><summary>What does it cost to run?</summary><p>The subscription, plus the usage on your own Claude account, which for a floor of this size is tens of dollars a month. You see that bill directly; nothing is marked up or pooled.</p></details>
-    <details><summary>What if I stop?</summary><p>Cancel any month. Your recordings were always in your recorder and your CRM notes were always in your CRM; nothing is held hostage.</p></details>
+    <details><summary>Who can see what?</summary><p>You see the whole floor. Each closer sees only their own calls, scorecards and drafts. That boundary is enforced by the system, not by asking anyone to be discreet.</p></details>    <details><summary>Can I change how calls are scored?</summary><p>Yes. The rubric and the prompt behind it are yours to edit, per call type. Change them and every call from then on is scored the new way.</p></details>
+    <details><summary>What does it cost to run?</summary><p>The subscription, plus the usage on your own AI account, any frontier model with API access. Measured on real calls, that runs between fifty cents and a dollar a call, depending on the model you pick. You see that bill directly.</p></details>
+    <details><summary>What if I stop?</summary><p>Cancel any month. Your recordings are in your recorder and your CRM notes are in your CRM. Your data is your own.</p></details>
   </section>
 
-  <footer>Closer &middot; Prepared for ${o.client} &middot; This page is private to its link.</footer>`;
+  <footer>CloserAI &middot; Prepared for ${o.client} &middot; This page is private to its link.</footer>`;
 
   const extraJs = `
   (function(){
@@ -209,5 +216,5 @@ export function pitchHtml(o = OFFER) {
     calc();
   })();`;
 
-  return shell({ title: `Closer, for ${o.client}`, crumb: `proposal for ${o.client}`, nav, body, extraJs });
+  return shell({ title: `CloserAI, for ${o.client}`, crumb: `proposal for ${o.client}`, nav, body, extraJs });
 }

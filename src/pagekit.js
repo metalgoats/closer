@@ -269,7 +269,7 @@ export function shell({ title, crumb, nav = [], body, extraJs = "" }) {
 </head>
 <body>
 <div class="bar"><div class="bar-in">
-  <div class="mark"><span class="dot"></span> Closer<span class="sub">&nbsp;/&nbsp;${crumb}</span></div>
+  <div class="mark"><span class="dot"></span> CloserAI<span class="sub">&nbsp;/&nbsp;${crumb}</span></div>
   <div class="bar-cta"><button class="theme" id="theme" type="button" aria-label="Switch between light and dark">&#9788;</button></div>
   <div class="progress" id="prog"></div>
 </div></div>

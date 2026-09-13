@@ -46,9 +46,9 @@ check("price, seats and links come from the OFFER constant", pitch.includes("$1,
   && /export const OFFER = Object\.freeze/.test(readFileSync(join(here, "..", "src", "pitch.js"), "utf8")));
 check("an unset extra-seat price says 'ask us' rather than inventing a number", /Additional closers: ask us/.test(pitchHtml({ ...OFFER, extraSeat: null })));
 check("the decided extra-seat price renders on the live page", OFFER.extraSeat === 47 && /\$47 per additional closer, per month/.test(pitch));
-check("an unset payment link degrades to honest copy, with the button disabled", (() => { const h = pitchHtml({ ...OFFER, payUrl: null, bookUrl: null }); return /aria-disabled="true">Start Closer/.test(h) && /payment link arrives/.test(h) && /send you a link to book/.test(h); })());
+check("an unset payment link degrades to honest copy, with the button disabled", (() => { const h = pitchHtml({ ...OFFER, payUrl: null, bookUrl: null }); return /aria-disabled="true">Start CloserAI/.test(h) && /payment link arrives/.test(h) && /send you a link to book/.test(h); })());
 check("the live page carries the real payment and booking links, opened safely",
-  /href="https:\/\/collectcheckout\.com\/r\/[a-z0-9]+" rel="noopener">Start Closer/.test(pitch)
+  /href="https:\/\/collectcheckout\.com\/r\/[a-z0-9]+" target="_blank" rel="noopener">Start CloserAI/.test(pitch)
     && /href="https:\/\/calendly\.com\/ivanlizarde\/onboarding" rel="noopener">Book the 30-minute setup call/.test(pitch)
     && !/<span class="btn primary" aria-disabled="true"/.test(pitch));   // the CSS rule for the disabled state is not a disabled button
 check("...and the onboarding page gets the same two links from the same constant",
@@ -56,7 +56,7 @@ check("...and the onboarding page gets the same two links from the same constant
 check("an unset trial length omits the trial line instead of guessing", !/-day trial/.test(pitchHtml({ ...OFFER, trialDays: null })));
 check("the decided trial renders on the live page", OFFER.trialDays === 7 && /7-day trial/.test(pitch));
 check("the H1 names the customer's outcome, not our mechanism (StoryBrand)", /<h1>Coach every closer like you sat in on every call\.<\/h1>/.test(pitch)
-  && /Say yes today; your first scored week starts in seven days\./.test(pitch), "the header must pass the grunt test: what, how life gets better, what to do");
+  && /Say yes, and the setup call does the rest\./.test(pitch) && !/seven days/i.test(pitch), "the header must pass the grunt test: what, how life gets better, what to do; and it must not promise a day count");
 check("the proposal links to the onboarding page when given its path", /href="\/r\/x"/.test(pitch));
 
 console.log("\nPages — what Gabriel asked for is on them");
@@ -73,16 +73,26 @@ for (const [what, re, where] of [
   ["setter and closer attribution", /setter who booked it comes across from your CRM/i, pitch],
   ["interactive hours calculator", /id="inClosers"/, pitch],
   ["the text rail is back, and it has no line of its own", /class="rail"/.test(pitch) && /class="rail"/.test(onboard) && !/class="line"|class="fill"/.test(pitch) && /id="prog"/.test(pitch), pitch],
-  ["three-step plan + 7 days", /Three steps, seven days/, pitch],
+  ["three-step plan, no day counts (Gabriel, 13 Sep)", /<h2>Three steps<\/h2>/.test(pitch) && !/seven days|\bDay [0-9]/i.test(pitch), pitch],
   ["onboarding: Fathom key on the call, never emailed", /never sent to us/i, onboard],
   ["onboarding: GHL admin login + Location ID", /administrator login to your GoHighLevel/i, onboard],
   ["onboarding: who books the calls (setter workflow)", /Who books your calls/i, onboard],
   ["onboarding: tags and pipeline", /tags and pipeline/i, onboard],
   ["onboarding: emails for every seat", /Name, email and role[^.]*for every seat/i, onboard],
   ["onboarding: the intake form posts to /api/intake", /fetch\("\/api\/intake"/, onboard],
-  ["onboarding: the two sentences for reps (consent)", /Two sentences that work/, onboard],
+  ["onboarding: the reps script is gone (Gabriel, 13 Sep)", !/Two sentences that work|your own game/i.test(onboard), onboard],
   ["onboarding: booking + payment placeholders", /booking link|Book the setup call/.test(onboard) && /Pay the activation/.test(onboard), onboard],
 ]) check(what, re instanceof RegExp ? re.test(where) : !!re);
+
+// What Gabriel asked to remove on the 13 Sep call stays removed. Each of these was a real line
+// on a page Nathan reads; inverting them means the old copy cannot come back without a red test.
+console.log("\nPages — what Gabriel asked to remove on 13 Sep stays removed");
+check("no 'Will my reps feel watched' on either page, so we do not plant the fear ourselves", !/feel watched/i.test(pitch) && !/feel watched/i.test(onboard));
+check("no 'held hostage'; the line is 'your data is your own'", !/held hostage/i.test(pitch) && /Your data is your own/.test(pitch));
+check("no day-count promises on either page", !/\bDay [0-9]|seven days|day three|after day 7|day-two/i.test(pitch) && !/\bDay [0-9]|seven days|day three|after day 7|day-two/i.test(onboard));
+check("the product is CloserAI on both pages, and the button is spelled that way", /Start CloserAI/.test(pitch) && /CloserAI/.test(onboard) && !/>Closer</.test(pitch));
+check("checkout opens in a new tab on both pages", /target="_blank" rel="noopener">Start CloserAI/.test(pitch) && /target="_blank" rel="noopener">Pay the activation/.test(onboardHtml({ payUrl: OFFER.payUrl, bookUrl: OFFER.bookUrl })));
+check("cost FAQ names any frontier model and the measured per-call range, never a monthly guess", /any frontier model with API access/i.test(pitch) && /between fifty cents and a dollar a call/.test(pitch) && !/tens of dollars a month/i.test(pitch));
 
 console.log("\nIntake — the public endpoint is defended");
 check("the POST is above requireUser and checks the token in constant time", idx.indexOf('path === "/api/intake" && method === "POST"') < idx.indexOf("const user = await requireUser(request, env);")

@@ -1,7 +1,54 @@
 # Changelog
 
 One entry per working session, newest first. The *why* matters more than the diff — the diff
-already records the what.## 2026-09-12 — Vera floats, and knows what you are looking at
+already records the what.
+
+## 2026-09-13 — The pages Nathan reads, edited from the call, with the old copy pinned out
+
+Gabriel went through the Closer for Nathan proposal and the onboarding page line by line on the
+13 Sep call (transcript beside the recording on the Desktop; debrief in the vault). Every change
+here is one he named, and each is pinned in `tests/pages.test.mjs` as an inverted check so the old
+line cannot return without a red test.
+
+**No day counts, anywhere.** His reason, from selling at On Screen Authority: *"the truth is, a
+week later they still haven't done their part, and then people use that like, wait, but you told
+me seven days."* A stated timeline becomes the client's weapon the day it slips. So "Seven days
+from yes" is "Three steps from yes", the Day 0 to Day 7 list is three steps and an "after the
+call" paragraph, "Live in seven days" is "Set up on one call", "Day 3" and "After day 7" are gone,
+and the form no longer claims twenty minutes (*"this form takes three minutes, that should not
+take forty"*). The minute-by-minute setup call keeps its minutes: those are ours to keep, not a
+promise the client holds.
+
+**"Will my reps feel watched?" is removed from the FAQ.** *"Let's not be the one to incept them
+with that thought."* The reps section on the onboarding page ("the score is yours before it is
+mine, so you can see your own game") goes with it; neither of them liked "your own game," and it
+existed to answer the fear the FAQ was planting.
+
+**"Held hostage" is "your data is your own."** Gabriel: language that is *"protecting, saving,
+improving"* rather than a negative connotation in the reader's mind.
+
+**Cost FAQ.** "Your own Claude account" is "any frontier model with API access," which the code
+supports (`llm_provider` takes `anthropic` or `openai`). The "tens of dollars a month" line is
+replaced by the **measured** per-call range from Pricing v2, $0.50 to $0.85, written as "between
+fifty cents and a dollar a call." Gabriel asked for an average across four models; only Claude
+has been measured on this project, and three unmeasured numbers here have already drifted low, so
+the page carries the measured range and the four-model average waits for a measured run.
+
+**CloserAI**, capital C capital AI, no space, no dash, everywhere the pages say the product's
+name, including the shared hidden-page brand mark in `pagekit.js`, which only the proposal and
+onboarding pages render through. It is a placeholder until there is a name; the name is what
+blocks the domain, and the URL is still `closer.gabriel-galindo.workers.dev`.
+
+**Checkout opens in a new tab** on both pages. Booking stays reachable before payment for now;
+Gabriel wants payment to gate booking in the next version.
+
+**Left alone on purpose.** The 7-day trial stays on the proposal: Gabriel's welcome script says
+thirty days, that is a commercial term nobody decided, and it is in his hands before he records.
+"Sign the agreement" is not on the page because no agreement exists yet. The secure form for API
+keys he asked for on the step pages does not exist; both pages still say keys are pasted on the
+setup call, which is true.
+
+## 2026-09-12 — Vera floats, and knows what you are looking at
 
 Ivan, on the first version: *"I dont like where you placed Vera as a list option. I would rather
 her be in the lower right corner, like a chatbot, always available and easy to reach, an icon that
