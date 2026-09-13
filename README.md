@@ -107,7 +107,7 @@ Where everything lives. The link-only pages are private to their URL (an unguess
 | The app | `https://closer.gabriel-galindo.workers.dev/` | Ivan, Gabriel, and every seat (login) |
 | Pricing report, "The offer, valued rather than costed" | `/r/fbc0408f814e23f35887951dcd02e992` | Gabriel |
 | **Proposal for Nathan** | `/r/3abd3a2c0ec5861ba624a58f00d10900` | Nathan (customer-facing; nothing internal) |
-| **Onboarding** — the seven days, what we need, the intake form | `/r/40d5c3ae0881bde825c74f33dd1793c0` | Any new customer |
+| **Onboarding** — the three steps from yes, what we need, the intake form | `/r/40d5c3ae0881bde825c74f33dd1793c0` | Any new customer |
 
 Inside the app: **All Calls / Needs Follow-up / Closed / Archived** (the inbox), **Insights** and
 **Suggestions** (Coaching), and behind the account menu: **People**, **Integrations**, **Billing**,
