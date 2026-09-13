@@ -45,7 +45,7 @@ console.log("\nPages — the commercial terms live in ONE place");
 check("price, seats and links come from the OFFER constant", pitch.includes("$1,997") && pitch.includes("$197") && /3 closers and 1 administrator/.test(pitch)
   && /export const OFFER = Object\.freeze/.test(readFileSync(join(here, "..", "src", "pitch.js"), "utf8")));
 check("an unset extra-seat price says 'ask us' rather than inventing a number", /Additional closers: ask us/.test(pitchHtml({ ...OFFER, extraSeat: null })));
-check("the decided extra-seat price renders on the live page", OFFER.extraSeat === 150 && /\$150 per additional closer, per month/.test(pitch));
+check("the decided extra-seat price renders on the live page", OFFER.extraSeat === 47 && /\$47 per additional closer, per month/.test(pitch));
 check("an unset payment link degrades to honest copy, with the button disabled", (() => { const h = pitchHtml({ ...OFFER, payUrl: null, bookUrl: null }); return /aria-disabled="true">Start Closer/.test(h) && /payment link arrives/.test(h) && /send you a link to book/.test(h); })());
 check("the live page carries the real payment and booking links, opened safely",
   /href="https:\/\/collectcheckout\.com\/r\/[a-z0-9]+" rel="noopener">Start Closer/.test(pitch)

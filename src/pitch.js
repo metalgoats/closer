@@ -25,7 +25,7 @@ export const OFFER = Object.freeze({
   monthly: 197,
   includedSeats: 3,
   includedAdmins: 1,
-  extraSeat: 150,          // per additional closer, per month (Ivan, 2026-09-12)
+  extraSeat: 47,           // per additional closer, per month (Ivan, 2026-09-13; was 150 the day before)
   trialDays: 7,            // on the client's own key (Ivan, 2026-09-12)
   payUrl: "https://collectcheckout.com/r/mf1hanjol0xg7bghwayjn7audrulq0",   // Gabriel's card-payment link (2026-09-12)
   bookUrl: "https://calendly.com/ivanlizarde/onboarding",                   // Ivan's Calendly (2026-09-12)
