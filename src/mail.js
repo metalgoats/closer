@@ -23,33 +23,52 @@ export function mailConfig(env) {
   return { configured: Boolean(key), key, from };
 }
 
+// ONE REQUEST PER RECIPIENT, on purpose. Resend rejects a whole request if any recipient is not
+// allowed -- and until a domain is verified, only the account owner's address is allowed. Sent
+// as one request, "Ivan and Gabriel" would fail for both because of Gabriel. Sent one at a time,
+// Ivan gets his copy and Gabriel's refusal is reported by name. The result is aggregated: sent
+// if anyone got it, with per-recipient outcomes for the event log.
 export async function sendEmail(env, { to, subject, text, html, replyTo = null }, fetchImpl = fetch) {
   const cfg = mailConfig(env);
   const list = recipients(to);
   if (!cfg.configured) return { sent: false, skipped: true, reason: "EMAIL_API_KEY is not set" };
   if (!list.length)    return { sent: false, skipped: true, reason: "no recipient" };
-  const body = { from: cfg.from, to: list, subject: String(subject || "").slice(0, 200), text: String(text || "") };
-  if (html) body.html = html;
-  if (replyTo) body.reply_to = replyTo;
-  // Bound to a const so the static reference checker (tests/worker-refs) sees a definition; a
-  // bare parameter call reads to it as a call into nothing.
   const post = fetchImpl;
-  let res;
-  try {
-    res = await post(RESEND_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  } catch (err) {
-    return { sent: false, skipped: false, error: String(err?.message || err) };
+  const results = [];
+  for (const rcpt of list) {
+    const body = { from: cfg.from, to: [rcpt], subject: String(subject || "").slice(0, 200), text: String(text || "") };
+    if (html) body.html = html;
+    if (replyTo) body.reply_to = replyTo;
+    let res;
+    try {
+      res = await post(RESEND_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      results.push({ to: rcpt, sent: false, error: String(err?.message || err) });
+      continue;
+    }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      results.push({ to: rcpt, sent: false, status: res.status, error: detail.slice(0, 300) });
+      continue;
+    }
+    const j = await res.json().catch(() => ({}));
+    results.push({ to: rcpt, sent: true, id: j.id || null });
   }
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    return { sent: false, skipped: false, status: res.status, error: detail.slice(0, 300) };
-  }
-  const j = await res.json().catch(() => ({}));
-  return { sent: true, id: j.id || null, to: list };
+  const ok = results.filter(r => r.sent), bad = results.filter(r => !r.sent);
+  return {
+    sent: ok.length > 0,
+    skipped: false,
+    to: ok.map(r => r.to),
+    id: ok[0]?.id || null,
+    failed: bad,
+    status: bad[0]?.status,
+    error: bad.length ? bad.map(r => `${r.to}: ${r.status || ""} ${r.error || ""}`.trim()).join(" | ") : undefined,
+    results,
+  };
 }
 
 // The onboarding form, as an email a person can act on from their phone: who, how many

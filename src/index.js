@@ -136,7 +136,11 @@ async function route(request, env, url, ctx) {
       await logEvent(env, {
         level: r.sent ? "info" : "warn", account_id: 1,
         kind: r.sent ? "intake.notified" : (r.skipped ? "intake.notify_skipped" : "intake.notify_failed"),
-        detail: r.sent ? `to ${r.to.join(", ")}` : (r.reason || `${r.status || ""} ${r.error || ""}`.trim()),
+        // Names who got it AND who did not: with an unverified domain Resend refuses everyone
+        // but the account owner, and that is worth seeing per address rather than as one failure.
+        detail: r.sent
+          ? `to ${r.to.join(", ")}${r.failed?.length ? ` · not delivered: ${r.error}` : ""}`
+          : (r.reason || r.error || `${r.status || ""}`.trim()),
       });
     } catch (err) {
       await logEvent(env, { level: "warn", kind: "intake.notify_failed", account_id: 1, detail: String(err?.message || err).slice(0, 300) });

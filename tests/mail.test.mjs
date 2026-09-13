@@ -29,11 +29,20 @@ console.log("\nMail — the adapter");
   const ok = await sendEmail({ EMAIL_API_KEY: "re_x" }, { to: "a@x.com, b@y.org", subject: "New form", text: "hello", html: "<p>hello</p>", replyTo: "n@x.com" }, fetchOk);
   const body = JSON.parse(calls[0].init.body);
   check("with a key it POSTs to Resend with a bearer token", calls[0].url === RESEND_URL && calls[0].init.headers.Authorization === "Bearer re_x");
-  check("...with from, both recipients, subject, text, html and reply_to", body.from === DEFAULT_FROM && body.to.length === 2 && body.subject === "New form" && body.text === "hello" && body.html === "<p>hello</p>" && body.reply_to === "n@x.com");
-  check("...and reports sent with the provider id", ok.sent === true && ok.id === "em_1" && ok.to.length === 2);
+  check("...ONE request per recipient, so a refused address cannot block the others", calls.length === 2 && body.to.length === 1 && JSON.parse(calls[1].init.body).to[0] === "b@y.org",
+    "Resend rejects a whole request if any recipient is disallowed; unverified domains allow only the owner");
+  check("...with from, subject, text, html and reply_to", body.from === DEFAULT_FROM && body.subject === "New form" && body.text === "hello" && body.html === "<p>hello</p>" && body.reply_to === "n@x.com");
+  check("...and reports sent with the provider id and everyone who got it", ok.sent === true && ok.id === "em_1" && ok.to.length === 2 && ok.failed.length === 0);
+  // The exact production shape: owner allowed, co-recipient refused by testing mode.
+  const fetchMixed = async (url, init) => { const rc = JSON.parse(init.body).to[0]; return rc === "owner@x.com"
+    ? { ok: true, status: 200, json: async () => ({ id: "em_ok" }), text: async () => "" }
+    : { ok: false, status: 403, json: async () => ({}), text: async () => '{"message":"You can only send testing emails to your own email address"}' }; };
+  const mixed = await sendEmail({ EMAIL_API_KEY: "re_x" }, { to: "owner@x.com, other@y.org", subject: "s", text: "t" }, fetchMixed);
+  check("a refused co-recipient does NOT take the owner's copy down with it", mixed.sent === true && mixed.to.join() === "owner@x.com" && mixed.failed.length === 1 && /other@y\.org: 403/.test(mixed.error));
   const fetch500 = async () => ({ ok: false, status: 422, text: async () => '{"message":"domain not verified"}', json: async () => ({}) });
   const bad = await sendEmail({ EMAIL_API_KEY: "re_x" }, { to: "a@x.com", subject: "s", text: "t" }, fetch500);
   check("a non-2xx comes back as sent:false with the status and Resend's reason", bad.sent === false && bad.skipped === false && bad.status === 422 && /domain not verified/.test(bad.error));
+  check("...and the outcome names the address that failed", /a@x\.com: 422/.test(bad.error));
   const fetchThrow = async () => { throw new Error("ECONNRESET"); };
   const thrown = await sendEmail({ EMAIL_API_KEY: "re_x" }, { to: "a@x.com", subject: "s", text: "t" }, fetchThrow);
   check("a network failure never throws out of the adapter", thrown.sent === false && /ECONNRESET/.test(thrown.error));
