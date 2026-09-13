@@ -60,7 +60,7 @@ check("...logging notified / notify_skipped / notify_failed as three distinct ou
 check("the reply-to is the customer, so answering the email answers them", /replyTo: data\.contact_email/.test(idx));
 check("INTAKE_TO falls back to REPORT_TO", /env\.INTAKE_TO \|\| env\.REPORT_TO/.test(idx));
 check("the weekly report send is no longer a 501 stub", !/send adapter is not written yet/.test(idx) && /kind: out\.sent \? "report\.sent" : "report\.send_failed"/.test(idx));
-check("the deploy pushes the key from a GitHub secret only when set", /if: \$\{\{ secrets\.EMAIL_API_KEY != '' \}\}/.test(wf) && /wrangler secret put EMAIL_API_KEY/.test(wf));
+check("the deploy pushes the key from a GitHub secret only when set (job-level env; secrets.* is illegal in a step if:)", /env:\s*\n\s*EMAIL_API_KEY: \$\{\{ secrets\.EMAIL_API_KEY \}\}\s*\n\s*steps:/.test(wf) && /if: \$\{\{ env\.EMAIL_API_KEY != '' \}\}/.test(wf) && !/if: \$\{\{ secrets\./.test(wf) && /wrangler secret put EMAIL_API_KEY/.test(wf));
 check("...and passes recipients as variables, not secrets", /--var INTAKE_TO:"\$\{\{ vars\.INTAKE_TO \}\}"/.test(wf) && /--var REPORT_TO:"\$\{\{ vars\.REPORT_TO \}\}"/.test(wf));
 check("this suite runs in CI", /mail\.test\.mjs/.test(pkg.scripts.test));
 
