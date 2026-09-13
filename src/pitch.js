@@ -194,8 +194,8 @@ export function pitchHtml(o = OFFER) {
   (function(){
     var $ = function(id){ return document.getElementById(id); };
     function fmt(n){ return n >= 100 ? Math.round(n).toLocaleString("en-US") : (Math.round(n * 10) / 10).toLocaleString("en-US"); }
-    // Input ids are prefixed: a section on this page is id="closersIn", and a range with the same id
-    // made getElementById return the section, so the calculator opened on NaN. Found by looking.
+    // Input ids are prefixed. A section on this page has the id closers, and a range that shared
+    // it made getElementById return the section, so the calculator opened on NaN. Found by looking.
     function calc(){
       var c = +$("inClosers").value, d = +$("inPerday").value, m = +$("inMins").value;
       $("cOut").textContent = c; $("dOut").textContent = d; $("mOut").textContent = m + " min";
