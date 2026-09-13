@@ -1320,3 +1320,4 @@ body.workspace .detail-header > .dh-top { max-width:1120px; margin-inline:auto; 
 .in-k{ color:var(--ink-400); text-transform:capitalize; }
 .in-v{ color:var(--ink-800); white-space:pre-wrap; overflow-wrap:anywhere; }
 @media (max-width:640px){ .in-kv{ grid-template-columns:1fr; gap:2px; } }
+.in-actions{ display:flex; justify-content:flex-end; padding-top:4px; }

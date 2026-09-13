@@ -91,6 +91,8 @@ check("the body is capped before it is parsed", /raw\.length > INTAKE_MAX_BYTES/
 check("unknown fields are dropped, known ones are capped", (() => { const o = sanitizeIntake({ company: "X", api_key: "sk-secret", closers: "a".repeat(5000) }); return !("api_key" in o) && o.closers.length === 4000 && o.company === "X"; })());
 check("the form declares no key field, and the sanitiser has none to keep", !INTAKE_FIELDS.some(f => /key|token|secret|password/i.test(f)) && !/name="(api_key|fathom_key|claude_key|ghl_token)"/.test(onboard));
 check("the admin GET refuses a member", /path === "\/api\/intake" && method === "GET"[\s\S]{0,120}user\.role !== "admin"/.test(idx));
+check("an admin can remove a single form, and it is logged", idx.includes('path.match(/^\\/api\\/intake\\/(\\d+)$/)') && /DELETE FROM intake WHERE id = \?/.test(idx) && /kind: "intake\.removed"/.test(idx)
+  && /inDel && method === "DELETE"[\s\S]{0,80}user\.role !== "admin"/.test(idx));
 check("the IP is stored as a hint, never whole", /replace\(\/\\\.\\d\+\$\/, "\.x"\)/.test(idx));
 
 console.log("\nPages — adaptive and honest to the eye");

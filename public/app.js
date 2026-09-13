@@ -2874,7 +2874,8 @@ async function renderAccess() {
         <strong>${esc(r.company || "")}</strong>
         <span class="in-contact">${esc(r.contact || "")}</span>
         <span class="in-n">${closers} closer${closers === 1 ? "" : "s"}</span>
-      </summary><div class="in-body">${detail || '<div class="in-kv"><span class="in-v">Nothing beyond the header.</span></div>'}</div></details>`;
+      </summary><div class="in-body">${detail || '<div class="in-kv"><span class="in-v">Nothing beyond the header.</span></div>'}
+        <div class="in-actions"><button class="chip in-remove" data-intake="${r.id}" type="button">Remove this form</button></div></div></details>`;
   }).join("");
 
   const rows = users.map(u => `<tr>
@@ -2912,6 +2913,12 @@ async function renderAccess() {
        <span class="sp-msg" id="nuMsg"></span>
      </div>`
      : `<div class="insight-note">Spend, Integrations and backups are admin-only on this account.</div>`}`);
+
+  document.querySelectorAll(".in-remove").forEach(b => b.addEventListener("click", async () => {
+    if (!confirm("Remove this onboarding form? The closers on it will not be added as logins automatically.")) return;
+    try { await api.req("DELETE", `/intake/${b.dataset.intake}`); toast("Form removed"); renderAccess(); }
+    catch (e) { toast(e.message || "Could not remove it"); }
+  }));
 
   $("#pwSave").addEventListener("click", async () => {
     const msg = $("#pwMsg"); msg.textContent = "Saving…";

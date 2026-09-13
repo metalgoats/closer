@@ -878,6 +878,7 @@ console.log("\n== Onboarding intake reaches the Account & Access page (TASK-131)
   check("...with a blank key field never shown as a row", !/api key/.test(h));
   T.state.user = { email: "rep@x.com", role: "member" };
   await T.VIEWS.access();
+  check("each form carries a Remove button bound to its id", /class="chip in-remove" data-intake="1"/.test(h));
   check("a member is shown no intake at all", !/Onboarding forms received/.test((reg.get("#detailPane") || {})._html || ""));
   T.state.user = { email: "boss@x.com", role: "admin" };
 }

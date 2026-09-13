@@ -800,6 +800,17 @@ async function route(request, env, url, ctx) {
     return json({ intake: results.map(r => ({ ...r, data: JSON.parse(r.data_json || "{}"), data_json: undefined })) });
   }
 
+  // Remove one intake row. Admin only. Test submissions and duplicates are the use; a customer's
+  // real form is worth keeping until their closers are logins, which is why this is a per-row
+  // button and not a bulk clear.
+  const inDel = path.match(/^\/api\/intake\/(\d+)$/);
+  if (inDel && method === "DELETE") {
+    if (user.role !== "admin") return json({ error: "forbidden" }, 403);
+    await env.DB.prepare("DELETE FROM intake WHERE id = ?").bind(Number(inDel[1])).run();
+    await logEvent(env, { kind: "intake.removed", account_id: 1, detail: `#${inDel[1]} by ${user.email}` });
+    return json({ ok: true });
+  }
+
   // ---- people: the manager tier (TASK-118) ----
   //
   // ADMIN ONLY, and the gate above is the boundary — this is every rep's scores in one place,
