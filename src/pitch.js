@@ -1,15 +1,21 @@
-// The proposal for Nathan (TASK-131). A hidden page, same mechanism as the pricing report: the
-// URL is the credential, served noindex, never in public/.
+// The proposal for Nathan (TASK-131, reshaped 14 Sep). A hidden page, same mechanism as the
+// pricing report: the URL is the credential, served noindex, never in public/.
 //
 // THIS PAGE IS READ BY A CUSTOMER. Nothing on it may be internal: no infrastructure cost, no
 // margin, no mention of what keys we hold, no quotes from calls, no partner names beyond the
 // people he will actually meet. tests/pages.test.mjs greps for the things that must not leak.
 //
-// Shape, deliberately: Donald Miller's StoryBrand for the spine (the customer is the hero, we
-// are the guide, three-step plan, stakes, success), and Alex Hormozi's offer construction for
-// the close (dream outcome, likelihood, speed, effort; the value stack; risk reversal; a price
-// anchored against the cost of the problem rather than against our cost). Every number the page
-// asserts about the customer's time is an ESTIMATE, labelled as one, and adjustable.
+// 14 Sep call: Gabriel wanted "the original version" -- the structure and the simple hours
+// calculator this page has always had -- with his language on it and the agreement's terms.
+// What changed: the problem line ("The sales floor is about to scale faster than manual call
+// review can"), "from one dashboard", "Training starts with the moment", Today / With CloserAI;
+// no monetary value put on the hours, ever; the offer is the Founding Partner Deployment for
+// On Screen Authority with the first 30 days included in activation and the monthly from day 31;
+// $47 per additional seat, closer or administrator, same price; the "why the pricing is different
+// right now" block and the 30-Day Deployment Guarantee summarised from the agreement; four steps
+// from payment to live; the payment button stays; the onboarding link and the booking button are
+// OFF this page -- Gabriel sends the onboarding page himself once funds are collected.
+// The 13 September version is frozen at its own URL (src/pitch_snapshot.js) for comparison.
 import { shell, pageResponse, tokenMatches } from "./pagekit.js";
 
 export const PITCH_TOKEN = "3abd3a2c0ec5861ba624a58f00d10900";
@@ -30,15 +36,16 @@ export const PITCH_TOKEN = "3abd3a2c0ec5861ba624a58f00d10900";
 // tests/pages.test.mjs pins each of these so none can quietly return.
 export const OFFER = Object.freeze({
   client: "Nathan",
-  activation: 1997,
+  business: "On Screen Authority",
+  activation: 1997,        // one time; includes implementation and the first 30 days (agreement s.21)
+  includedDays: 30,        // the monthly begins on day 31
   monthly: 197,
   includedSeats: 3,
   includedAdmins: 1,
-  extraSeat: 47,           // per additional closer, per month (Ivan, 2026-09-13; was 150 the day before)
-  trialDays: 7,            // on the client's own key (Ivan, 2026-09-12)
-  payUrl: "https://collectcheckout.com/r/mf1hanjol0xg7bghwayjn7audrulq0",   // Gabriel's card-payment link (2026-09-12)
-  bookUrl: "https://calendly.com/ivanlizarde/onboarding",                   // Ivan's Calendly (2026-09-12)
-  onboardingPath: null,    // filled by index.js from the onboarding page's token
+  extraSeat: 47,           // per additional seat, closer OR administrator, same price (Gabriel, 14 Sep)
+  payUrl: "https://collectcheckout.com/r/mf1hanjol0xg7bghwayjn7audrulq0",   // card payment (2026-09-12)
+  bookUrl: null,           // booking lives on the onboarding page, which Gabriel sends after payment
+  onboardingPath: null,    // deliberately NOT linked from the proposal (Gabriel, 14 Sep)
 });
 
 const money = n => "$" + Number(n).toLocaleString("en-US");
@@ -57,36 +64,30 @@ export function pitchHtml(o = OFFER) {
   const payBtn = o.payUrl
     ? `<a class="btn primary" href="${o.payUrl}" target="_blank" rel="noopener">Start CloserAI</a>`
     : `<span class="btn primary" aria-disabled="true">Start CloserAI</span><span class="cta-note">Your payment link arrives with this proposal.</span>`;
-  const bookBtn = o.bookUrl
-    ? `<a class="btn ghost" href="${o.bookUrl}" rel="noopener">Book the 30-minute setup call</a>`
-    : `<span class="cta-note">We send you a link to book your 30-minute setup call the moment payment clears.</span>`;
-  const extraSeat = o.extraSeat ? `${money(o.extraSeat)} per additional closer, per month.` : `Additional closers: ask us, and we will quote your exact floor.`;
-  const trial = o.trialDays ? `<li><strong>${o.trialDays}-day trial</strong> on your own calls before the monthly starts.</li>` : ``;
-  const onboardLink = o.onboardingPath ? `<a href="${o.onboardingPath}">the onboarding page</a>` : `the onboarding page we send with this proposal`;
+
 
   const body = `
   <header class="hero">
-    <p class="eyebrow">Prepared for ${o.client}</p>
+    <p class="eyebrow">Prepared for ${o.client} &middot; ${o.business}</p>
     <h1>Coach every closer like you sat in on every call.</h1>
-    <p class="standfirst">CloserAI reads and scores every recorded call, writes the follow-up and the CRM note, and shows you who is winning and who is stuck, on one page. Say yes, and the setup call does the rest.</p>
+    <p class="standfirst">CloserAI reads and scores every recorded call, writes the follow-up and the CRM note, and shows you who is winning and who is stuck, on one dashboard.</p>
     <div class="meta"><span class="tag">Runs on your recordings</span><span class="tag">Your CRM, connected</span><span class="tag">Set up on one call</span><span class="tag">Monthly, no contract</span></div>
   </header>
 
   <section id="why" class="reveal">
     <p class="kicker">The problem</p>
-    <h2>A sales floor makes more calls than anyone can review.</h2>
-    <p class="lede">So the reviewing does not happen, the follow-up goes out that evening if it goes out at all, and training runs on whichever call somebody remembers.</p>
+    <h2>The sales floor is about to scale faster than manual call review can.</h2>
     <div class="grid3">
       <div class="card"><div class="ch">Your reps</div><div class="n">15&ndash;20 min</div><p>of admin after every call, if they do it properly: notes, the text, the email, the CRM.</p></div>
-      <div class="card"><div class="ch">You</div><div class="n">0 of 200</div><p>calls a month actually reviewed, because there is no hour in the week where that fits.</p></div>
-      <div class="card"><div class="ch">Training</div><div class="n">15&ndash;20 min</div><p>lost per session finding the right moment in the right recording, then asking who wants to volunteer.</p></div>
+      <div class="card"><div class="ch">Your management</div><div class="n">0 of 200</div><p>calls a month actually reviewed, because there is no hour in the week where that fits.</p></div>
+      <div class="card"><div class="ch">Your training</div><div class="n">15&ndash;20 min</div><p>lost per session finding the right moment in the right recording, then asking who wants to volunteer.</p></div>
     </div>
     <p>None of that is a discipline problem. It is a volume problem, and volume is exactly what software is for.</p>
   </section>
 
   <section id="closers" class="reveal">
     <p class="kicker">At the rep level</p>
-    <h2>What each closer gets, after every call</h2>
+    <h2>What each closer gets after each call</h2>
     <ul class="checks">
       <li><strong>A scorecard for the call</strong>, on the dimensions you care about: rapport, discovery, pain, objection handling, the close, the follow-up. Out of ten, with the reason.</li>
       <li><strong>The follow-up, written.</strong> A text and an email drafted from what the prospect actually said, in the tone you set, ready to send or edit.</li>
@@ -99,7 +100,7 @@ export function pitchHtml(o = OFFER) {
 
   <section id="you" class="reveal">
     <p class="kicker">At your level</p>
-    <h2>What you see, from one page</h2>
+    <h2>What you see, from one dashboard</h2>
     <ul class="checks">
       <li><strong>The whole team on one page.</strong> Calls, scored calls, average, hours on the phone, last call, per person.</li>
       <li><strong>Each person, in depth.</strong> Every dimension with its average, the range, and how it has moved week by week.</li>
@@ -112,9 +113,9 @@ export function pitchHtml(o = OFFER) {
 
   <section id="training" class="reveal">
     <p class="kicker">Training day</p>
-    <h2>The session starts with the moment, not the search for it</h2>
+    <h2>Training starts with the moment, not the search for it</h2>
     <div class="ba">
-      <div class="before"><div class="bh">Before</div><p>Pull up a recording. Scrub. Wrong one. Try another. Ask who wants to go first. Twenty minutes gone, and the example is whatever someone remembered.</p></div>
+      <div class="before"><div class="bh">Today</div><p>Pull up a recording. Scrub. Wrong one. Try another. Ask who wants to go first. Twenty minutes gone, and the example is whatever someone remembered.</p></div>
       <div class="after"><div class="bh">With CloserAI</div><p>Open Vera. "Which three moments should I bring to training this week?" Each one links to its timestamp. The group watches the exact second, then the scorecard for it, then what the rep did next.</p></div>
     </div>
     <p>The examples come from your floor, this week, with the numbers attached. Coaching stops being an opinion about a call and becomes a conversation about a moment.</p>
@@ -137,7 +138,7 @@ export function pitchHtml(o = OFFER) {
         <div class="cell span"><div class="k">Calls reviewed for you</div><div class="v" id="calls">&mdash;</div><div class="n">every week, scored and searchable. Today: none.</div></div>
       </div>
     </div>
-    <p class="cta-note">Estimates, from your inputs. Returned time does not convert one-for-one into revenue; that is why it is shown as hours and not as dollars.</p>
+    <p class="cta-note">Estimates, from your inputs.</p>
   </section>
 
   <section id="connects" class="reveal">
@@ -145,57 +146,75 @@ export function pitchHtml(o = OFFER) {
     <h2>It connects to what you already run</h2>
     <div class="grid3">
       <div class="card"><div class="ch">Recordings</div><h4>Fathom</h4><p>Your Zoom, Meet and Teams calls arrive on their own, with the transcript. Nothing to upload.</p></div>
-      <div class="card"><div class="ch">CRM</div><h4>GoHighLevel</h4><p>Connected with a private integration token from your own account. No marketplace app, no approval wait. Which closer took the call and which setter booked it come across from it.</p></div>
-      <div class="card"><div class="ch">Intelligence</div><h4>Your own AI account</h4><p>The analysis runs on an API key you own, with Claude or OpenAI. Your calls, your account, your control; you can revoke it any day.</p></div>
+      <div class="card"><div class="ch">CRM</div><h4>GoHighLevel</h4><p>Connected with a private integration token from your own account. No marketplace app, no approval wait. Closer and setter attribution flow from it.</p></div>
+      <div class="card"><div class="ch">AI</div><h4>Your own AI account</h4><p>The analysis runs on an AI account you own, from Anthropic (Claude) or OpenAI, connected with an API key you control and can revoke any day.</p></div>
     </div>
-    <div class="note good"><div class="note-h">&#9679; What that means for your data</div><p>Your recordings stay with your recorder. The analysis runs on an account you own. Card details go to Stripe's own pages and never touch CloserAI. And there is no annual contract holding any of it in place.</p></div>
+    <div class="note good"><div class="note-h">&#9679; Your data stays with you</div><p>Your recordings stay with your recorder. The analysis runs on an account you own. Card details go to the payment processor's own pages and never touch CloserAI. And there is no annual contract holding any of it in place.</p></div>
   </section>
 
   <section id="offer" class="reveal">
     <p class="kicker">The offer</p>
-    <h2>Everything above, for your floor</h2>
+    <h2>CloserAI &middot; Founding Partner Deployment for ${o.business}</h2>
     <div class="offer">
-      <div class="oh">CloserAI for ${o.client}</div>
+      <div class="oh">The terms</div>
       <div class="price">
-        <div><div class="l">To start</div><div class="p">${money(o.activation)}<small>one time</small></div></div>
-        <div><div class="l">Then</div><div class="p">${money(o.monthly)}<small>per month</small></div></div>
+        <div><div class="l">Activation</div><div class="p">${money(o.activation)}<small>one time</small></div></div>
+        <div><div class="l">After the first ${o.includedDays} days</div><div class="p">${money(o.monthly)}<small>per month</small></div></div>
       </div>
       <ul class="checks">
-        <li><strong>${o.includedSeats} closers and ${o.includedAdmins} administrator</strong> included in the monthly.</li>
-        <li><strong>Setup done for you</strong>: Fathom and GoHighLevel connected, your rubric written with you, your team invited, your first calls scored on the setup call.</li>
-        <li><strong>Everything on this page</strong>: scorecards, follow-ups, CRM notes, the team page, timestamps into the recording, Vera, the weekly picture.</li>
+        <li><strong>The first ${o.includedDays} days are included</strong> in the activation. The monthly begins on day ${o.includedDays + 1}.</li>
+        <li><strong>${o.includedSeats} closers and ${o.includedAdmins} administrator</strong> in the monthly. <strong>${money(o.extraSeat)} per month for each additional seat</strong>, closer or administrator, same price, each with their own login and their own dashboard.</li>
+        <li><strong>Deployment done for you</strong>: Fathom and GoHighLevel connected, your rubric written with you, your team invited, your first calls scored on the setup call.</li>
+        <li><strong>Everything on this page</strong>: scorecards, follow-ups, CRM notes, the team dashboard, timestamps into the recording, Vera.</li>
         <li><strong>Your rubric, your tone, your prompts</strong>, editable by you at any time.</li>
-        ${trial}
-        <li><strong>Monthly. No annual contract.</strong> Cancel any month and keep your data.</li>
+        <li><strong>Monthly. No annual contract.</strong> Cancel any month; your data is your own.</li>
       </ul>
-      <p class="fine">${extraSeat} Each additional business you run gets its own account, its own CRM connection and its own invoice.</p>
+      <p class="fine">Each additional business you run gets its own account, its own CRM connection and its own invoice.</p>
     </div>
-    <div class="note"><div class="note-h">&#9679; For scale</div><p>Enterprise conversation-intelligence platforms charge five figures to switch on, bill annually, and take a month or more to implement. CloserAI turns on in one setup call, is billed monthly, and is built for a floor of three to twenty closers rather than a call centre of three hundred.</p></div>
+
+    <h3>Why the pricing is different right now</h3>
+    <p>You are getting CloserAI before the broader public rollout. That matters: we are intentionally working with a small number of businesses to refine the product against real sales floors, and the price reflects that. In exchange for early access, ${o.business} receives:</p>
+    <ul class="checks">
+      <li><strong>Founding-partner pricing</strong>, held for as long as the account stays active.</li>
+      <li><strong>Direct access to the people building it</strong>, not a support queue.</li>
+      <li><strong>A say in what gets built next.</strong> Your feedback shapes the roadmap while it is still being drawn.</li>
+      <li><strong>Hands-on deployment and training</strong> for your reps and your administrators, live, in your first ${o.includedDays} days.</li>
+    </ul>
+
+    <h3>The ${o.includedDays}-Day CloserAI Deployment Guarantee</h3>
+    <p>From the moment you activate, we have ${o.includedDays} days to get the system live inside your CRM, delivering your data the way you need it, with your reps and administrators seeing what they need to see. Anything that is not working, we troubleshoot with you.</p>
+    <ul class="checks">
+      <li><strong>If, at day ${o.includedDays}, the core functionality is not delivered</strong> and that is on us, your monthly billing does not start. We work with you for another ${o.includedDays} days at no charge.</li>
+      <li><strong>If it is still not delivered at the end of that second period</strong>, and you have held up your side, the activation fee is refunded.</li>
+      <li><strong>Your side of it</strong>: book onboarding within 72 hours of activation, give us the access we need, keep at least 80% of eligible sales calls flowing through the system, have your team actually use it, and tell us about problems within two business days of seeing them.</li>
+      <li>It is a guarantee of a working deployment. It is not a guarantee of sales, revenue or close rate; those stay yours.</li>
+    </ul>
+    <p class="cta-note">The full terms are in the CloserAI Software &amp; Implementation Services Agreement, which comes with your activation.</p>
   </section>
 
   <section id="next" class="reveal">
-    <p class="kicker">Next</p>
-    <h2>Three steps</h2>
+    <p class="kicker">From payment to live</p>
+    <h2>Four steps</h2>
     <ol class="steps">
-      <li><h4>Say yes</h4><p>Pay the activation through the link, and fill in a short form so we know your team, your CRM and who books your calls.</p></li>
-      <li><h4>The setup call</h4><p>Thirty minutes on screen with us. Your recordings and your CRM get connected and tested live, your rubric is written with you, your team is invited.</p></li>
-      <li><h4>Scorecards start</h4><p>Your closers get a scorecard and a written follow-up after every call, and you read the team page.</p></li>
+      <li><h4>Activate</h4><p>Complete the activation payment. Right after, you get the onboarding form: your team, your CRM, who books your calls.</p></li>
+      <li><h4>Onboarding</h4><p>Book your onboarding call within 72 hours, with the short homework that comes with it, so the call is spent connecting, not collecting.</p></li>
+      <li><h4>Deployment</h4><p>On the call, your recordings and your CRM are connected and tested live, your rubric is written with you, and your team is invited.</p></li>
+      <li><h4>Your first ${o.includedDays} days</h4><p>We run it with you. Your reps use it on real calls; we train your reps and your administrators live, and the training is recorded for everyone who joins later.</p></li>
     </ol>
     <div class="cta-row">${payBtn}</div>
-    <div class="cta-row">${bookBtn}</div>
-    <p>Everything we will need from you is on ${onboardLink}.</p>
   </section>
 
   <section id="faq" class="reveal">
     <p class="kicker">Questions</p>
     <h2>The ones people ask</h2>
     <details><summary>Where do the recordings come from?</summary><p>From Fathom, on your team's Zoom, Google Meet or Teams calls. If your closers already record, nothing changes for them. If they do not, Fathom takes ten minutes to set up per person and we do it on the setup call.</p></details>
-    <details><summary>Who can see what?</summary><p>You see the whole floor. Each closer sees only their own calls, scorecards and drafts. That boundary is enforced by the system, not by asking anyone to be discreet.</p></details>    <details><summary>Can I change how calls are scored?</summary><p>Yes. The rubric and the prompt behind it are yours to edit, per call type. Change them and every call from then on is scored the new way.</p></details>
-    <details><summary>What does it cost to run?</summary><p>The subscription, plus the usage on your own AI account, any frontier model with API access. Measured on real calls, that runs between fifty cents and a dollar a call, depending on the model you pick. You see that bill directly.</p></details>
+    <details><summary>Who can see what?</summary><p>You see the whole floor. Each closer sees only their own calls, scorecards and drafts. That boundary is enforced by the system, not by asking anyone to be discreet.</p></details>
+    <details><summary>Can I change how calls are scored?</summary><p>Yes. The rubric and the prompt behind it are yours to edit, per call type. Change them and every call from then on is scored the new way.</p></details>
+    <details><summary>What does it cost to run?</summary><p>The subscription, plus the usage on your own AI account, any frontier model with API access. Measured on real calls, that runs between fifty cents and a dollar a call. You see that bill directly; nothing is marked up or pooled.</p></details>
     <details><summary>What if I stop?</summary><p>Cancel any month. Your recordings are in your recorder and your CRM notes are in your CRM. Your data is your own.</p></details>
   </section>
 
-  <footer>CloserAI &middot; Prepared for ${o.client} &middot; This page is private to its link.</footer>`;
+  <footer>CloserAI &middot; Prepared for ${o.client}, ${o.business} &middot; This page is private to its link.</footer>`;
 
   const extraJs = `
   (function(){

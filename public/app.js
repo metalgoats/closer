@@ -2882,7 +2882,7 @@ async function renderAccess() {
       <td>${esc(u.email)}${u.id === state.user.id ? ` <span class="sp-id">you</span>` : ""}</td>
       <td><span class="status-chip ${u.role === "admin" ? "" : "status-off"}">${esc(u.role)}</span></td>
       <td class="sp-num">${esc((u.created_at || "").slice(0, 10))}</td>
-    </tr>`).join("");
+    <td class="sp-num">${u.last_seen_at ? esc(String(u.last_seen_at).slice(0, 16).replace("T", " ")) : "&mdash;"}</td></tr>`).join("");
 
   viewShell("Account &amp; Access",
     `Signed in as ${esc(state.user.email)} — ${esc(state.user.role || "member")}`,
@@ -2900,8 +2900,9 @@ async function renderAccess() {
      ${intakeRows || '<div class="in-empty">None yet. When a customer submits the onboarding form it appears here and in Activity.</div>'}
      <h4>People with a login</h4>
      <div style="overflow-x:auto;"><table class="ev-table sp-table"><thead><tr>
-        <th>Email</th><th>Role</th><th class="sp-num">Added</th>
-     </tr></thead><tbody>${rows || `<tr><td colspan="3" style="color:var(--ink-400); padding:14px;">Just you.</td></tr>`}</tbody></table></div>
+        <th>Email</th><th>Role</th><th class="sp-num">Added</th><th class="sp-num">Last seen</th>
+     </tr></thead><tbody>${rows || `<tr><td colspan="4" style="color:var(--ink-400); padding:14px;">Just you.</td></tr>`}</tbody></table></div>
+     <div class="insight-note">Last seen is the most recent sign-in or activity, to the hour. It is the record the deployment guarantee points at when it asks whether a floor is actually using the product.</div>
 
      <h4>Add a login</h4>
      <div class="insight-note">A <b>member</b> can read calls, debriefs, outputs and Activity. They cannot open Spend or Integrations, and cannot download a backup — that last one matters most, because a backup is every transcript of every call.</div>

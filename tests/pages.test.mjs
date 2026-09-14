@@ -1,6 +1,7 @@
 // The proposal and onboarding pages (TASK-131). Two audiences read these: a customer, and the
 // internet if the link ever leaks. So the assertions are mostly about what must NOT be on them.
 import { pitchHtml, pitchResponse, PITCH_TOKEN, OFFER } from "../src/pitch.js";
+import { snapshotHtml, snapshotResponse, SNAPSHOT_TOKEN, SNAPSHOT_OFFER } from "../src/pitch_snapshot.js";
 import { onboardHtml, onboardResponse, ONBOARD_TOKEN, sanitizeIntake, INTAKE_FIELDS, INTAKE_MAX_BYTES } from "../src/onboard.js";
 import { REPORT_TOKEN } from "../src/pricingreport.js";
 import { PAGE_CSS } from "../src/pagekit.js";
@@ -18,15 +19,15 @@ const pitch = pitchHtml({ ...OFFER, onboardingPath: "/r/x" });
 const onboard = onboardHtml();
 
 console.log("\nPages — three tokens, three doors");
-check("the three page tokens are distinct 128-bit hex", new Set([PITCH_TOKEN, ONBOARD_TOKEN, REPORT_TOKEN]).size === 3
-  && [PITCH_TOKEN, ONBOARD_TOKEN].every(t => /^[0-9a-f]{32}$/.test(t)));
+check("the four page tokens are distinct 128-bit hex", new Set([PITCH_TOKEN, ONBOARD_TOKEN, REPORT_TOKEN, SNAPSHOT_TOKEN]).size === 4
+  && [PITCH_TOKEN, ONBOARD_TOKEN, SNAPSHOT_TOKEN].every(t => /^[0-9a-f]{32}$/.test(t)));
 check("a wrong token yields nothing, not a 404 page", pitchResponse("/r/" + "0".repeat(32)) === null && onboardResponse("/r/nope") === null);
 {
   const r = pitchResponse("/r/" + PITCH_TOKEN);
   check("the right token serves HTML with noindex and no-store", r && r.headers.get("X-Robots-Tag").includes("noindex") && /no-store/.test(r.headers.get("Cache-Control")));
 }
-check("the dispatcher tries all three pages and hands the proposal the onboarding link",
-  /reportResponse\(url\.pathname\)\s*\|\| pitchResponse\(url\.pathname, \{ onboardingPath \}\)\s*\|\| onboardResponse\(/.test(idx));
+check("the dispatcher tries all four pages",
+  /reportResponse\(url\.pathname\)\s*\|\| pitchResponse\(url\.pathname, \{ onboardingPath \}\)\s*\|\| snapshotResponse\(url\.pathname\)\s*\|\| onboardResponse\(/.test(idx));
 
 console.log("\nPages — nothing internal reaches the customer");
 // Every phrase here has appeared in an internal document about this product.
@@ -41,23 +42,20 @@ check("the proposal never claims the CRM note is pushed into the CRM (it is past
 check("...and the in-app release note no longer claims it either", !/CRM notes push/.test(app) && /ready to paste/.test(app));
 check("the proposal does not promise the weekly email, which has no sender configured", !/weekly (email|report)/i.test(pitch));
 
-console.log("\nPages — the commercial terms live in ONE place");
+console.log("\nPages — the commercial terms live in ONE place (14 Sep terms)");
 check("price, seats and links come from the OFFER constant", pitch.includes("$1,997") && pitch.includes("$197") && /3 closers and 1 administrator/.test(pitch)
   && /export const OFFER = Object\.freeze/.test(readFileSync(join(here, "..", "src", "pitch.js"), "utf8")));
-check("an unset extra-seat price says 'ask us' rather than inventing a number", /Additional closers: ask us/.test(pitchHtml({ ...OFFER, extraSeat: null })));
-check("the decided extra-seat price renders on the live page", OFFER.extraSeat === 47 && /\$47 per additional closer, per month/.test(pitch));
-check("an unset payment link degrades to honest copy, with the button disabled", (() => { const h = pitchHtml({ ...OFFER, payUrl: null, bookUrl: null }); return /aria-disabled="true">Start CloserAI/.test(h) && /payment link arrives/.test(h) && /send you a link to book/.test(h); })());
-check("the live page carries the real payment and booking links, opened safely",
-  /href="https:\/\/collectcheckout\.com\/r\/[a-z0-9]+" target="_blank" rel="noopener">Start CloserAI/.test(pitch)
-    && /href="https:\/\/calendly\.com\/ivanlizarde\/onboarding" rel="noopener">Book the 30-minute setup call/.test(pitch)
-    && !/<span class="btn primary" aria-disabled="true"/.test(pitch));   // the CSS rule for the disabled state is not a disabled button
-check("...and the onboarding page gets the same two links from the same constant",
-  /collectcheckout\.com/.test(onboardHtml({ payUrl: OFFER.payUrl, bookUrl: OFFER.bookUrl })) && /calendly\.com\/ivanlizarde\/onboarding/.test(onboardHtml({ payUrl: OFFER.payUrl, bookUrl: OFFER.bookUrl })));
-check("an unset trial length omits the trial line instead of guessing", !/-day trial/.test(pitchHtml({ ...OFFER, trialDays: null })));
-check("the decided trial renders on the live page", OFFER.trialDays === 7 && /7-day trial/.test(pitch));
-check("the H1 names the customer's outcome, not our mechanism (StoryBrand)", /<h1>Coach every closer like you sat in on every call\.<\/h1>/.test(pitch)
-  && /Say yes, and the setup call does the rest\./.test(pitch) && !/seven days/i.test(pitch), "the header must pass the grunt test: what, how life gets better, what to do; and it must not promise a day count");
-check("the proposal links to the onboarding page when given its path", /href="\/r\/x"/.test(pitch));
+check("the first 30 days are included in activation and the monthly begins on day 31; no 'trial' anywhere",
+  OFFER.includedDays === 30 && /first 30 days are included/.test(pitch) && /begins on day 31/.test(pitch) && !/trial/i.test(pitch) && !("trialDays" in OFFER));
+check("$47 per additional seat, closer OR administrator, same price", OFFER.extraSeat === 47 && /\$47 per month for each additional seat<\/strong>, closer or administrator, same price/.test(pitch));
+check("the offer is the Founding Partner Deployment for the customer's business", /Founding Partner Deployment for On Screen Authority/.test(pitch) && OFFER.business === "On Screen Authority");
+check("the 'why the pricing is different right now' block and the guarantee are on the page",
+  /Why the pricing is different right now/.test(pitch) && /30-Day CloserAI Deployment Guarantee/.test(pitch) && /book onboarding within 72 hours/.test(pitch) && /80% of eligible sales calls/.test(pitch));
+check("...and the guarantee says what it is not", /not a guarantee of sales, revenue or close rate/.test(pitch));
+check("the payment button is live and opens in a new tab", /href="https:\/\/collectcheckout\.com\/r\/[a-z0-9]+" target="_blank" rel="noopener">Start CloserAI/.test(pitch));
+check("NO onboarding link and NO booking button on the proposal (Gabriel sends onboarding after payment)",
+  !/calendly\.com/.test(pitch) && !/Book the 30-minute setup call/.test(pitch) && !/onboarding page/.test(pitch) && OFFER.bookUrl === null && OFFER.onboardingPath === null);
+check("no monetary value is ever put on the hours", !/\$[0-9,]+ (of|in) (selling|revenue)/i.test(pitch) && !/per hour/i.test(pitch) && !/economics/i.test(pitch));
 
 console.log("\nPages — what Gabriel asked for is on them");
 for (const [what, re, where] of [
@@ -69,11 +67,13 @@ for (const [what, re, where] of [
   ["team page + per-person trend", /whole team on one page/i, pitch],
   ["timestamps into the recording for training", /timestamped and linked straight into the recording/i, pitch],
   ["AI suggests training moments (Vera)", /Which three moments should I bring to training/i, pitch],
+  ["Gabriel's problem line", /The sales floor is about to scale faster than manual call review can\./, pitch],
+  ["Today / With CloserAI, one dashboard, training starts with the moment", /class="bh">Today</.test(pitch) && /from one dashboard/.test(pitch) && /Training starts with the moment, not the search for it/.test(pitch), pitch],
   ["manager-adjustable rubric/prompt", /rubric you write/i, pitch],
   ["setter and closer attribution", /setter who booked it comes across from your CRM/i, pitch],
-  ["interactive hours calculator", /id="inClosers"/, pitch],
+  ["interactive hours calculator (the original, simple one)", /id="inClosers"/.test(pitch) && /Estimates, from your inputs\./.test(pitch), pitch],
   ["the text rail is back, and it has no line of its own", /class="rail"/.test(pitch) && /class="rail"/.test(onboard) && !/class="line"|class="fill"/.test(pitch) && /id="prog"/.test(pitch), pitch],
-  ["three-step plan, no day counts (Gabriel, 13 Sep)", /<h2>Three steps<\/h2>/.test(pitch) && !/seven days|\bDay [0-9]/i.test(pitch), pitch],
+  ["four steps, and no DELIVERY day counts (Gabriel, 13 Sep); the agreement's 30 days and 72 hours are allowed (14 Sep)", /<h2>Four steps<\/h2>/.test(pitch) && !/seven days|\bDay [0-7]\b|live in \w+ days/i.test(pitch), pitch],
   ["onboarding: Fathom key on the call, never emailed", /never sent to us/i, onboard],
   ["onboarding: GHL admin login + Location ID", /administrator login to your GoHighLevel/i, onboard],
   ["onboarding: who books the calls (setter workflow)", /Who books your calls/i, onboard],
@@ -89,10 +89,22 @@ for (const [what, re, where] of [
 console.log("\nPages — what Gabriel asked to remove on 13 Sep stays removed");
 check("no 'Will my reps feel watched' on either page, so we do not plant the fear ourselves", !/feel watched/i.test(pitch) && !/feel watched/i.test(onboard));
 check("no 'held hostage'; the line is 'your data is your own'", !/held hostage/i.test(pitch) && /Your data is your own/.test(pitch));
-check("no day-count promises on either page", !/\bDay [0-9]|seven days|day three|after day 7|day-two/i.test(pitch) && !/\bDay [0-9]|seven days|day three|after day 7|day-two/i.test(onboard));
+check("no delivery-timeline promises on either page (contract periods like '30 days' and '72 hours' are terms, not promises)",
+  !/\bDay [0-7]\b|seven days|day three|after day 7|day-two|live in \w+ days/i.test(pitch) && !/\bDay [0-7]\b|seven days|day three|after day 7|day-two|live in \w+ days/i.test(onboard));
 check("the product is CloserAI on both pages, and the button is spelled that way", /Start CloserAI/.test(pitch) && /CloserAI/.test(onboard) && !/>Closer</.test(pitch));
 check("checkout opens in a new tab on both pages", /target="_blank" rel="noopener">Start CloserAI/.test(pitch) && /target="_blank" rel="noopener">Pay the activation/.test(onboardHtml({ payUrl: OFFER.payUrl, bookUrl: OFFER.bookUrl })));
 check("cost FAQ names any frontier model and the measured per-call range, never a monthly guess", /any frontier model with API access/i.test(pitch) && /between fifty cents and a dollar a call/.test(pitch) && !/tens of dollars a month/i.test(pitch));
+
+console.log("\nPages — the 13 September snapshot, frozen for comparison");
+{
+  const snap = snapshotHtml(SNAPSHOT_OFFER);
+  const r = snapshotResponse("/r/" + SNAPSHOT_TOKEN);
+  check("the snapshot is served at its own token with the same headers", r && r.headers.get("X-Robots-Tag").includes("noindex"));
+  check("it is labelled as the reference copy, not the live proposal", /Reference copy/.test(snap) && /13 September version/.test(snap));
+  check("it carries no live payment or booking button", SNAPSHOT_OFFER.payUrl === null && SNAPSHOT_OFFER.bookUrl === null && !/collectcheckout|calendly/.test(snap));
+  check("it still passes the leak guard", LEAKS.filter(re => re.test(snap)).length === 0, LEAKS.filter(re => re.test(snap)).map(String).join(" "));
+  check("the live page and the snapshot differ where they should", /Three steps/.test(snap) && /Four steps/.test(pitch));
+}
 
 console.log("\nIntake — the public endpoint is defended");
 check("the POST is above requireUser and checks the token in constant time", idx.indexOf('path === "/api/intake" && method === "POST"') < idx.indexOf("const user = await requireUser(request, env);")

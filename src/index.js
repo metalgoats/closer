@@ -13,6 +13,7 @@ import { logEvent } from "./log.js";
 import { spendReport, importUsage, reconcile } from "./spend.js";
 import { reportResponse } from "./pricingreport.js";
 import { pitchResponse, OFFER } from "./pitch.js";
+import { snapshotResponse } from "./pitch_snapshot.js";
 import { onboardResponse, ONBOARD_TOKEN, INTAKE_MAX_BYTES, sanitizeIntake } from "./onboard.js";
 import { tokenMatches } from "./pagekit.js";
 import { sendEmail, intakeEmail, mailConfig, recipients } from "./mail.js";
@@ -37,7 +38,8 @@ export default {
       const onboardingPath = `/r/${ONBOARD_TOKEN}`;
       const page = reportResponse(url.pathname)
         || pitchResponse(url.pathname, { onboardingPath })
-        || onboardResponse(url.pathname, { payUrl: OFFER.payUrl, bookUrl: OFFER.bookUrl });
+        || snapshotResponse(url.pathname)
+        || onboardResponse(url.pathname, { payUrl: OFFER.payUrl, bookUrl: "https://calendly.com/ivanlizarde/onboarding" });
       if (page) return page;
     }
     if (!url.pathname.startsWith("/api/")) {
@@ -174,6 +176,11 @@ async function route(request, env, url, ctx) {
   }
 
   const user = await requireUser(request, env);
+  // Presence, for the guarantee's "user-activity records": bump last_seen_at at most hourly.
+  // Fire-and-forget on the DB; a slow write must never slow a page.
+  if (user?.id && (!user.last_seen_at || Date.now() - Date.parse(user.last_seen_at) > 3600_000)) {
+    ctx?.waitUntil?.(env.DB.prepare("UPDATE users SET last_seen_at = datetime('now') WHERE id = ?").bind(user.id).run().catch(() => {}));
+  }
   if (!user) return json({ error: "unauthorized" }, 401);
 
   // ---- what a member cannot reach (TASK-112) ----
@@ -206,7 +213,7 @@ async function route(request, env, url, ctx) {
   // ---- users & access (TASK-112) ----
   if (path === "/api/users" && method === "GET") {
     const { results } = await env.DB.prepare(
-      "SELECT id, email, COALESCE(role,'member') AS role, created_at FROM users ORDER BY id").all();
+      "SELECT id, email, COALESCE(role,'member') AS role, created_at, last_seen_at FROM users ORDER BY id").all();
     return json({ users: results, me: user.id });
   }
   // The second login. /api/setup stays first-run-gated exactly as it was — this is the route
@@ -1113,8 +1120,13 @@ async function login(request, env) {
   const { email, password } = await request.json();
   const user = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
   if (!user || !(await verifyPassword(password, user.pw_salt, user.pw_hash))) {
+    await logEvent(env, { level: "warn", kind: "auth.login_failed", account_id: 1, detail: String(email || "").slice(0, 120) });
     return json({ error: "invalid credentials" }, 401);
   }
+  // Every login is an event: the guarantee's adoption question ("is anyone actually using it")
+  // is answered from here and from users.last_seen_at.
+  await logEvent(env, { kind: "auth.login", account_id: 1, detail: `${email} (${user.role || "member"})` });
+  await env.DB.prepare("UPDATE users SET last_seen_at = datetime('now') WHERE id = ?").bind(user.id).run().catch(() => {});
   return startSession(env, email);
 }
 

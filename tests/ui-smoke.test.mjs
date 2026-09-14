@@ -167,7 +167,7 @@ const ROUTES = [
                               models: { "claude-opus-5": { label: "Opus 5", tier: "Flagship", inPerM: 5, outPerM: 25, note: "n", thinking: "optional-capped" },
                                         "claude-fable-5": { label: "Fable 5", tier: "Most capable", inPerM: 10, outPerM: 50, note: "n", thinking: "always-on" } } })],
   [/^\/suggestions/, () => ({ suggestions: [] })],
-  [/^\/users/,        () => ({ users: [{ id: 1, email: "a@b.c", role: "admin", created_at: "2026-07-01" }, { id: 2, email: "rep@x.com", role: "member", created_at: "2026-08-12" }] })],
+  [/^\/users/,        () => ({ users: [{ id: 1, email: "a@b.c", role: "admin", created_at: "2026-07-01", last_seen_at: "2026-09-14 10:00:00" }, { id: 2, email: "rep@x.com", role: "member", created_at: "2026-08-12", last_seen_at: null }] })],
   [/^\/intake/,       () => ({ intake: [{ id: 1, received_at: "2026-09-12T20:11:00", company: "Test Floor LLC", contact: "Nate <n@x.com>",
                               data: { company: "Test Floor LLC", closers: "Ana, ana@x.com\nLuis, luis@x.com", tags: "Closed Won", api_key: "" } }] })],
   [/^\/ask\/scope/,   () => ({ role: "admin", scope: "every rep on this account", callCount: 6, truncated: false, max: 60,
@@ -879,6 +879,7 @@ console.log("\n== Onboarding intake reaches the Account & Access page (TASK-131)
   T.state.user = { email: "rep@x.com", role: "member" };
   await T.VIEWS.access();
   check("each form carries a Remove button bound to its id", /class="chip in-remove" data-intake="1"/.test(h));
+  check("logins show a Last seen column, dash when never", /<th class="sp-num">Last seen<\/th>/.test(h) && /2026-09-14 10:00/.test(h) && /&mdash;<\/td>/.test(h));
   check("a member is shown no intake at all", !/Onboarding forms received/.test((reg.get("#detailPane") || {})._html || ""));
   T.state.user = { email: "boss@x.com", role: "admin" };
 }

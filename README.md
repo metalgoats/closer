@@ -107,17 +107,18 @@ Where everything lives. The link-only pages are private to their URL (an unguess
 | The app | `https://closer.gabriel-galindo.workers.dev/` | Ivan, Gabriel, and every seat (login) |
 | Pricing report, "The offer, valued rather than costed" | `/r/fbc0408f814e23f35887951dcd02e992` | Gabriel |
 | **Proposal for Nathan** | `/r/3abd3a2c0ec5861ba624a58f00d10900` | Nathan (customer-facing; nothing internal) |
-| **Onboarding** — the three steps from yes, what we need, the intake form | `/r/40d5c3ae0881bde825c74f33dd1793c0` | Any new customer |
+| **Onboarding** — the steps from yes, what we need, the intake form, the booking link | `/r/40d5c3ae0881bde825c74f33dd1793c0` | Any new customer. **Not linked from the proposal**; Gabriel sends it after payment |
+| Proposal, 13 September version (frozen reference copy, no live buttons) | `/r/e1b606395f6da2fb17b745eb84c9fdb1` | Ivan and Gabriel, for comparison |
 
 Inside the app: **All Calls / Needs Follow-up / Closed / Archived** (the inbox), **Insights** and
 **Suggestions** (Coaching), and behind the account menu: **People**, **Integrations**, **Billing**,
 **Spend**, **Activity**, **Prompt Library**, **Account & Access**. **Vera** is the ring in the
 lower-right corner of every screen.
 
-The commercial terms on the proposal live in one place, `OFFER` in `src/pitch.js`: activation,
-monthly, included seats, the per-extra-seat price (unset until decided, the page says "ask us"),
-trial length (unset), the payment link and the booking link (both unset; the page degrades to
-honest copy). Intake submissions land in the `intake` table and as `intake.received` in Activity;
+The commercial terms on the proposal live in one place, `OFFER` in `src/pitch.js`: activation ($1,997,
+including the first 30 days), monthly ($197 from day 31), included seats (3 closers + 1 admin), the
+per-additional-seat price ($47, closer or administrator), and the payment link. The booking link and
+the onboarding page are deliberately absent from the proposal. Intake submissions land in the `intake` table and as `intake.received` in Activity;
 admins can read them at `GET /api/intake`.
 
 ## Local development (no Cloudflare account needed)

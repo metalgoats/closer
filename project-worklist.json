@@ -1,6 +1,6 @@
 {
   "project": "Closer \u2014 post-call assistant SaaS for high-ticket closers (Gabriel Galindo)",
-  "last_updated": "2026-09-12",
+  "last_updated": "2026-09-14",
   "overall_status": "Live in production at https://closer.gabriel-galindo.workers.dev, scoped to a single account (On Screen Authority) as of 2026-07-16. Functionally MOCK-ONLY: zero API secrets are set, so no real generation has ever run. Core app, auth, layout, single-account scoping, and CI/CD are complete and verified. Every remaining high-value task is blocked on third-party credentials (LLM key, Fathom key, GHL marketplace app), not on engineering effort. CRITICAL: the only live prompt template is the hypnotherapy-written master prompt, which actively mis-scores OSA calls (TASK-021) \u2014 now the sole template, so it affects 100% of calls.",
   "completion_percentage": 90,
   "tasks": [
@@ -3479,6 +3479,31 @@
       ],
       "test_results": [
         "24 in tests/mail.test.mjs; suite green"
+      ]
+    },
+    {
+      "id": "TASK-133",
+      "status": "completed",
+      "priority": "high",
+      "estimated_complexity": "medium",
+      "title": "Proposal reshaped from the 14 Sep call; 13 Sep page frozen at its own URL; logins and last-seen recorded",
+      "source": "Gabriel + Ivan call, 2026-09-14; CloserAI Sample Agreement",
+      "dependencies": [
+        "TASK-131"
+      ],
+      "description": "Gabriel wanted 'the original version' with his language and the agreement's terms. The live page already had the original structure and calculator; his money section existed only in his own doc. Applied: his problem line and headings, Today/With CloserAI, no monetary value on hours (tested), Founding Partner Deployment for On Screen Authority, $1,997 incl. first 30 days, $197 from day 31, $47 per additional seat closer or admin, the 'why pricing is different right now' block, the 30-Day Deployment Guarantee summarised from the agreement, four steps, payment button kept, booking button and onboarding link removed from the proposal. 13 Sep page frozen as src/pitch_snapshot.js at its own token. auth.login events and users.last_seen_at (migration 0025) for the guarantee's evidence; Last seen on Account & Access. Domain lookups: verasales.ai, verasalessupport.com/.ai unregistered.",
+      "acceptance_criteria": [],
+      "testing_criteria": [],
+      "files_expected_to_change": [
+        "closer-app/src/pitch.js",
+        "closer-app/src/pitch_snapshot.js",
+        "closer-app/src/index.js",
+        "closer-app/src/auth.js",
+        "closer-app/public/app.js",
+        "closer-app/migrations/0025_user_last_seen.sql"
+      ],
+      "test_results": [
+        "suite green; see CHANGELOG"
       ]
     }
   ],

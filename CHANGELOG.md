@@ -2,6 +2,74 @@
 
 One entry per working session, newest first. The *why* matters more than the diff — the diff
 already records the what.
+## 2026-09-14 — The proposal, reshaped from the call; a frozen copy of yesterday's; and the login record the guarantee assumes
+
+Gabriel, on the 14 Sep call with Ivan (transcript pasted into the thread), on the page as it
+stood: *"more convoluted... I actually would like to go back to the original version... the
+calculator was really simple... Nathan is really intelligent."* Then, reading from the one-sheet
+he had rewritten himself, the language to use and the things to remove.
+
+**The finding that shaped the work: the live page already *was* the original.** Nine sections,
+the same simple hours calculator, no money section. The "economics get very interesting" and
+"currently sells engagement ranging from…" copy he wanted gone was in *his* rewritten doc, not on
+the page. So the job was not a rollback; it was his language and the agreement's terms onto the
+structure he already liked — and a **frozen copy of the 13 September page at its own URL** so the
+two can be compared, which Ivan and Gabriel agreed to on the call.
+
+### What changed on the proposal
+
+- Problem line, his: *"The sales floor is about to scale faster than manual call review can."*
+  Cards retitled *Your reps / Your management / Your training*. "From one dashboard." "Training
+  starts with the moment, not the search for it." **Today** / With CloserAI.
+- **No monetary value on the hours, ever** — his explicit instruction, and a test now forbids it.
+- The AI card names the providers in plain words: *an AI account you own, from Anthropic (Claude)
+  or OpenAI, connected with an API key you control.* "Your data stays with you" kept, as asked.
+- **The offer is the Founding Partner Deployment for On Screen Authority.** $1,997 activation
+  **including the first 30 days**; $197 a month **from day 31**; 3 closers + 1 administrator;
+  **$47 per additional seat, closer or administrator, same price**, each with their own login and
+  dashboard. The 7-day trial is gone as a concept: the agreement's model is "30 days included."
+- **"Why the pricing is different right now"** — early access, a small number of businesses, and
+  what OSA gets in exchange (the four items are drawn from the agreement's own founding-partner
+  clause; Gabriel's doc has his exact list and can replace them).
+- **The 30-Day CloserAI Deployment Guarantee**, summarised from the agreement in plain terms:
+  core functionality live in 30 days or the monthly does not start and we work another 30 free;
+  still not delivered, and you held up your side, the activation is refunded; the customer's side
+  (book within 72 hours, access, 80% of eligible calls captured, real use, problems reported within
+  two business days); and what it is not (sales, revenue, close rate).
+- **Four steps from payment to live**: Activate · Onboarding · Deployment · Your first 30 days.
+- **The payment button stays. The booking button and every mention of the onboarding page are
+  off the proposal.** Gabriel sends the onboarding page himself once funds are collected.
+
+> [!warning] Day counts, reconciled
+> Yesterday's rule was *no day counts*, because a stated implementation timeline becomes the
+> client's weapon when it slips. Today's page carries "30 days" and "72 hours" — but those are the
+> **agreement's own periods**, which Gabriel asked to keep, not delivery promises. The guard now
+> forbids delivery timelines ("live in N days", "Day 0–7") and permits contractual periods.
+
+### The 13 September page, frozen
+
+`src/pitch_snapshot.js` is that day's `pitch.js` verbatim, at its own token, labelled *Reference
+copy*, with **no live payment or booking button** and the same leak guard. It renders through
+today's kit, so the shell is current and the content is that day's.
+
+### The login record the guarantee points at
+
+The agreement names "platform logs" and "user-activity records" as the source of truth for
+adoption, and Gabriel asked directly whether we can see who is logging in. Nothing recorded a
+login until now. **Every login is an `auth.login` event** (failed attempts are `auth.login_failed`),
+and `users.last_seen_at` is bumped at most once an hour on any authenticated request — off the
+request path, so a slow write never slows a page. Account & Access shows **Last seen** per login.
+Enough to answer "has anyone on this floor opened it this week," which is the question the
+guarantee will be argued on.
+
+### The name, first pass
+
+Gabriel, on the call, to Sonny by name: research *Vera / Vera AI / Vera Sales AI / Vera Sales
+Support* and the .com/.ai availability. Registry lookups (RDAP, today): **`verasales.ai`,
+`verasalessupport.com` and `verasalessupport.ai` are unregistered**; `vera.ai` (2017),
+`verasales.com` (2020), `verasalesai.com` (2025), `veraai.com` (2019), `getvera.ai` (2025) and
+`vera-sales.com` (**2 September 2026** — twelve days ago) are taken; `vera.com` has been
+registered since 1994 and is Fortra's. Details and the trademark caution are in the vault.
 
 ## 2026-09-13 — The pages Nathan reads, edited from the call, with the old copy pinned out
 

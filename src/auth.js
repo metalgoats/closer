@@ -47,7 +47,7 @@ export async function requireUser(request, env) {
   // migration 0019 has no role on its row until the next login, and an undefined role must
   // read as the LESS privileged one rather than as admin.
   const row = await env.DB.prepare(
-    "SELECT u.id, u.email, COALESCE(u.role, 'member') AS role FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at > datetime('now')"
+    "SELECT u.id, u.email, COALESCE(u.role, 'member') AS role, u.last_seen_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ? AND s.expires_at > datetime('now')"
   ).bind(token).first();
   return row || null;
 }
